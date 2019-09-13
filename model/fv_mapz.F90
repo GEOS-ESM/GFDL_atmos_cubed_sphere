@@ -92,7 +92,10 @@ module fv_mapz_mod
   use fv_timing_mod,     only: timing_on, timing_off
   use fv_mp_mod,         only: is_master
   use fv_cmp_mod,        only: qs_init, fv_sat_adj
-
+#ifndef MAPZ_DRIVER_DEBUG
+  use ESMF
+#endif
+  
   implicit none
   real, parameter:: consv_min= 0.001         !< below which no correction applies
   real, parameter:: t_min= 184.              !< below which applies stricter constraint
@@ -217,6 +220,114 @@ contains
   integer:: nt, liq_wat, ice_wat, rainwat, snowwat, cld_amt, graupel, iq, n, kmp, kp, k_next
   logical:: remap_t, remap_pt, remap_te
 
+  real :: sum_pkz, sum_pt
+
+#ifndef MAPZ_DRIVER_DEBUG
+  !-Start-dump-input-data-to-file-
+  integer :: file_handle
+  character(len = ESMF_MAXSTR) :: scalars_file, arrext_file, arrays_file
+  character(len = ESMF_MAXSTR) :: gridstruct_file, flagstruct_file, output_file
+  type(ESMF_VM) :: vm
+  integer :: irank, nranks, rc
+  
+  call ESMF_VMGetCurrent(vm, rc=rc)
+  call ESMF_VMGet(vm, localPet=irank, petCount=nranks, rc=rc)
+
+  ! Scalar data
+  write(scalars_file, '(a12, i2.2, a4)') 'mapz_scalars', irank, '.bin'
+  open(newunit = file_handle, file = scalars_file, form = 'unformatted')
+  write(file_handle) last_step
+  write(file_handle) consv
+  write(file_handle) mdt
+  write(file_handle) pdt
+  write(file_handle) nwat
+  write(file_handle) sphum
+  write(file_handle) r_vir
+  write(file_handle) cp
+  write(file_handle) akap     
+  write(file_handle) kord_mt
+  write(file_handle) kord_wz     
+  write(file_handle) kord_tm
+  write(file_handle) ng
+  write(file_handle) fill
+  write(file_handle) reproduce_sum
+  write(file_handle) out_dt     
+  write(file_handle) ptop
+  write(file_handle) do_sat_adj
+  write(file_handle) hydrostatic
+  write(file_handle) hybrid_z
+  write(file_handle) do_omega
+  write(file_handle) adiabatic
+  write(file_handle) do_adiabatic_init
+  write(file_handle) remap_option
+  close(file_handle)
+  
+  ! Array extents
+  write(arrext_file, '(a18, i2.2, a4)') 'mapz_array_extents', irank, '.bin'
+  open(newunit = file_handle, file = arrext_file, form = 'unformatted')
+  write(file_handle) is
+  write(file_handle) ie
+  write(file_handle) js
+  write(file_handle) je
+  write(file_handle) isd
+  write(file_handle) ied
+  write(file_handle) jsd
+  write(file_handle) jed
+  write(file_handle) nq
+  write(file_handle) km
+  close(file_handle)
+     
+  ! Array data
+  write(arrays_file, '(a11, i2.2, a4)') 'mapz_arrays', irank, '.bin'
+  open(newunit = file_handle, file = arrays_file, form = 'unformatted')
+  write(file_handle) ps
+  write(file_handle) pe
+  write(file_handle) delp
+  write(file_handle) pkz
+  write(file_handle) pk
+  write(file_handle) q_con
+  write(file_handle) u
+  write(file_handle) v
+  write(file_handle) w
+  write(file_handle) delz
+  write(file_handle) pt
+  write(file_handle) q(:,:,:,1)
+  write(file_handle) hs
+  write(file_handle) cappa
+  write(file_handle) kord_tr
+  write(file_handle) peln
+  write(file_handle) te0_2d
+  write(file_handle) ua
+  write(file_handle) va
+  write(file_handle) omga
+  write(file_handle) te
+  write(file_handle) ws
+  write(file_handle) dtdt
+  write(file_handle) ak
+  write(file_handle) bk
+  write(file_handle) pfull
+  write(file_handle) mfx
+  write(file_handle) mfy
+  write(file_handle) cx
+  write(file_handle) cy
+  close(file_handle)
+
+  ! dervied type data - gridstruct
+  write(gridstruct_file, '(a15, i2.2, a4)') 'mapz_gridstruct', irank, '.bin'
+  open(newunit = file_handle, file = gridstruct_file, form = 'unformatted')
+  write(file_handle) gridstruct%rsin2
+  write(file_handle) gridstruct%cosa_s
+  write(file_handle) gridstruct%area_64
+  close(file_handle)
+     
+  ! dervied type data - flagstruct
+  write(flagstruct_file, '(a15, i2.2, a4)') 'mapz_flagstruct', irank, '.bin'
+  open(newunit = file_handle, file = flagstruct_file, form = 'unformatted')
+  write(file_handle) flagstruct%fv_debug
+  close(file_handle)
+  !-End-dump-input-data-to-file-
+#endif
+  
   remap_t  = .false.
   remap_pt = .false.
   remap_te = .false.
@@ -1069,6 +1180,19 @@ endif        ! end last_step check
     endif ! last_step
 !$OMP end parallel
 
+    ! print *, 'rank: ', irank, ', sum(pkz): ', sum(pkz), ', sum(pt): ', sum(pt)
+    sum_pkz = sum(pkz)
+    sum_pt = sum(pt)
+
+#ifndef MAPZ_DRIVER_DEBUG
+    ! Array extents
+    write(output_file, '(a11, i2.2, a4)') 'mapz_output', irank, '.bin'
+    open(newunit = file_handle, file = output_file, form = 'unformatted')
+    write(file_handle) sum_pkz
+    write(file_handle) sum_pt
+    close(file_handle)
+#endif
+    
  end subroutine Lagrangian_to_Eulerian
 
 !>@brief The subroutine 'compute_total_energy' performs the FV3-consistent computation of the global total energy.
