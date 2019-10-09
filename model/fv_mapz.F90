@@ -389,6 +389,68 @@ contains
 
   end subroutine compute_p_to_the_kappa_
   
+  pure subroutine update_pk_(jlocal, is, ie, js, je, km, pk2, pk)
+
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, js, je, km
+    real, intent(in) :: pk2(is:ie, km+1)
+    real, intent(inout) :: pk(is:ie, js:je, km+1)
+    ! Locals
+    integer :: k, i
+
+    ! Start
+    do k = 1, km+1
+       do i = is, ie
+          pk(i, jlocal, k) = pk2(i, k)
+       end do
+    end do
+    
+  end subroutine update_pk_
+
+  pure subroutine copy_omega_to_pe3_(jlocal, is, ie, isd, ied, js, je, jsd, jed, km, omega, pe3)
+
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, isd, ied, js, je, jsd, jed, km
+    real, intent(in):: omega(isd:ied, jsd:jed, km)  !< vertical press. velocity (pascal/sec)
+    real, intent(out) :: pe3(is:ie+1, km+1)
+    ! Locals
+    integer :: k, i
+    
+    ! Start
+    ! if ( do_omega ) then
+    ! k = 1
+    do i = is, ie
+       pe3(i, 1) = 0.
+    end do
+    do k = 2, km+1
+       do i = is, ie
+          pe3(i, k) = omega(i, jlocal, k-1)
+       enddo
+    enddo
+    ! endif
+
+  end subroutine copy_omega_to_pe3_
+    
+  pure subroutine update_pe0_peln_(jlocal, is, ie, js, je, km, pn2, peln, pe0)
+  
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, js, je, km
+    real, intent(in) :: pn2(is:ie, km+1)
+    real, intent(inout) :: peln(is:ie, km+1, js:je)
+    real, intent(inout) :: pe0(is:ie+1, km+1)
+    ! Locals
+    integer :: k, i
+
+    ! Stary
+    do k = 1, km+1
+       do i = is, ie
+          pe0(i, k) = peln(i, k, jlocal)
+          peln(i, k, jlocal) =  pn2(i,k)
+       enddo
+    enddo
+
+  end subroutine update_pe0_peln_
+
   !>@brief The subroutine 'Lagrangian_to_Eulerian' remaps deformed Lagrangian layers back to the reference Eulerian coordinate.
   !>@details It also includes the entry point for calling fast microphysical processes. This is typically calle on the k_split loop.
   subroutine Lagrangian_to_Eulerian(last_step, consv, ps, pe, delp, pkz, pk,   &
@@ -690,35 +752,11 @@ contains
              enddo
           endif
           
-          !----------
-          ! Update pk
-          !----------
-          do k=1,km+1
-             do i=is,ie
-                pk(i,j,k) = pk2(i,k)
-             enddo
-          enddo
-          
-          !----------------
-          if ( do_omega ) then
-             ! Start do_omega
-             ! Copy omega field to pe3
-             do i=is,ie
-                pe3(i,1) = 0.
-             enddo
-             do k=2,km+1
-                do i=is,ie
-                   pe3(i,k) = omga(i,j,k-1)
-                enddo
-             enddo
-          endif
-          
-          do k=1,km+1
-             do i=is,ie
-                pe0(i,k)   = peln(i,k,j)
-                peln(i,k,j) =  pn2(i,k)
-             enddo
-          enddo
+          call update_pk_(j, is, ie, js, je, km, pk2, pk)
+          if (do_omega) then
+             call copy_omega_to_pe3_(j, is, ie, isd, ied, js, je, jsd, jed, km, omga, pe3)
+          end if
+          call update_pe0_peln_(j, is, ie, js, je, km, pn2, peln, pe0)
           
           !------------
           ! Compute pkz
