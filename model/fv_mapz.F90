@@ -118,7 +118,238 @@ module fv_mapz_mod
   character(len=128) :: tagname = '$Name$'
 
 contains
- 
+
+  pure subroutine initialize_pe1_j_(jlocal, is, ie, js, je, km, pe, pe1)
+
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, js, je, km
+    real, intent(in) :: pe(is-1:ie+1, km+1, js-1:je+1) !< pressure at layer edges
+    real, intent(out) :: pe1(is:ie, km+1)
+    ! Locals
+    integer :: i, k
+
+    ! Start
+    do k = 1, km+1
+       do i = is, ie
+          pe1(i, k) = pe(i, k, jlocal)
+       end do
+    end do
+
+  end subroutine initialize_pe1_j_
+
+  pure subroutine initialize_pe2_j_(jlocal, is, ie, js, je, km, pe, ptop, pe2)
+
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, js, je, km
+    real, intent(in) :: pe(is-1:ie+1, km+1, js-1:je+1)  !< pressure at layer edges
+    real, intent(in) :: ptop
+    real, intent(out) :: pe2(is:ie, km+1)
+    ! Locals
+    integer :: i
+
+    ! Start
+    do i = is, ie
+       pe2(i, 1) = ptop
+       pe2(i, km+1) = pe(i, km+1, jlocal)
+    enddo
+
+  end subroutine initialize_pe2_j_
+
+  pure subroutine remap_t_hydrostatic_(jlocal, is, ie, isd, ied, js, je, jsd, jed, km, pk, akap, peln, pt)
+    ! Remap T in logP
+    ! Note: pt at this stage is Theta_v
+    ! Transform virtual pt to virtual Temp
+
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, isd, ied, js, je, jsd, jed, km
+    real, intent(in) :: pk(is:ie, js:je, km+1)  !< pe to the kappa
+    real, intent(in) :: akap
+    real, intent(in) :: peln(is:ie, km+1, js:je)  !< log(pe)
+    real, intent(inout) :: pt(isd:ied, jsd:jed, km)
+    ! Locals
+    integer :: k, i
+
+    ! Start
+    do k = 1, km
+       do i = is, ie
+          pt(i,jlocal,k) = &
+               pt(i,jlocal,k) * &
+               ( pk(i,jlocal,k+1) - pk(i,jlocal,k) ) / &
+               ( akap * ( peln(i,k+1,jlocal) - peln(i,k,jlocal) ) )
+       end do
+    end do
+
+  end subroutine remap_t_hydrostatic_
+
+  pure subroutine remap_t_non_hydrostatic_( &
+       jlocal, is, ie, isd, ied, js, je, jsd, jed, km, &
+       sphum, nwat, liq_wat, rainwat, ice_wat, snowwat, &
+       graupel, q, r_vir, rrg, k1k, &
+       delp, delz, &
+       q_con, cappa, pt)
+
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, isd, ied, js, je, jsd, jed, km
+    integer, intent(in) :: sphum, nwat, liq_wat, rainwat, ice_wat, snowwat
+    integer, intent(in) :: graupel
+    real, intent(in) :: q(isd:ied, jsd:jed, km,*)
+    real, intent(in) :: r_vir, rrg, k1k
+    real, intent(in) :: delp(isd:ied, jsd:jed, km) !< pressure thickness
+    real, intent(in) :: delz(isd:, jsd:, 1:)
+    real, intent(inout) :: pt(isd:ied, jsd:jed, km)
+    real, intent(inout), dimension(isd:, jsd:, 1:) :: q_con, cappa ! TODO: should be intent(out)
+    ! Locals
+    integer :: k, i
+
+    ! Start
+    ! Transform "density pt" to "density temp"
+    do k = 1, km
+#ifdef MOIST_CAPPA
+       call moist_cv(is,ie,isd,ied,jsd,jed, km, jlocal, k, nwat, sphum, liq_wat, rainwat,    &
+            ice_wat, snowwat, graupel, q, gz, cvm) ! gz, cvm are intent(out)
+       do i = is, ie
+          q_con(i,jlocal,k) = gz(i)
+          cappa(i,jlocal,k) = rdgas / ( rdgas + cvm(i)/(1.+r_vir*q(i,jlocal,k,sphum)) )
+          pt(i,jlocal,k) = pt(i,jlocal,k)*exp(cappa(i,jlocal,k)/(1.-cappa(i,jlocal,k))*log(rrg*delp(i,jlocal,k)/delz(i,jlocal,k)*pt(i,jlocal,k)))
+       enddo
+#else
+       do i = is, ie
+          pt(i,jlocal,k) = pt(i,jlocal,k)*exp(k1k*log(rrg*delp(i,jlocal,k)/delz(i,jlocal,k)*pt(i,jlocal,k)))
+          ! Using dry pressure for the definition of the virtual potential temperature
+          !                    pt(i,j,k) = pt(i,j,k)*exp(k1k*log(rrg*(1.-q(i,j,k,sphum))*delp(i,j,k)/delz(i,j,k)*    &
+          !                                              pt(i,j,k)/(1.+r_vir*q(i,j,k,sphum))))
+       enddo
+#endif
+    end do
+
+  end subroutine remap_t_non_hydrostatic_
+
+  pure subroutine remap_te_( &
+       jlocal, is, ie, isd, ied, js, je, jsd, jed, km, pe, pk, akap, peln, ptop, &
+       gridstruct, u, v, pt, pkz, te)
+
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, isd, ied, js, je, jsd, jed, km
+    real, intent(in) :: pe(is-1:ie+1, km+1, js-1:je+1) !< pressure at layer edges
+    real, intent(in) :: pk(is:ie, js:je, km+1)  !< pe to the kappa
+    real, intent(in) :: akap, ptop
+    real, intent(inout) :: peln(is:ie, km+1, js:je)  !< log(pe)
+    type(fv_grid_type), intent(in), target :: gridstruct
+    real, intent(in)::  u(isd:ied, jsd:jed+1, km)   !< u-wind (m/s)
+    real, intent(in)::  v(isd:ied+1, jsd:jed, km)   !< v-wind (m/s)
+    real, intent(inout) :: pkz(is:ie,js:je,km)  !< layer-mean pk for converting t to pt TODO: maybe local/intent(out)?
+    real, intent(inout) :: pt(isd:ied, jsd:jed, km)
+    real, intent(out) :: te(isd:ied,jsd:jed,km)
+    ! Locals
+    integer :: k, i
+
+    ! Start
+    ! Remap TE in logP
+    ! Transform virtual pt to total energy
+    call pkez(km, is, ie, js, je, jlocal, pe, pk, akap, peln, pkz, ptop)
+    ! Compute cp*T + KE
+    do k = 1, km
+       do i = is, ie
+          te(i,jlocal,k) = 0.25*gridstruct%rsin2(i,jlocal)*(u(i,jlocal,k)**2+u(i,jlocal+1,k)**2 +  &
+               v(i,jlocal,k)**2+v(i+1,jlocal,k)**2 -  &
+               (u(i,jlocal,k)+u(i,jlocal+1,k))*(v(i,jlocal,k)+v(i+1,jlocal,k))*gridstruct%cosa_s(i,jlocal))  &
+               + cp_air*pt(i,jlocal,k)*pkz(i,jlocal,k)
+       end do
+    end do
+
+  end subroutine remap_te_
+
+  pure subroutine update_delz_(jlocal, is, ie, isd, ied, js, je, jsd, jed, km, hydrostatic, delz, delp)
+
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, isd, ied, js, je, jsd, jed, km
+    logical, intent(in) :: hydrostatic
+    real, intent(inout) :: delz(isd:, jsd:, 1:)
+    real, intent(inout) :: delp(isd:ied, jsd:jed, km)  !< pressure thickness
+    ! Locals
+    integer :: k, i
+
+    ! Start
+    if ( .not. hydrostatic ) then
+       do k = 1, km
+          do i = is, ie
+             delz(i, jlocal, k) = -delz(i, jlocal, k) / delp(i, jlocal, k) ! ="specific volume"/grav
+          end do
+       end do
+    end if
+
+  end subroutine update_delz_  
+
+  pure subroutine update_ps_(jlocal, is, ie, isd, ied, js, je, jsd, jed, km, pe1, ps)
+
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, isd, ied, js, je, jsd, jed, km
+    real, intent(in) :: pe1(is:ie, km+1)
+    real, intent(inout) :: ps(isd:ied, jsd:jed)  !< surface pressure
+    ! Locals
+    integer :: i
+
+    ! Start
+    do i = is, ie
+       ps(i, jlocal) = pe1(i, km+1)
+    end do
+
+  end subroutine update_ps_
+
+  pure subroutine hybrid_sigma_p_coordinate_update_pe2_(jlocal, is, ie, js, je, km, ak, bk, pe, pe2j)
+
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, js, je, km
+    real, intent(in) :: ak(km+1), bk(km+1)
+    real, intent(in) :: pe(is-1:ie+1, km+1, js-1:je+1)  !< pressure at layer edges
+    real, intent(inout) :: pe2j(is:ie, km+1)
+    ! Locals
+    integer :: k, i
+
+    do k = 2, km
+       do i = is, ie
+          pe2j(i, k) = ak(k) + bk(k) * pe(i, km+1, jlocal)
+       end do
+    end do
+
+  end subroutine hybrid_sigma_p_coordinate_update_pe2_
+
+  pure subroutine hybrid_sigma_p_coordinate_update_dp2_(is, ie, js, je, km, pe2j, dp2j)
+
+    ! Arguments
+    integer, intent(in) :: is, ie, js, je, km
+    real, intent(in) :: pe2j(is:ie, km+1)
+    real, intent(out) :: dp2j(is:ie,km)
+    ! Locals
+    integer :: k, i
+
+    ! Start
+    do k = 1, km
+       do i = is, ie
+          dp2j(i, k) = pe2j(i, k+1) - pe2j(i, k)
+       end do
+    end do
+
+  end subroutine hybrid_sigma_p_coordinate_update_dp2_
+  
+  pure subroutine update_delp_(jlocal, is, ie, isd, ied, js, je, jsd, jed, km, dp2j, delp)
+
+    ! Arguments
+    integer, intent(in) :: jlocal, is, ie, isd, ied, js, je, jsd, jed, km
+    real, intent(in) :: dp2j(is:ie,km)
+    real, intent(inout) :: delp(isd:ied, jsd:jed, km)  !< pressure thickness
+    ! Locals
+    integer :: k, i
+
+    ! Start
+    do k = 1, km
+       do i = is, ie
+          delp(i, jlocal ,k) = dp2j(i, k)
+       enddo
+    enddo
+
+  end subroutine update_delp_
+  
 !>@brief The subroutine 'Lagrangian_to_Eulerian' remaps deformed Lagrangian layers back to the reference Eulerian coordinate.
 !>@details It also includes the entry point for calling fast microphysical processes. This is typically calle on the k_split loop.
  subroutine Lagrangian_to_Eulerian(last_step, consv, ps, pe, delp, pkz, pk,   &
@@ -305,125 +536,63 @@ contains
 !$OMP                                  pe0,pe1,pe2,pe3,pk1,pk2,pn2,phis,q2)
   do 1000 j=js,je+1
 
-     do k=1,km+1
-        do i=is,ie
-           pe1(i,k) = pe(i,k,j)
+     ! Initialize pe1 and pe2 for all j in [js, je+1]
+     call initialize_pe1_j_(j, is, ie, js, je, km, pe, pe1)
+     call initialize_pe2_j_(j, is, ie, js, je, km, pe, ptop, pe2)
+     
+     if ( j /= (je+1) ) then
+        
+        if (remap_t) then
+           ! Remap T in logP
+           ! Note: pt at this stage is Theta_v
+           if ( hydrostatic ) then
+              call remap_t_hydrostatic_(j, is, ie, isd, ied, js, je, jsd, jed, km, pk, akap, peln, pt)
+           else
+              call remap_t_non_hydrostatic_( &
+                   j, is, ie, isd, ied, js, je, jsd, jed, km, &
+                   sphum, nwat, liq_wat, rainwat, ice_wat, snowwat, &
+                   graupel, q, r_vir, rrg, k1k, &
+                   delp, delz, &
+                   q_con, cappa, pt)
+           end if  ! hydro test
+        else if (remap_pt) then
+           ! Remap PT in P
+           ! pt is already virtual PT
+        else if (remap_te) then
+           call remap_te_( &
+                j, is, ie, isd, ied, js, je, jsd, jed, km, &
+                pe, pk, akap, peln, ptop, &
+                gridstruct, u, v, pt, pkz, te)
+        end if
+        
+        call update_delz_(j, is, ie, isd, ied, js, je, jsd, jed, km, hydrostatic, delz, delp)
+        call update_ps_(j, is, ie, isd, ied, js, je, jsd, jed, km, pe1, ps)
+        call hybrid_sigma_p_coordinate_update_pe2_(j, is, ie, js, je, km, ak, bk, pe, pe2)
+        call hybrid_sigma_p_coordinate_update_dp2_(is, ie, js, je, km, pe2, dp2)
+        call update_delp_(j, is, ie, isd, ied, js, je, jsd, jed, km, dp2, delp)
+
+        !------------------
+        ! Compute p**Kappa
+        !------------------
+        do k=1,km+1
+           do i=is,ie
+              pk1(i,k) = pk(i,j,k)
+           enddo
         enddo
-     enddo
-
-     do i=is,ie
-        pe2(i,   1) = ptop
-        pe2(i,km+1) = pe(i,km+1,j)
-     enddo
-
-  if ( j /= (je+1) ) then
-
-      if (remap_t) then
-       ! Remap T in logP
-! Note: pt at this stage is Theta_v
-             if ( hydrostatic ) then
-! Transform virtual pt to virtual Temp
-             do k=1,km
-                   do i=is,ie
-                      pt(i,j,k) = pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
-                   enddo
-             enddo
-             else
-! Transform "density pt" to "density temp"
-               do k=1,km
-#ifdef MOIST_CAPPA
-                  call moist_cv(is,ie,isd,ied,jsd,jed, km, j, k, nwat, sphum, liq_wat, rainwat,    &
-                                ice_wat, snowwat, graupel, q, gz, cvm)
-                  do i=is,ie
-                     q_con(i,j,k) = gz(i)
-                     cappa(i,j,k) = rdgas / ( rdgas + cvm(i)/(1.+r_vir*q(i,j,k,sphum)) )
-                     pt(i,j,k) = pt(i,j,k)*exp(cappa(i,j,k)/(1.-cappa(i,j,k))*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)))
-                  enddo
-#else
-                  do i=is,ie
-                     pt(i,j,k) = pt(i,j,k)*exp(k1k*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)))
-! Using dry pressure for the definition of the virtual potential temperature
-!                    pt(i,j,k) = pt(i,j,k)*exp(k1k*log(rrg*(1.-q(i,j,k,sphum))*delp(i,j,k)/delz(i,j,k)*    &
-!                                              pt(i,j,k)/(1.+r_vir*q(i,j,k,sphum))))
-                  enddo
-#endif
-               enddo
-             endif         ! hydro test
-      elseif (remap_pt) then
-       ! Remap PT in P
-       ! pt is already virtual PT
-      elseif (remap_te) then
-       ! Remap TE in logP
-       ! Transform virtual pt to total energy
-           call pkez(km, is, ie, js, je, j, pe, pk, akap, peln, pkz, ptop)
-! Compute cp*T + KE
-           do k=1,km
-                 do i=is,ie
-                    te(i,j,k) = 0.25*gridstruct%rsin2(i,j)*(u(i,j,k)**2+u(i,j+1,k)**2 +  &
-                                                 v(i,j,k)**2+v(i+1,j,k)**2 -  &
-                               (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j))  &
-                              + cp_air*pt(i,j,k)*pkz(i,j,k)
-                 enddo
-           enddo
-       endif
-
-     if ( .not. hydrostatic ) then
-           do k=1,km
-              do i=is,ie
-                 delz(i,j,k) = -delz(i,j,k) / delp(i,j,k) ! ="specific volume"/grav
-              enddo
-           enddo
-      endif
-
-! update ps
-      do i=is,ie
-         ps(i,j) = pe1(i,km+1)
-      enddo
-!
-! Hybrid sigma-P coordinate:
-!
+        
+        do i=is,ie
+           pn2(i,   1) = peln(i,   1,j)
+           pn2(i,km+1) = peln(i,km+1,j)
+           pk2(i,   1) = pk1(i,   1)
+           pk2(i,km+1) = pk1(i,km+1)
+        enddo
+        
         do k=2,km
            do i=is,ie
-              pe2(i,k) = ak(k) + bk(k)*pe(i,km+1,j)
+              pn2(i,k) = log(pe2(i,k))
+              pk2(i,k) = exp(akap*pn2(i,k))
            enddo
         enddo
-        do k=1,km
-           do i=is,ie
-              dp2(i,k) = pe2(i,k+1) - pe2(i,k)
-           enddo
-        enddo
-
-!------------
-! update delp
-!------------
-      do k=1,km
-         do i=is,ie
-            delp(i,j,k) = dp2(i,k)
-         enddo
-      enddo
-
-!------------------
-! Compute p**Kappa
-!------------------
-   do k=1,km+1
-      do i=is,ie
-         pk1(i,k) = pk(i,j,k)
-      enddo
-   enddo
-
-   do i=is,ie
-      pn2(i,   1) = peln(i,   1,j)
-      pn2(i,km+1) = peln(i,km+1,j)
-      pk2(i,   1) = pk1(i,   1)
-      pk2(i,km+1) = pk1(i,km+1)
-   enddo
-
-   do k=2,km
-      do i=is,ie
-         pn2(i,k) = log(pe2(i,k))
-         pk2(i,k) = exp(akap*pn2(i,k))
-      enddo
-   enddo
 
    if (remap_t) then
 !----------------------------------
@@ -1207,7 +1376,7 @@ endif        ! end last_step check
   end subroutine compute_total_energy
 
 
-  subroutine pkez(km, ifirst, ilast, jfirst, jlast, j, &
+  pure subroutine pkez(km, ifirst, ilast, jfirst, jlast, j, &
                   pe, pk, akap, peln, pkz, ptop)
 
 ! INPUT PARAMETERS:
