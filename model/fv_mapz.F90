@@ -417,7 +417,6 @@ contains
     integer :: k, i
     
     ! Start
-    ! if ( do_omega ) then
     ! k = 1
     do i = is, ie
        pe3(i, 1) = 0.
@@ -427,7 +426,6 @@ contains
           pe3(i, k) = omega(i, jlocal, k-1)
        enddo
     enddo
-    ! endif
 
   end subroutine copy_omega_to_pe3_
     
@@ -441,7 +439,7 @@ contains
     ! Locals
     integer :: k, i
 
-    ! Stary
+    ! Start
     do k = 1, km+1
        do i = is, ie
           pe0(i, k) = peln(i, k, jlocal)
