@@ -22,6 +22,9 @@ set(srcs
   output/output.f90
   main.F90)
 
+# Dependecy - Kokkos
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/kokkos.cmake)
+
 if (FV_PRECISION STREQUAL R4)
   set(FMS fms_r4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
@@ -35,5 +38,6 @@ ecbuild_add_executable(
   SOURCES ${srcs}
   LIBS ${FMS} ${MAPL_BASE})
 target_compile_definitions(mapz-driver PRIVATE MAPL_MODE SPMD TIMING)
-target_compile_options(mapz-driver PRIVATE -traceback)
+target_compile_options(mapz-driver PRIVATE -traceback -qopenmp)
+target_link_options(mapz-driver PRIVATE -parallel)
 set_target_properties(${this} PROPERTIES Fortran_MODULE_DIRECTORY ${esma_include}/${this})
