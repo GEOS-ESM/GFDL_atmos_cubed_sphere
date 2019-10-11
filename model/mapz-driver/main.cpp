@@ -1,3 +1,5 @@
+#include <Kokkos_Core.hpp>
+
 // Implemented in Fortran
 extern "C" {
   void run_driver();

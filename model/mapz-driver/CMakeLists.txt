@@ -37,7 +37,7 @@ endif ()
 ecbuild_add_executable(
   TARGET mapz-driver
   SOURCES ${srcs}
-  LIBS ${FMS} ${MAPL_BASE})
+  LIBS ${FMS} ${MAPL_BASE} kokkos)
 target_compile_definitions(mapz-driver PRIVATE MAPL_MODE SPMD TIMING)
 target_compile_options(mapz-driver PRIVATE -traceback -qopenmp)
 target_link_options(mapz-driver PRIVATE -parallel)
