@@ -20,7 +20,8 @@ set(srcs
   input/input_gridstruct.f90
   input/input_domain_layout.f90
   output/output.f90
-  main.F90)
+  driver.F90
+  main.f90)
 
 # Dependecy - Kokkos
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/kokkos.cmake)
