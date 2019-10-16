@@ -73,7 +73,11 @@ elseif (FV_PRECISION STREQUAL R8)
    endforeach()
 endif ()
 
-set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT}")
+if (OPENMP_FV3)
+   set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT} ${OpenMP_Fortran_FLAGS}")
+else ()
+   set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT}")
+endif ()
 
 if (CRAY_POINTER)
   set_target_properties (${this} PROPERTIES COMPILE_FLAGS ${CRAY_POINTER})
