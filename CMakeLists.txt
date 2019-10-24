@@ -83,4 +83,4 @@ target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING)
 
 esma_add_subdirectories(
   model/mapz-driver
-  model/tp-core-driver)
+  model/tpcore-driver)
