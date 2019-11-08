@@ -35,5 +35,5 @@ ecbuild_add_executable(
   SOURCES ${srcs}
   LIBS ${FMS} ${MAPL_BASE})
 target_compile_definitions(mapz-driver PRIVATE MAPL_MODE SPMD TIMING)
-target_compile_options(mapz-driver PRIVATE -traceback)
+target_compile_options(mapz-driver PRIVATE ${TRACEBACK})
 set_target_properties(${this} PROPERTIES Fortran_MODULE_DIRECTORY ${esma_include}/${this})
