@@ -7,6 +7,8 @@ set(srcs
   stubs/fv_arrays_stub.F90
   input/input_arrays.f90
   output/output_arrays.f90
+  ../tpcore-kernel/kernel_interface.f90
+  ../tpcore-kernel/kernel.cpp
   driver_cpu.f90
   main.cpp)
 

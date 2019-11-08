@@ -52,6 +52,7 @@ module tp_core_mod
  use fv_mp_mod,         only: ng 
  use fv_grid_utils_mod, only: big_number
  use fv_arrays_mod,     only: fv_grid_type, fv_grid_bounds_type
+ use tpcore_kernel_interface, only: kernel1, kernel1_orig
 
  implicit none
 
@@ -164,11 +165,12 @@ contains
 
    call yppm(fy2, q, cry, ord_in, isd,ied,isd,ied, js,je,jsd,jed, npx,npy, gridstruct%dya, gridstruct%nested, gridstruct%grid_type, lim_fac)
 
-   do j=js,je+1
-      do i=isd,ied
-         fyy(i,j) = yfx(i,j) * fy2(i,j) 
-      enddo
-   enddo
+   call kernel1(ied-isd+1, je+1-js+1, yfx, fy2, fyy)
+   ! do j=js,je+1
+   !    do i=isd,ied
+   !       fyy(i,j) = yfx(i,j) * fy2(i,j) 
+   !    enddo
+   ! enddo
    do j=js,je
       do i=isd,ied
          q_i(i,j) = (q(i,j)*gridstruct%area(i,j) + fyy(i,j)-fyy(i,j+1))/ra_y(i,j)

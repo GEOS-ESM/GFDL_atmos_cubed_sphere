@@ -26,6 +26,16 @@ int main(int argc, char** argv) {
   int resolution = atoi(argv[1]);
   int n_iterations = atoi(argv[2]);
 
+  // Initialize Kokkos  
+  Kokkos::InitArguments args;
+  args.num_threads = 4;
+  args.num_numa = 2;
+  Kokkos::initialize(args);
+  
+  // Call driver
   run_driver(&resolution, &n_iterations);
+
+  // Wrap up
+  Kokkos::finalize();
   return 0;
 }
