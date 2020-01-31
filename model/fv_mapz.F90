@@ -3593,7 +3593,7 @@ endif        ! end last_step check
         cvm(i) = (1.-(qv(i)+qd(i)))*cv_air + qv(i)*cv_vap + ql(i)*c_liq + qs(i)*c_ice
      enddo
   case default
-     call mpp_error (NOTE, 'fv_mapz::moist_cv - using default cv_air')
+    !call mpp_error (NOTE, 'fv_mapz::moist_cv - using default cv_air')
      do i=is,ie 
          qd(i) = 0.
         cvm(i) = cv_air
