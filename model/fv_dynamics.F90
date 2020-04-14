@@ -122,7 +122,7 @@ module fv_dynamics_mod
    use fv_tracer2d_mod,     only: tracer_2d, tracer_2d_1L, tracer_2d_nested
    use fv_grid_utils_mod,   only: cubed_to_latlon, c2l_ord2, g_sum
    use fv_fill_mod,         only: fill2D
-   use fv_mp_mod,           only: is_master
+   use fv_mp_mod,           only: is_master, mp_barrier
    use fv_mp_mod,           only: group_halo_update_type
    use fv_mp_mod,           only: start_group_halo_update, complete_group_halo_update
    use fv_timing_mod,       only: timing_on, timing_off
@@ -137,16 +137,8 @@ module fv_dynamics_mod
    use boundary_mod,        only: nested_grid_BC_apply_intT
    use fv_arrays_mod,       only: fv_grid_type, fv_flags_type, fv_atmos_type, fv_nest_type, fv_diag_type, fv_grid_bounds_type
    use fv_nwp_nudge_mod,    only: do_adiabatic_init
-#ifdef MAPL_MODE
-   use fv_control_mod,      only: dyn_timer, comm_timer
-#endif
 
 implicit none
-
-#ifdef MAPL_MODE
-  ! Include the MPI library definitons:
-  include 'mpif.h'
-#endif
 
    logical :: RF_initialized = .false.
    logical :: bad_range = .false.
@@ -283,8 +275,6 @@ contains
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
       real :: dt2
-      real(kind=8) :: t1, t2
-      integer :: status
 
       is  = bd%is
       ie  = bd%ie
@@ -294,9 +284,6 @@ contains
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
-
-      dyn_timer = 0
-      comm_timer = 0
 
 ! Empty the accumulated mass flux and courant numbers
       mfx = 0.0
@@ -313,10 +300,6 @@ contains
       rdg = -rdgas * agrav
       allocate ( dp1(isd:ied, jsd:jed, 1:npz) )
       
-#ifdef MAPL_MODE
-! Begin Dynamics timer for GEOS history processing
-      t1 = MPI_Wtime(status)
-#endif
 #ifdef MOIST_CAPPA
       allocate ( cappa(isd:ied,jsd:jed,npz) )
       call init_ijk_mem(isd,ied, jsd,jed, npz, cappa, 0.)
@@ -925,10 +908,6 @@ contains
                          -50., 100., bad_range)
   endif
 
-#ifdef MAPL_MODE
-  t2 = MPI_Wtime(status)
-  dyn_timer = dyn_timer + (t2-t1)
-#endif
   end subroutine fv_dynamics
 
 #ifdef USE_RF_FAST

@@ -338,10 +338,6 @@ module fv_control_mod
    integer :: commID, max_refinement_of_global = 1.
    integer :: gid
 
-#ifdef MAPL_MODE
-   real   :: dyn_timer, comm_timer
-   public :: dyn_timer, comm_timer
-#endif
 !---- version number -----
    character(len=128) :: version = '$Id$'
    character(len=128) :: tagname = '$Name$'
