@@ -206,7 +206,6 @@ contains
 ! SJL 03.11.04: Initial version for partial remapping
 !
 !-----------------------------------------------------------------------
-  real, dimension(isd:ied,jsd:jed,km):: tmp3d
   real, dimension(is:ie,js:je):: te_2d, zsum0, zsum1, dpln
   real, dimension(is:ie,km)  :: q2, dp2
   real, dimension(is:ie,km+1):: pe1, pe2, pk1, pk2, pn2, phis
@@ -596,23 +595,6 @@ contains
 #endif
          enddo
       else
-         if (remap_te) then
-          ! Get updated Theta_v
-             do i=is,ie
-               gz(i) = hs(i,j)
-             enddo
-             do k=km,1,-1
-                do i=is,ie
-                   tpe = te(i,j,k) - gz(i) - 0.25*gridstruct%rsin2(i,j)*(    &
-                         u(i,j,k)**2+u(i,j+1,k)**2 + v(i,j,k)**2+v(i+1,j,k)**2 -  &
-                        (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j) )
-                   dlnp = rg*(peln(i,k+1,j) - peln(i,k,j))
-                   tmp = tpe / (cp - pe(i,k,j)*dlnp/delp(i,j,k))
-                   pt(i,j,k) = tmp
-                   gz(i) = gz(i) + dlnp*tmp
-                enddo
-             enddo           ! end k-loop
-         endif
 ! Note: pt at this stage is Theta_v
          do k=1,km
             do i=is,ie
@@ -729,7 +711,7 @@ contains
 
 !$OMP parallel default(none) shared(is,ie,js,je,km,kmp,ptop,u,v,pe,ua,isd,ied,jsd,jed,kord_mt, &
 !$OMP                               remap_t,remap_pt,remap_te, &
-!$OMP                               te_2d,te,tmp3d,delp,hydrostatic,hs,rg,pt,peln, adiabatic, &
+!$OMP                               te_2d,te,delp,hydrostatic,hs,rg,pt,peln, adiabatic, &
 !$OMP                               cp,delz,nwat,rainwat,liq_wat,ice_wat,snowwat,       &
 !$OMP                               graupel,q_con,r_vir,sphum,w,pk,pkz,last_step,consv, &
 !$OMP                               do_adiabatic_init,zsum1,zsum0,te0_2d,domain,        &
@@ -889,7 +871,7 @@ endif        ! end last_step check
                  enddo
               enddo
               call fv_sat_adj(abs(mdt), r_vir, is, ie, js, je, ng, hydrostatic, fast_mp_consv, &
-                             tmp3d(isd,jsd,k), q(isd,jsd,k,sphum), q(isd,jsd,k,liq_wat),   &
+                             te(isd,jsd,k), q(isd,jsd,k,sphum), q(isd,jsd,k,liq_wat),   &
                              q(isd,jsd,k,ice_wat), q(isd,jsd,k,rainwat),    &
                              q(isd,jsd,k,snowwat), q(isd,jsd,k,graupel),    &
                              hs ,dpln, delz(isd:,jsd:,k), pt(isd,jsd,k), delp(isd,jsd,k), q_con(isd:,jsd:,k), &
@@ -912,16 +894,11 @@ endif        ! end last_step check
                 do j=js,je
                    do i=is,ie
                       do k=kmp,km
-                         te0_2d(i,j) = te0_2d(i,j) + tmp3d(i,j,k)
+                         te0_2d(i,j) = te0_2d(i,j) + te(i,j,k)
                       enddo
                    enddo
                 enddo
            endif
-
-           if (.not.remap_te) then
-              te = tmp3d
-           endif
-
                                            call timing_off('sat_adj2')
   endif   ! do_sat_adj
 

@@ -243,19 +243,16 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 !$OMP parallel do default(none) shared(k,is,ie,js,je,isd,ied,jsd,jed,xfx,area,yfx,ra_x,ra_y)
      do j=jsd,jed
         do i=is,ie
-           ra_x(i,j) = area(i,j) + (xfx(i,j,k) - xfx(i+1,j,k))
+           ra_x(i,j) = area(i,j) + xfx(i,j,k) - xfx(i+1,j,k)
         enddo
         if ( j>=js .and. j<=je ) then
            do i=isd,ied
-              ra_y(i,j) = area(i,j) + (yfx(i,j,k) - yfx(i,j+1,k))
+              ra_y(i,j) = area(i,j) + yfx(i,j,k) - yfx(i,j+1,k)
            enddo
         endif
      enddo
 
      nsplt = int(1. + cmax(k))
-
- !   if ( is_master() )  write(*,*) 'Tracer_2d_split=', k, cmax(k), nsplt
-
      do it=1,nsplt
 
 !$OMP parallel do default(none) shared(k,is,ie,js,je,rarea,mfx2,mfy2,dp1,dp2)
@@ -283,13 +280,13 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
            if ( it < nsplt ) then   ! not last call
               do j=js,je
               do i=is,ie
-                 qn2(i,j,iq) = (qn2(i,j,iq)*dp1(i,j,k)+((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j))/dp2(i,j)
+                 qn2(i,j,iq) = (qn2(i,j,iq)*dp1(i,j,k)+(fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j))/dp2(i,j)
               enddo
               enddo
            else
               do j=js,je
               do i=is,ie
-                 q(i,j,k,iq) = (qn2(i,j,iq)*dp1(i,j,k)+((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j))/dp2(i,j)
+                 q(i,j,k,iq) = (qn2(i,j,iq)*dp1(i,j,k)+(fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j))/dp2(i,j)
               enddo
               enddo
            endif
@@ -299,7 +296,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx2(is,js,k), mfy=mfy2(is,js,k))
            do j=js,je
               do i=is,ie
-                 q(i,j,k,iq) = (q(i,j,k,iq)*dp1(i,j,k)+((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j))/dp2(i,j)
+                 q(i,j,k,iq) = (q(i,j,k,iq)*dp1(i,j,k)+(fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j))/dp2(i,j)
               enddo
            enddo
         endif
@@ -509,18 +506,18 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
 
          do j=js,je
             do i=is,ie
-               dp2(i,j) = dp1(i,j,k) + ((mfx(i,j,k)-mfx(i+1,j,k))+(mfy(i,j,k)-mfy(i,j+1,k)))*rarea(i,j)
+               dp2(i,j) = dp1(i,j,k) + (mfx(i,j,k)-mfx(i+1,j,k)+mfy(i,j,k)-mfy(i,j+1,k))*rarea(i,j)
             enddo
          enddo
 
          do j=jsd,jed
             do i=is,ie
-               ra_x(i,j) = area(i,j) + (xfx(i,j,k) - xfx(i+1,j,k))
+               ra_x(i,j) = area(i,j) + xfx(i,j,k) - xfx(i+1,j,k)
             enddo
          enddo
          do j=js,je
             do i=isd,ied
-               ra_y(i,j) = area(i,j) + (yfx(i,j,k) - yfx(i,j+1,k))
+               ra_y(i,j) = area(i,j) + yfx(i,j,k) - yfx(i,j+1,k)
             enddo
          enddo
 
@@ -538,7 +535,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
             do j=js,je
                do i=is,ie
                   q(i,j,k,iq) = ( q(i,j,k,iq)*dp1(i,j,k) + &
-                                ((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j) )/dp2(i,j)
+                                (fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j) )/dp2(i,j)
                enddo
                enddo
             enddo
@@ -765,18 +762,18 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 
          do j=js,je
             do i=is,ie
-               dp2(i,j) = dp1(i,j,k) + ((mfx(i,j,k)-mfx(i+1,j,k))+(mfy(i,j,k)-mfy(i,j+1,k)))*rarea(i,j)
+               dp2(i,j) = dp1(i,j,k) + (mfx(i,j,k)-mfx(i+1,j,k)+mfy(i,j,k)-mfy(i,j+1,k))*rarea(i,j)
             enddo
          enddo
 
          do j=jsd,jed
             do i=is,ie
-               ra_x(i,j) = area(i,j) + (xfx(i,j,k) - xfx(i+1,j,k))
+               ra_x(i,j) = area(i,j) + xfx(i,j,k) - xfx(i+1,j,k)
             enddo
          enddo
          do j=js,je
             do i=isd,ied
-               ra_y(i,j) = area(i,j) + (yfx(i,j,k) - yfx(i,j+1,k))
+               ra_y(i,j) = area(i,j) + yfx(i,j,k) - yfx(i,j+1,k)
             enddo
          enddo
 
@@ -794,7 +791,7 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
             do j=js,je
                do i=is,ie
                   q(i,j,k,iq) = ( q(i,j,k,iq)*dp1(i,j,k) + &
-                                ((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j) )/dp2(i,j)
+                                (fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j) )/dp2(i,j)
                enddo
                enddo
           enddo
@@ -830,7 +827,7 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
         do k=1,npz
         do j=js,je
            do i=is,ie
-              dp1(i,j,k) = ((xfx(i+1,j,k)-xfx(i,j,k)) + (yfx(i,j+1,k)-yfx(i,j,k)))*rarea(i,j)*rdt
+              dp1(i,j,k) = (xfx(i+1,j,k)-xfx(i,j,k) + yfx(i,j+1,k)-yfx(i,j,k))*rarea(i,j)*rdt
            enddo
         enddo
         enddo
