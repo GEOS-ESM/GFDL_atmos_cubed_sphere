@@ -274,7 +274,7 @@ contains
         rainwat = 4
         snowwat = 5
         graupel = 6
-        cld_amt = -1
+        cld_amt = 7
        end select
 #else
        liq_wat = get_tracer_index (MODEL_ATMOS, 'liq_wat')
