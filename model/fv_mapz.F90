@@ -924,28 +924,16 @@ endif        ! end last_step check
             enddo           ! end k-loop
          enddo
       else
+       if ( .not. hydrostatic  ) then
 !$OMP do
         do k=1,km
            do j=js,je
 #ifdef USE_COND
-              if ( nwat==2 ) then
-                 do i=is,ie
-                    gz(i) = max(0., q(i,j,k,liq_wat))
-                    qv(i) = max(0., q(i,j,k,sphum)) 
-                    pt(i,j,k) = (pt(i,j,k)+dtmp*pkz(i,j,k)) / ((1.+r_vir*qv(i))*(1.-gz(i)))
-                 enddo
-              elseif ( nwat==6 ) then
-                 do i=is,ie
-                    gz(i) = q(i,j,k,liq_wat)+q(i,j,k,rainwat)+q(i,j,k,ice_wat)+q(i,j,k,snowwat)+q(i,j,k,graupel)
-                    pt(i,j,k) = (pt(i,j,k)+dtmp*pkz(i,j,k))/((1.+r_vir*q(i,j,k,sphum))*(1.-gz(i)))
-                 enddo
-              else
-                 call moist_cv(is,ie,isd,ied,jsd,jed, km, j, k, nwat, sphum, liq_wat, rainwat,    &
-                               ice_wat, snowwat, graupel, q, gz, cvm)
-                 do i=is,ie
-                    pt(i,j,k) = (pt(i,j,k)+dtmp*pkz(i,j,k)) / ((1.+r_vir*q(i,j,k,sphum))*(1.-gz(i)))
-                 enddo
-              endif
+              call moist_cv(is,ie,isd,ied,jsd,jed, km, j, k, nwat, sphum, liq_wat, rainwat,    &
+                            ice_wat, snowwat, graupel, q, gz, cvm)
+              do i=is,ie
+                 pt(i,j,k) = (pt(i,j,k)+dtmp*pkz(i,j,k)) / ((1.+r_vir*q(i,j,k,sphum))*(1.-gz(i)))
+              enddo
 #else
               if ( .not. adiabatic ) then
                  do i=is,ie
@@ -955,6 +943,18 @@ endif        ! end last_step check
 #endif
            enddo   ! j-loop
         enddo  ! k-loop
+       else
+!$OMP do
+        do k=1,km
+           do j=js,je
+              if ( .not. adiabatic ) then
+                 do i=is,ie
+                    pt(i,j,k) = (pt(i,j,k)+dtmp*pkz(i,j,k)) / (1.+r_vir*q(i,j,k,sphum))
+                 enddo
+              endif
+           enddo   ! j-loop
+        enddo  ! k-loop
+       endif
       endif
     else  ! not last_step
      ! Top of the loop expects PT to be Theta_V
