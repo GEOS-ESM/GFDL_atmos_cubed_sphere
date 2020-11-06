@@ -2155,22 +2155,17 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
 !#define CNVQL
 #ifdef CNVQL
         qlcn = ql(k)*fqa(k)
-        if (dq0 > 0. .and. qlcn>1e-12 ) then
-!        if (dq0 > 0. .and. fqa(k) .gt. 1e-8) then
-            ! SJL 20170703 added ql factor to prevent the situation of high ql and low RH
-            ! factor = min (1., fac_l2v * sqrt (max (0., ql (k)) / 1.e-5) * 10. * dq0 / qsw)
-            ! factor = fac_l2v
-            ! factor = 1
+        if (dq0 > 0. .and. qlcn>qcmin) then
             factor = min (1., fac_l2v * (10. * dq0 / qsw)) ! the rh dependent factor = 1 at 90%
             evap = min( dq0, min (qlcn, factor * dq0 / (1. + tcp3 (k) * dwsdt)))
-
-            ! Adjust fqal
+           ! Adjust convective fraction of liquid condensates
             if (evap.lt.qlcn) then
               fqal(k) = (qlcn-evap)/(ql(k)-evap)    ! new conv liquid / new total liquid
             else
               fqal(k) = 0.
             end if
-
+            fqal(k) = min(1.,max(0.,fqal(k)))
+           ! Adjust convective fraction of cloud fractions
             oldqa = qa(k)
             qa(k) = qa(k) * (qi(k) + ql(k)-evap) / (qi(k)+ql(k))     ! new total condensate / old condensate 
             if (qa(k).gt.0.) then
@@ -2178,25 +2173,15 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
             else
               fqa(k) = 0.0
             end if
-
-            fqa(k) = min(1.,max(0.,fqa(k)))    
-            fqal(k) = min(1.,max(0.,fqal(k)))    
+            fqa(k) = min(1.,max(0.,fqa(k)))
         else
             evap = 0.
         endif
 #else
-        if (dq0 > 0.) then
-            ! SJL 20170703 added ql factor to prevent the situation of high ql and low RH
-            ! factor = min (1., fac_l2v * sqrt (max (0., ql (k)) / 1.e-5) * 10. * dq0 / qsw)
-            ! factor = fac_l2v
-            ! factor = 1
+        if (dq0 > 0. .and. ql(k)>qcmin) then
             factor = min (1., fac_l2v * (10. * dq0 / qsw)) ! the rh dependent factor = 1 at 90%
             evap = min (ql (k), factor * dq0 / (1. + tcp3 (k) * dwsdt))
         else ! condensate all excess vapor into cloud water
-            ! -----------------------------------------------------------------------
-            ! evap = fac_v2l * dq0 / (1. + tcp3 (k) * dwsdt)
-            ! sjl, 20161108
-            ! -----------------------------------------------------------------------
             evap = dq0 / (1. + tcp3 (k) * dwsdt)
         endif
 #endif
@@ -2467,20 +2452,20 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! assuming subgrid linear distribution in horizontal; this is effectively a smoother for the
         ! binary cloud scheme
         ! -----------------------------------------------------------------------
-        
-#ifndef SKIP_PARTIAL_CLOUDINESS
-        if (qpz > qrmin) then
-            ! partial cloudiness by pdf:
-            dq = max (qcmin, h_var * qpz)
-            q_plus = qpz + dq ! cloud free if qstar > q_plus
-            q_minus = qpz - dq
-            if (qstar < q_minus) then
-                qa (k) = qa (k) + 1. ! air fully saturated; 100 % cloud cover
-            elseif (qstar < q_plus .and. q_cond (k) > qc_crt) then
-                qa (k) = qa (k) + (q_plus - qstar) / (dq + dq) ! partial cloud cover
-                ! qa (k) = sqrt (qa (k) + (q_plus - qstar) / (dq + dq))
-            endif
-        endif
+#ifdef SUBGRID_PDF
+         if (qpz > qrmin) then
+             ! partial cloudiness by pdf:
+             dq = max (qcmin, h_var * qpz)
+             q_plus = qpz + dq ! cloud free if qstar > q_plus
+             q_minus = qpz - dq
+             if (qstar < q_minus) then
+                 qa (k) = 1. ! air fully saturated; 100 % cloud cover
+             elseif (qstar < q_plus .and. q_cond (k) > qc_crt) then
+                 qa (k) = (q_plus - qstar) / (dq + dq) ! partial cloud cover
+             else
+                 qa (k) = 0.
+             endif
+         endif
 #endif
         
     enddo
