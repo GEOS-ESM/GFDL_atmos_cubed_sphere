@@ -712,7 +712,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
             
             do i = is, ie
                 
-                tin = pt1 (i) - (lcp2 (i) * q_cond (i) + icp2 (i) * q_sol (i)) ! minimum temperature
+                tin = pt1 (i) - (lcp2 (i) * q_liq (i) + icp2 (i) * q_sol (i)) ! minimum temperature
                 ! tin = pt1 (i) - ((lv00 + d0_vap * pt1 (i)) * q_cond (i) + &
                 ! (li00 + dc_ice * pt1 (i)) * q_sol (i)) / (mc_air (i) + qpz (i) * c_vap)
                 
@@ -742,7 +742,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 ! higher than 10 m is considered "land" and will have higher subgrid variability
                 dw = dw_ocean + (dw_land - dw_ocean) * min (1., abs (hs (i, j)) / (10. * grav))
                 ! "scale - aware" subgrid variability: 100 - km as the base
-                hvar (i) = min (0.2, max (0.01, dw * sqrt (sqrt (area (i, j)) / 100.e3)))
+                hvar (i) = min (0.2, max (0.01, dw * sqrt (sqrt (area (i, j) / 1.e10))) )
                 
                 ! -----------------------------------------------------------------------
                 ! partial cloudiness by pdf:
