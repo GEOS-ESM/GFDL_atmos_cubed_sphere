@@ -71,6 +71,7 @@ module fv_cmp_mod
     real, parameter :: cp_vap = 4.0 * rvgas !< 1846.0, heat capacity of water vapor at constant pressure
     real, parameter :: cv_air = cp_air - rdgas !< 717.55, heat capacity of dry air at constant volume
     real, parameter :: cv_vap = 3.0 * rvgas !< 1384.5, heat capacity of water vapor at constant volume
+    real, parameter :: pi = 3.1415926535897931 !< gfs: ratio of circle circumference to diameter
     
     ! http: / / www.engineeringtoolbox.com / ice - thermal - properties - d_576.html
     ! c_ice = 2050.0 at 0 deg c
@@ -90,7 +91,8 @@ module fv_cmp_mod
     real, parameter :: dc_ice = c_liq - c_ice !< 2213.5, isobaric heating / colling
     
     real, parameter :: tice = 273.16 !< freezing temperature
-    real, parameter :: t_wfr = tice - 40. !< homogeneous freezing temperature
+    real, parameter :: t_wfr = tice - 10. !< homogeneous freezing temperature
+    real, parameter :: dt_fr = 25.
     
     real, parameter :: lv0 = hlv - dc_vap * tice !< 3.13905782e6, evaporation latent heat coefficient at 0 deg k
     real, parameter :: li00 = hlf - dc_ice * tice !< - 2.7105966e5, fusion latent heat coefficient at 0 deg k
@@ -324,11 +326,11 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         enddo
         
         ! -----------------------------------------------------------------------
-        ! enforce complete freezing of cloud water to cloud ice below - 48 c
+        ! enforce complete freezing of cloud water to cloud ice below t_wfr - dt_fr
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            dtmp = tice - 48. - pt1 (i)
+            dtmp = tice - t_wfr - dt_fr - pt1 (i)
             if (ql (i, j) > 0. .and. dtmp > 0.) then
                 sink (i) = min (ql (i, j), dtmp / icp2 (i))
                 ql (i, j) = ql (i, j) - sink (i)
@@ -437,7 +439,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            dtmp = t_wfr - pt1 (i) ! [ - 40, - 48]
+            dtmp = t_wfr-dt_fr - pt1 (i)
             if (ql (i, j) > 0. .and. dtmp > 0.) then
                 sink (i) = min (ql (i, j), ql (i, j) * dtmp * 0.125, dtmp / icp2 (i))
                 ql (i, j) = ql (i, j) - sink (i)
@@ -720,7 +722,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 ! determine saturated specific humidity
                 ! -----------------------------------------------------------------------
                 
-                if (tin <= t_wfr) then
+                if (tin <= t_wfr-dt_fr) then
                     ! ice phase:
                     qstar (i) = iqs1 (tin, den (i))
                 elseif (tin >= tice) then
@@ -730,12 +732,13 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                     ! mixed phase:
                     qsi = iqs1 (tin, den (i))
                     qsw = wqs1 (tin, den (i))
-                    if (q_cond (i) > 1.e-6) then
-                        rqi = q_sol (i) / q_cond (i)
-                    else
-                        ! mostly liquid water clouds at initial cloud development stage
-                        rqi = ((tice - tin) / (tice - t_wfr))
-                    endif
+                  ! if (q_cond (i) > 1.e-6) then
+                  !     rqi = q_sol (i) / q_cond (i)
+                  ! else
+                  !     ! mostly liquid water clouds at initial cloud development stage
+                        rqi = max(0.0,min(1.0,sin(0.5*pi*(1.0 - (tin - (t_wfr-dt_fr)) / dt_fr))))**4.0
+                  !     rqi = ((tice - tin) / (tice - t_wfr))
+                  ! endif
                     qstar (i) = rqi * qsi + (1. - rqi) * qsw
                 endif
                 
