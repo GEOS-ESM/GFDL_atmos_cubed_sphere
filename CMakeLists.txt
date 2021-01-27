@@ -84,7 +84,7 @@ if (CRAY_POINTER)
 endif()
 
 #target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING)
-target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING USE_COND MOIST_CAPPA)
+target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING)
 
 
 
