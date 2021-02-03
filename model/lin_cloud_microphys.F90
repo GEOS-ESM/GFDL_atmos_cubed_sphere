@@ -115,7 +115,7 @@ module gfdl_cloud_microphys_mod
     real, parameter :: d2ice = dc_vap + dc_ice !< - 126, isobaric heating / cooling
     real, parameter :: li2 = lv0 + li00 !< 2.86799816e6, sublimation latent heat coefficient at 0 deg k
     
-    real, parameter :: qrmin = 1.e-8 ! min value for ???
+    real, parameter :: qrmin = 1.e-8 ! min value for suspended rain/snow/liquid/ice condensate
     real, parameter :: qvmin = 1.e-20 !< min value for water vapor (treated as zero)
     real, parameter :: qcmin = 1.e-12 !< min value for cloud condensates
     
@@ -150,7 +150,7 @@ module gfdl_cloud_microphys_mod
     logical :: do_sedi_w = .false. !< transport of vertical motion in sedimentation
     logical :: do_sedi_heat = .true. !< transport of heat in sedimentation
     logical :: prog_ccn = .false. !< do prognostic ccn (yi ming's method)
-    logical :: do_qa = .true. !< do inline cloud fraction
+    logical :: do_qa = .true. !< do inline cloud fraction (WMP: in FV3 dynamics)
     logical :: rad_snow = .true. !< consider snow in cloud fraciton calculation
     logical :: rad_graupel = .true. !< consider graupel in cloud fraction calculation
     logical :: rad_rain = .true. !< consider rain in cloud fraction calculation
@@ -210,7 +210,8 @@ module gfdl_cloud_microphys_mod
     real :: tau_l2v = 300. !< cloud water to water vapor (evaporation)
     real :: tau_g2v = 900. !< graupel sublimation
     real :: tau_v2g = 21600. !< graupel deposition -- make it a slow process
-    real :: tau_revp = 1200. !< rain re-evaporation
+    real :: tau_revp = 600. !< rain re-evaporation
+    real :: tau_frz = 450. !, timescale for liquid-ice freezing
     ! horizontal subgrid variability
     
     real :: dw_land = 0.20 !< base value for subgrid deviation / variability over land
@@ -311,7 +312,7 @@ module gfdl_cloud_microphys_mod
         qi0_crt, qr0_crt, fast_sat_adj, rh_inc, rh_ins, rh_inr, const_vi,     &
         const_vs, const_vg, const_vr, use_ccn, rthresh, ccn_l, ccn_o, qc_crt, &
         tau_g2v, tau_v2g, &
-        tau_revp, &
+        tau_revp, tau_frz, &
         sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v,      &
         tau_i2s, tau_l2r, qi_lim, ql_gen, c_paut, c_psaci, c_pgacs,           &
         z_slope_liq, z_slope_ice, prog_ccn, c_cracw, alin, clin, tice,        &
@@ -325,7 +326,7 @@ module gfdl_cloud_microphys_mod
         qi0_crt, qr0_crt, fast_sat_adj, rh_inc, rh_ins, rh_inr, const_vi,     &
         const_vs, const_vg, const_vr, use_ccn, rthresh, ccn_l, ccn_o, qc_crt, &
         tau_g2v, tau_v2g, &
-        tau_revp, &
+        tau_revp, tau_frz, &
         sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v,      &
         tau_i2s, tau_l2r, qi_lim, ql_gen, c_paut, c_psaci, c_pgacs,           &
         z_slope_liq, z_slope_ice, prog_ccn, c_cracw, alin, clin, tice,        &
@@ -1282,7 +1283,7 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, qa, &
         
         do k = ktop, kbot
             qc0 = fac_rc * ccn (k)
-            if (tz (k) > t_wfr + dt_fr) then
+            if (tz (k) > t_wfr) then
                 dl (k) = min (max (1.e-6, dl (k)), 0.5 * ql (k))
                 ! --------------------------------------------------------------------
                 ! as in klein's gfdl am2 stratiform scheme (with subgrid variations)
@@ -1320,7 +1321,7 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, qa, &
 
         do k = ktop, kbot
             qc0 = fac_rc * ccn (k)
-            if (tz (k) > t_wfr + dt_fr) then
+            if (tz (k) > t_wfr) then
                 dl (k) = min (max (1.e-6, dl (k)), 0.5 * ql (k))
                 ! --------------------------------------------------------------------
                 ! as in klein's gfdl am2 stratiform scheme (with subgrid variations)
@@ -2052,7 +2053,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
     real :: dqsdt, dwsdt, dq, dq0, factor, tmp, oldqa, qlcn
     real :: q_plus, q_minus, dt_evap, dt_pisub
     real :: evap, sink, tc, pisub, q_adj, dtmp
-    real :: pssub, pgsub, tsq, qden, fac_g2v, fac_v2g
+    real :: pssub, pgsub, tsq, qden, fac_g2v, fac_v2g, fac_frz
     
     integer :: k
     
@@ -2071,7 +2072,9 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
     
     fac_g2v = 1. - exp (- dts / tau_g2v)
     fac_v2g = 1. - exp (- dts / tau_v2g)
-    
+   
+    fac_frz = 1. - exp (- dts / tau_frz)
+ 
     ! -----------------------------------------------------------------------
     ! define heat capacity and latend heat coefficient
     ! -----------------------------------------------------------------------
@@ -2147,8 +2150,9 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
 #ifdef CNVQL
         qlcn = ql(k)*fqa(k)
         if (dq0 > 0. .and. qlcn>qcmin) then
+!            factor = min (1., fac_l2v * max(1.,10. * dq0 / qsw)) 
             factor = min (1., fac_l2v * (10. * dq0 / qsw)) ! the rh dependent factor = 1 at 90%
-            evap = min (qlcn, factor * qlcn / (1. + tcp3 (k) * dwsdt))
+            evap = min(dq0, min (qlcn, factor * qlcn / (1. + tcp3 (k) * dwsdt)))
            ! Adjust convective fraction of liquid condensates
             if (evap.lt.qlcn) then
               fqal(k) = (qlcn-evap)/(ql(k)-evap)    ! new conv liquid / new total liquid
@@ -2199,7 +2203,8 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         
         dtmp = t_wfr - tz (k) ! [ - 40, - 48]
         if (dtmp > 0. .and. ql (k) > qcmin) then
-            sink = min (ql (k), ql (k) * dtmp * 0.125, dtmp / icpk (k))
+           !sink = min (ql (k), ql (k) * dtmp * 0.125, dtmp / icpk (k))
+            sink = min (ql (k), ql (k) * dtmp * fac_frz, dtmp / icpk (k))
             ql (k) = ql (k) - sink
             qi (k) = qi (k) + sink
             q_liq (k) = q_liq (k) - sink
@@ -2393,7 +2398,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! combine water species
         ! -----------------------------------------------------------------------
         
-     !  if (do_qa) cycle
+        if (do_qa) cycle
         
         if (rad_snow) then
             q_sol (k) = qi (k) + qs (k)
@@ -3363,7 +3368,23 @@ subroutine fall_speed (ktop, kbot, pl, cnv_fraction, anv_icefall, lsc_icefall, &
                 vti (k) = vf_min
             else
                 tc (k) = tk (k) - tice ! deg C
-#define DENG_MACE
+#define COMBINE_ICE
+#ifdef COMBINE_ICE
+               ! -----------------------------------------------------------------------
+               ! use deng and mace (2008, grl)
+               ! -----------------------------------------------------------------------
+                IWC    = qi (k) * den (k) * 1.e3 ! Units are g/m3
+                viLSC   = lsc_icefall*10.0**(log10(IWC) * (tc (k) * (aa * tc (k) + bb) + cc) + dd * tc (k) + ee)
+               ! -----------------------------------------------------------------------
+               ! use Mishra et al (2014, JGR) 'Parameterization of ice fall speeds in 
+               !                               midlatitude cirrus: Results from SPartICus'
+               ! -----------------------------------------------------------------------
+                IWC    = IWC * 1.e3 ! Units are mg/m3
+                viCNV  = MAX(10.0,anv_icefall*(1.119*tc(k) + 14.21*log10(IWC) + 68.85))
+               ! Combine 
+                vti (k) = viLSC*(1.0-cnv_fraction) + viCNV*(cnv_fraction)
+#else
+!#define DENG_MACE
 #ifdef DENG_MACE
                ! -----------------------------------------------------------------------
                ! use deng and mace (2008, grl)
@@ -3387,10 +3408,12 @@ subroutine fall_speed (ktop, kbot, pl, cnv_fraction, anv_icefall, lsc_icefall, &
                ! Combine 
                 vti (k) = viLSC*(1.0-cnv_fraction) + viCNV*(cnv_fraction)
 #endif
+#endif
+
                ! Units from cm/s to m/s
                 vti (k) = vi1 * vti (k)
 
-!#define PRES_SCALE
+#define PRES_SCALE
 #ifdef PRES_SCALE
                ! Include pressure sensitivity (eq 14 in https://doi.org/10.1175/JAS-D-12-0124.1)
                 !------ice cloud effective radius ----- [klaus wyser, 1998]
