@@ -20,6 +20,10 @@
 !***********************************************************************
 module fv_grid_tools_mod
 
+#ifdef MAPL_MODE
+#define DEALLOCGLOB_(A) if(associated(A)) then;A=0;call MAPL_DeAllocNodeArray(A,rc=STATUS);if(STATUS==MAPL_NoShm) deallocate(A,stat=STATUS);NULLIFY(A);endif
+#endif
+
 ! <table>
 ! <tr>
 !     <th>Module Name</th>
@@ -151,6 +155,10 @@ module fv_grid_tools_mod
                                get_global_att_value, get_var_att_value
   use mosaic_mod,       only : get_mosaic_ntiles
 
+#ifdef MAPL_MODE
+  use MAPL_Mod
+  use MAPL_ShmemMod
+#endif
   implicit none
   private
 #include <netcdf.inc>
@@ -508,6 +516,244 @@ contains
 
   end subroutine get_symmetry
 
+  subroutine create_grid(Atm, grid_name, grid_file, grid_type, &
+                         npx, npy, ndims, nregions, ng, is, ie, js, je, tile, &
+                         do_schmidt, shift_fac, stretch_fac, target_lon, target_lat)
+! Intended simply to produce the grid/dx/dy
+    type(fv_atmos_type), intent(inout), target :: Atm
+    character(len=80), intent(IN   ) :: grid_name
+    character(len=120),intent(IN   ) :: grid_file
+    integer,           intent(IN   ) :: grid_type
+    integer,           intent(IN   ) :: npx, npy, ndims, nregions, ng
+    integer,           intent(IN   ) :: is, ie, js, je, tile
+    logical,           intent(IN   ) :: do_schmidt
+    real             , intent(IN   ) :: shift_fac
+    real(kind=R_GRID), intent(IN   ) :: stretch_fac, target_lon, target_lat
+! Locals
+    logical       :: exists
+    integer       :: isd, ied, jsd, jed
+    integer       :: i,j,n
+    integer       :: status
+    real(kind=R_GRID), pointer :: xs(:,:)
+    real(kind=R_GRID), pointer :: ys(:,:)
+    real(kind=R_GRID), pointer :: grid_global(:,:,:,:)
+    real(kind=R_GRID), pointer ::   dx_global(:,:,:)
+    real(kind=R_GRID), pointer ::   dy_global(:,:,:)
+    logical, pointer :: stretched_grid
+! Final local grid
+    real(kind=R_GRID), pointer, dimension(:,:,:)    :: grid
+    real(kind=R_GRID), pointer, dimension(:,:)      :: dx, dy
+    
+    grid  => Atm%gridstruct%grid_64
+    dx    => Atm%gridstruct%dx_64
+    dy    => Atm%gridstruct%dy_64
+    stretched_grid => Atm%gridstruct%stretched_grid
+
+    isd = is-ng
+    ied = ie+ng
+    jsd = js-ng
+    jed = je+ng
+
+    if(trim(grid_file) == 'INPUT/grid_spec.nc') then
+      call read_grid(Atm, grid_file, ndims, nregions, ng)
+    else
+
+! Global Grid Create.....
+      if ( is_master() ) write(*,*) 'create_grid: Creating Global cubed-grid '
+
+#ifdef MAPL_MODE
+    if(MAPL_ShmInitialized) then
+       if (is_master()) write(*,*  ) 'Using MAPL_Shmem for fv_grid_tools:init_grid'
+    endif
+! allocate global arrays (preferable in shared memory)
+! R8D4 overload missing
+    call MAPL_AllocNodeArray(grid_global,Shp=(/npx+2*ng,npy+2*ng,ndims,nregions/),lbd=(/1-ng,1-ng,1,1/),rc=STATUS)
+    if(STATUS==MAPL_NoShm) allocate(grid_global(1-ng:npx+ng,1-ng:npy+ng,ndims,1:nregions),stat=status)
+!    VERIFY_(STATUS)
+    call MAPL_AllocNodeArray(dx_global,Shp=(/npx-1,npy,nregions/),rc=STATUS)
+    if(STATUS==MAPL_NoShm) allocate(dx_global(npx-1,npy,nregions),stat=status)
+!   VERIFY_(STATUS)
+    call MAPL_AllocNodeArray(dy_global,Shp=(/npx,npy-1,nregions/),rc=STATUS)
+    if(STATUS==MAPL_NoShm) allocate(dy_global(npx,npy-1,nregions),stat=status)
+!    VERIFY_(STATUS)
+    call MAPL_SyncSharedMemory(rc=STATUS)
+!    VERIFY_(STATUS)
+#else
+    allocate(grid_global(1-ng:npx+ng,1-ng:npy+ng,ndims,1:nregions),stat=status)
+    allocate(dx_global(1:npx-1,1:npy,1:nregions),stat=status)
+    allocate(dy_global(1:npx,1:npy-1,1:nregions),stat=status)
+#endif
+
+    allocate(xs(npx,npy),stat=status)
+    allocate(ys(npx,npy),stat=status)
+    call gnomonic_grids(grid_type, npx-1, xs, ys)
+   
+ 
+          if (is_master() ) then
+
+             if (grid_type>=0) then
+                do j=1,npy
+                   do i=1,npx
+                      grid_global(i,j,1,1) = xs(i,j)
+                      grid_global(i,j,2,1) = ys(i,j)
+                   enddo
+                enddo
+! mirror_grid assumes that the tile=1 is centered on equator and greenwich meridian Lon[-pi,pi] 
+                call mirror_grid(grid_global, ng, npx, npy, 2, 6)
+                do n=1,nregions
+                   do j=1,npy
+                      do i=1,npx
+!---------------------------------
+! Shift the corner away from Japan
+!---------------------------------
+!--------------------- This will result in the corner close to east coast of China ------------------
+                         if ( .not.do_schmidt .and. (shift_fac)>1.E-4 )   &
+                              grid_global(i,j,1,n) = grid_global(i,j,1,n) - pi/shift_fac
+!----------------------------------------------------------------------------------------------------
+                         if ( grid_global(i,j,1,n) < 0. )              &
+                              grid_global(i,j,1,n) = grid_global(i,j,1,n) + 2.*pi
+                         if (ABS(grid_global(i,j,1,1)) < 1.e-10) grid_global(i,j,1,1) = 0.0
+                         if (ABS(grid_global(i,j,2,1)) < 1.e-10) grid_global(i,j,2,1) = 0.0
+                      enddo
+                   enddo
+                enddo
+             else
+                call mpp_error(FATAL, "create_grid: reading of ASCII grid files no longer supported")
+             endif
+
+!---------------------------------
+! Clean Up Edges
+!---------------------------------
+             grid_global(1    ,1:npy,:,2)=grid_global(  npx     ,1:npy     ,:,1)
+             grid_global(1    ,1:npy,:,3)=grid_global(  npx:1:-1,  npy     ,:,1)
+             grid_global(1:npx,  npy,:,5)=grid_global(1         ,  npy:1:-1,:,1)
+             grid_global(1:npx,  npy,:,6)=grid_global(1:npx     ,1         ,:,1)
+             
+             grid_global(1:npx,1    ,:,3)=grid_global(1:npx     ,  npy     ,:,2)
+             grid_global(1:npx,1    ,:,4)=grid_global(  npx     ,  npy:1:-1,:,2)
+             grid_global(  npx,1:npy,:,6)=grid_global(  npx:1:-1,      1   ,:,2)
+             
+             grid_global(1    ,1:npy,:,4)=grid_global(  npx     ,1:npy     ,:,3)
+             grid_global(1    ,1:npy,:,5)=grid_global(  npx:1:-1,  npy     ,:,3)
+             
+             grid_global(  npx,1:npy,:,3)=grid_global(1         ,1:npy     ,:,4)
+             grid_global(1:npx,1    ,:,5)=grid_global(1:npx     ,  npy     ,:,4)
+             grid_global(1:npx,1    ,:,6)=grid_global(  npx     ,  npy:1:-1,:,4)
+             
+             grid_global(1    ,1:npy,:,6)=grid_global(  npx     ,1:npy     ,:,5)
+
+!------------------------
+! Schmidt transformation:
+!------------------------
+             if ( do_schmidt ) then
+             do n=1,nregions
+                call direct_transform(stretch_fac, 1, npx, 1, npy, target_lon, target_lat, &
+                                      n, grid_global(1:npx,1:npy,1,n), grid_global(1:npx,1:npy,2,n))
+             enddo
+             endif
+
+! Compute dx_global:
+             do n=1,nregions
+                do j=1,npy
+                   do i=1,npx-1
+                      dx_global(i,j,n) = great_circle_dist(grid_global(i,j,:,n), grid_global(i+1,j,:,n), radius)
+                   enddo
+                enddo
+             enddo
+             dx_global(1:npx-1,  1,1) = dx_global(1:npx-1,npy,6)
+             dx_global(1:npx-1,npy,2) = dx_global(1:npx-1,1,  3)
+             dx_global(1:npx-1,npy,4) = dx_global(1:npx-1,1,  5)
+
+! Compute dy_global:
+        if( stretched_grid ) then
+           do n=1,nregions
+                do j=1,npy-1
+                   do i=1,npx
+                      dy_global(i,j,n) = great_circle_dist(grid_global(i,j,:,n), grid_global(i,j+1,:,n), radius)
+                   enddo
+                enddo
+             enddo
+        else
+! Grid symmetry is assumed here: for non-stretched grids
+           do n=1,nregions
+              do j=1,npy-1
+                 do i=1,npx-1
+                    dy_global(j,i,n) = dx_global(i,j,n)
+                 enddo
+              enddo
+           enddo
+        endif
+           dy_global(npx,1:npy-1,1)=dy_global(1,1:npy-1,2)
+           dy_global(npx,1:npy-1,3)=dy_global(1,1:npy-1,4)
+           dy_global(npx,1:npy-1,5)=dy_global(1,1:npy-1,6)
+
+           dy_global(  1,1:npy-1,3)=dx_global(npx-1:1:-1, npy,1)
+           dy_global(npx,1:npy-1,6)=dx_global(npx-1:1:-1, 1,  2)
+           dy_global(  1,1:npy-1,5)=dx_global(npx-1:1:-1, npy,3)
+           dy_global(npx,1:npy-1,2)=dx_global(npx-1:1:-1, 1,  4)
+           dy_global(  1,1:npy-1,1)=dx_global(npx-1:1:-1, npy,5)
+           dy_global(npx,1:npy-1,4)=dx_global(npx-1:1:-1, 1,  6)
+             
+          endif ! masterproc
+
+          deallocate ( xs )
+          deallocate ( ys )
+
+!YFan mp_bcst is replaced by mpp_broadcast to solve the root_pe is not zero.
+#ifdef MAPL_MODE
+          if(MAPL_ShmInitialized) then
+             call MAPL_SyncSharedMemory(rc=STATUS)
+             call MAPL_BroadcastToNodes( grid_global, N=size(grid_global), ROOT=MAPL_Root, RC=status)
+             call MAPL_BroadcastToNodes(   dx_global, N=size(  dx_global), ROOT=MAPL_Root, RC=status)
+             call MAPL_BroadcastToNodes(   dy_global, N=size(  dy_global), ROOT=MAPL_Root, RC=status)
+             call MAPL_SyncSharedMemory(rc=STATUS)
+          else
+#endif
+             call mpp_broadcast(grid_global, size(grid_global), mpp_root_pe())
+             call mpp_broadcast(dx_global, size(dx_global), mpp_root_pe())
+             call mpp_broadcast(dy_global, size(dy_global), mpp_root_pe())
+#ifdef MAPL_MODE
+          end if
+#endif
+
+       do n=1,ndims
+          do j=js,je+1
+             do i=is,ie+1
+                grid(i,j,n) = grid_global(i,j,n,tile)
+             enddo
+          enddo
+       enddo
+       do j=js,je+1
+          do i=is,ie
+             dx(i,j) = dx_global(i,j,tile)
+          enddo
+       enddo
+       do j=js,je
+          do i=is,ie+1
+             dy(i,j) = dy_global(i,j,tile)
+          enddo
+       enddo
+
+#ifdef MAPL_MODE
+    call MAPL_SyncSharedMemory(rc=STATUS)
+    DEALLOCGLOB_(grid_global)
+    DEALLOCGLOB_(dx_global)
+    DEALLOCGLOB_(dy_global)
+    call MAPL_SyncSharedMemory(rc=STATUS)
+#else
+    deallocate(grid_global)
+    deallocate(dx_global)
+    deallocate(dy_global)
+#endif
+! Global Grid Create.....
+    endif
+
+    nullify (grid)
+    nullify (dx)
+    nullify (dy)
+
+  end subroutine create_grid
+
 !>@brief The subroutine 'init_grid' reads the grid from the input file
 !! and sets up grid descriptors.
   subroutine init_grid(Atm, grid_name, grid_file, npx, npy, npz, ndims, nregions, ng)
@@ -612,7 +858,7 @@ contains
     if (Atm%neststruct%nested .or. ANY(Atm%neststruct%child_grids)) then
         grid_global => Atm%grid_global
     else if( trim(grid_file) .NE. 'INPUT/grid_spec.nc') then
-       allocate(grid_global(1-ng:npx  +ng,1-ng:npy  +ng,ndims,1:nregions))
+     ! allocate(grid_global(1-ng:npx  +ng,1-ng:npy  +ng,ndims,1:nregions))
     endif
     
     iinta                         => Atm%gridstruct%iinta
@@ -666,120 +912,19 @@ contains
        endif
     else
 
-          cubed_sphere = .true.
-          
-          if (Atm%neststruct%nested) then
-             call setup_aligned_nest(Atm)
-          else
-          if(trim(grid_file) == 'INPUT/grid_spec.nc') then  
-             call read_grid(Atm, grid_file, ndims, nregions, ng)
-          else
+      if (Atm%neststruct%nested) then
+       call setup_aligned_nest(Atm)
+      else
 
-             if (Atm%flagstruct%grid_type>=0) call gnomonic_grids(Atm%flagstruct%grid_type, npx-1, xs, ys)
+       call create_grid(Atm, grid_name, grid_file, Atm%flagstruct%grid_type, npx, npy, ndims, nregions, ng, is, ie, js, je, tile, &
+                        Atm%flagstruct%do_schmidt, Atm%flagstruct%shift_fac, Atm%flagstruct%stretch_fac, Atm%flagstruct%target_lon, Atm%flagstruct%target_lat)
 
-          if (is_master()) then
-
-             if (Atm%flagstruct%grid_type>=0) then
-                do j=1,npy
-                   do i=1,npx
-                      grid_global(i,j,1,1) = xs(i,j)
-                      grid_global(i,j,2,1) = ys(i,j)
-                   enddo
-                enddo
-! mirror_grid assumes that the tile=1 is centered on equator and greenwich meridian Lon[-pi,pi] 
-                call mirror_grid(grid_global, ng, npx, npy, 2, 6)
-                do n=1,nregions
-                   do j=1,npy
-                      do i=1,npx
-!---------------------------------
-! Shift the corner away from Japan
-!---------------------------------
-!--------------------- This will result in the corner close to east coast of China ------------------
-                         if ( .not.Atm%flagstruct%do_schmidt .and. (Atm%flagstruct%shift_fac)>1.E-4 )   &
-                              grid_global(i,j,1,n) = grid_global(i,j,1,n) - pi/Atm%flagstruct%shift_fac
-!----------------------------------------------------------------------------------------------------
-                         if ( grid_global(i,j,1,n) < 0. )              &
-                              grid_global(i,j,1,n) = grid_global(i,j,1,n) + 2.*pi
-                         if (ABS(grid_global(i,j,1,1)) < 1.d-10) grid_global(i,j,1,1) = 0.0
-                         if (ABS(grid_global(i,j,2,1)) < 1.d-10) grid_global(i,j,2,1) = 0.0
-                         enddo
-                      enddo
-                   enddo
-                else
-                   call mpp_error(FATAL, "fv_grid_tools: reading of ASCII grid files no longer supported")
-                endif
-
-                grid_global(  1,1:npy,:,2)=grid_global(npx,1:npy,:,1)
-                grid_global(  1,1:npy,:,3)=grid_global(npx:1:-1,npy,:,1)
-                grid_global(1:npx,npy,:,5)=grid_global(1,npy:1:-1,:,1)
-                grid_global(1:npx,npy,:,6)=grid_global(1:npx,1,:,1)
-
-                grid_global(1:npx,  1,:,3)=grid_global(1:npx,npy,:,2)
-                grid_global(1:npx,  1,:,4)=grid_global(npx,npy:1:-1,:,2)
-                grid_global(npx,1:npy,:,6)=grid_global(npx:1:-1,1,:,2)
-
-                grid_global(  1,1:npy,:,4)=grid_global(npx,1:npy,:,3)
-                grid_global(  1,1:npy,:,5)=grid_global(npx:1:-1,npy,:,3)
-
-                grid_global(npx,1:npy,:,3)=grid_global(1,1:npy,:,4)
-                grid_global(1:npx,  1,:,5)=grid_global(1:npx,npy,:,4)
-                grid_global(1:npx,  1,:,6)=grid_global(npx,npy:1:-1,:,4)
-
-                grid_global(  1,1:npy,:,6)=grid_global(npx,1:npy,:,5)
-
-!------------------------
-! Schmidt transformation:
-!------------------------
-             if ( Atm%flagstruct%do_schmidt ) then
-             do n=1,nregions
-                call direct_transform(Atm%flagstruct%stretch_fac, 1, npx, 1, npy, &
-                                      Atm%flagstruct%target_lon, Atm%flagstruct%target_lat, &
-                                      n, grid_global(1:npx,1:npy,1,n), grid_global(1:npx,1:npy,2,n))
-             enddo
-             endif
-        endif
-             call mpp_broadcast(grid_global, size(grid_global), mpp_root_pe())
-!--- copy grid to compute domain
-       do n=1,ndims
-          do j=js,je+1
-             do i=is,ie+1
-                grid(i,j,n) = grid_global(i,j,n,tile)
-             enddo
-          enddo
-       enddo
-          endif
-!
-! SJL: For phys/exchange grid, etc
-!
-       call mpp_update_domains( grid, Atm%domain, position=CORNER)
-       if (.not. Atm%neststruct%nested) call fill_corners(grid(:,:,1), npx, npy, FILL=XDir, BGRID=.true.)
-       if (.not. Atm%neststruct%nested) call fill_corners(grid(:,:,2), npx, npy, FILL=XDir, BGRID=.true.)
-
-          !--- dx and dy         
-          do j = js, je+1
-             do i = is, ie
-                p1(1) = grid(i  ,j,1)
-                p1(2) = grid(i  ,j,2)
-                p2(1) = grid(i+1,j,1)
-                p2(2) = grid(i+1,j,2)
-                dx(i,j) = great_circle_dist( p2, p1, radius )
-             enddo
-          enddo
-          if( stretched_grid ) then
-             do j = js, je
-                do i = is, ie+1
-                   p1(1) = grid(i,j,  1)
-                   p1(2) = grid(i,j,  2)
-                   p2(1) = grid(i,j+1,1)
-                   p2(2) = grid(i,j+1,2)
-                   dy(i,j) = great_circle_dist( p2, p1, radius )
-                enddo
-             enddo
-          else
-             call get_symmetry(dx(is:ie,js:je+1), dy(is:ie+1,js:je), 0, 1, Atm%layout(1), Atm%layout(2), &
-                  Atm%domain, Atm%tile, Atm%gridstruct%npx_g, Atm%bd)
-          endif
-
+       cubed_sphere = .true.
+         
+          call mpp_update_domains( grid, Atm%domain, position=CORNER)
+          if (.not. Atm%neststruct%nested) call fill_corners(grid(:,:,1), npx, npy, FILL=XDir, BGRID=.true.)
+          if (.not. Atm%neststruct%nested) call fill_corners(grid(:,:,2), npx, npy, FILL=XDir, BGRID=.true.)
+ 
           call mpp_get_boundary( dy, dx, Atm%domain, ebufferx=ebuffer, wbufferx=wbuffer, sbuffery=sbuffer, nbuffery=nbuffer,&
                flags=SCALAR_PAIR+XUPDATE, gridtype=CGRID_NE_PARAM)
           if(is == 1 .AND. mod(tile,2) .NE. 0) then ! on the west boundary
@@ -1117,7 +1262,7 @@ contains
     if (Atm%neststruct%nested .or. ANY(Atm%neststruct%child_grids)) then
     nullify(grid_global)
     else if( trim(grid_file) .NE. 'INPUT/grid_spec.nc') then
-       deallocate(grid_global)
+      !deallocate(grid_global)
     endif
 
     nullify(agrid)

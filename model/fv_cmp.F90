@@ -58,7 +58,7 @@ module fv_cmp_mod
     use fv_arrays_mod, only: r_grid
     use gfdl_cloud_microphys_mod, only: ql_gen, qi_gen, qi0_max, ql_mlt, ql0_max, qi_lim, qs_mlt
     use gfdl_cloud_microphys_mod, only: icloud_f, sat_adj0, t_sub, cld_min
-    use gfdl_cloud_microphys_mod, only: tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_imlt, tau_l2r
+    use gfdl_cloud_microphys_mod, only: tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_imlt, tau_l2r, tau_frz
     use gfdl_cloud_microphys_mod, only: rad_rain, rad_snow, rad_graupel, dw_ocean, dw_land
     
     implicit none
@@ -150,7 +150,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real :: tc, qsi, dqsdt, dq, dq0, pidep, qi_crt, tmp, dtmp
     real :: tin, rqi, q_plus, q_minus
     real :: sdt, dt_bigg, adj_fac
-    real :: fac_smlt, fac_r2g, fac_i2s, fac_imlt, fac_l2r, fac_v2l, fac_l2v
+    real :: fac_smlt, fac_r2g, fac_i2s, fac_imlt, fac_l2r, fac_v2l, fac_l2v, fac_frz
     real :: factor, qim, tice0, c_air, c_vap, dw
     
     integer :: i, j
@@ -175,6 +175,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     fac_imlt = 1. - exp (- sdt / tau_imlt)
     fac_smlt = 1. - exp (- mdt / tau_smlt)
     
+    fac_frz = 1. - exp (- mdt / tau_frz)
     ! -----------------------------------------------------------------------
     ! define heat capacity of dry air and water vapor based on hydrostatical property
     ! -----------------------------------------------------------------------
@@ -267,8 +268,9 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            if (qi (i, j) > 1.e-8 .and. pt1 (i) > tice) then
-                sink (i) = min (qi (i, j), fac_imlt * (pt1 (i) - tice) / icp2 (i))
+            if (qi (i, j) > 1.e-8 .and. pt1 (i) > t_wfr) then
+                factor = max(0.,min(1.,((pt1(i)-t_wfr)/(tice-t_wfr))**2))
+                sink (i) = min (qi (i, j), factor * fac_imlt * (pt1 (i) - t_wfr) / icp2 (i))
                 qi (i, j) = qi (i, j) - sink (i)
                 ! sjl, may 17, 2017
                 ! tmp = min (sink (i), dim (ql_mlt, ql (i, j))) ! max ql amount
@@ -330,9 +332,11 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            dtmp = tice - t_wfr - dt_fr - pt1 (i)
+! BUG !!!   dtmp = tice - t_wfr - dt_fr - pt1 (i)
+            dtmp = t_wfr - dt_fr - pt1 (i)
             if (ql (i, j) > 0. .and. dtmp > 0.) then
-                sink (i) = min (ql (i, j), dtmp / icp2 (i))
+      ! GEOS !  sink (i) = min (ql (i, j), dtmp / icp2 (i))
+                sink (i) = min (ql (i, j), ql (i, j) * dtmp * fac_frz, dtmp / icp2 (i))
                 ql (i, j) = ql (i, j) - sink (i)
                 qi (i, j) = qi (i, j) + sink (i)
                 q_liq (i) = q_liq (i) - sink (i)
@@ -439,9 +443,10 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            dtmp = t_wfr-dt_fr - pt1 (i)
+            dtmp = t_wfr - dt_fr - pt1 (i)
             if (ql (i, j) > 0. .and. dtmp > 0.) then
-                sink (i) = min (ql (i, j), ql (i, j) * dtmp * 0.125, dtmp / icp2 (i))
+      ! GEOS !  sink (i) = min (ql (i, j), ql (i, j) * dtmp * 0.125  , dtmp / icp2 (i))
+                sink (i) = min (ql (i, j), ql (i, j) * dtmp * fac_frz, dtmp / icp2 (i))
                 ql (i, j) = ql (i, j) - sink (i)
                 qi (i, j) = qi (i, j) + sink (i)
                 q_liq (i) = q_liq (i) - sink (i)
@@ -745,7 +750,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 ! higher than 10 m is considered "land" and will have higher subgrid variability
                 dw = dw_ocean + (dw_land - dw_ocean) * min (1., abs (hs (i, j)) / (10. * grav))
                 ! "scale - aware" subgrid variability: 100 - km as the base
-                hvar (i) = min (0.2, max (0.01, dw * sqrt (sqrt (area (i, j) / 1.e10))) )
+                hvar (i) = min (0.2, max (0.01, dw * sqrt (sqrt (area (i, j)) / 100.e3)))
                 
                 ! -----------------------------------------------------------------------
                 ! partial cloudiness by pdf:
