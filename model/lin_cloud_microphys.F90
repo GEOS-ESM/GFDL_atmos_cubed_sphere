@@ -36,6 +36,7 @@
 
 module gfdl_cloud_microphys_mod
     
+      use mpp_mod, only: mpp_pe, mpp_root_pe
     ! use mpp_mod, only: stdlog, mpp_pe, mpp_root_pe, mpp_clock_id, &
     ! mpp_clock_begin, mpp_clock_end, clock_routine, &
     ! input_nml_file
@@ -46,7 +47,8 @@ module gfdl_cloud_microphys_mod
     ! check_nml_error, file_exist, close_file
 
     use fms_mod,             only: write_version_number, open_namelist_file, &
-                                   check_nml_error, close_file, file_exist
+                                   check_nml_error, close_file, file_exist,  &
+                                   fms_init
 
     implicit none
     
@@ -161,7 +163,7 @@ module gfdl_cloud_microphys_mod
     
     logical :: tables_are_initialized = .false.
     
-    ! logical :: master
+    ! logical :: root_proc
     ! integer :: id_rh, id_vtr, id_vts, id_vtg, id_vti, id_rain, id_snow, id_graupel, &
     ! id_ice, id_prec, id_cond, id_var, id_droplets
     ! integer :: gfdl_mp_clock ! clock for timing of driver routine
@@ -208,8 +210,7 @@ module gfdl_cloud_microphys_mod
     real :: tau_l2v = 300. !< cloud water to water vapor (evaporation)
     real :: tau_g2v = 900. !< graupel sublimation
     real :: tau_v2g = 21600. !< graupel deposition -- make it a slow process
-    real :: tau_revp = 150. !< rain re-evaporation
- 
+    real :: tau_revp = 1200. !< rain re-evaporation
     ! horizontal subgrid variability
     
     real :: dw_land = 0.20 !< base value for subgrid deviation / variability over land
@@ -309,7 +310,9 @@ module gfdl_cloud_microphys_mod
         vs_max, vg_max, vr_max, qs_mlt, qs0_crt, qi_gen, ql0_max, qi0_max,    &
         qi0_crt, qr0_crt, fast_sat_adj, rh_inc, rh_ins, rh_inr, const_vi,     &
         const_vs, const_vg, const_vr, use_ccn, rthresh, ccn_l, ccn_o, qc_crt, &
-        tau_g2v, tau_v2g, tau_revp, sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v,      &
+        tau_g2v, tau_v2g, &
+        tau_revp, &
+        sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v,      &
         tau_i2s, tau_l2r, qi_lim, ql_gen, c_paut, c_psaci, c_pgacs,           &
         z_slope_liq, z_slope_ice, prog_ccn, c_cracw, alin, clin, tice,        &
         rad_snow, rad_graupel, rad_rain, cld_min, use_ppm, mono_prof,         &
@@ -321,7 +324,9 @@ module gfdl_cloud_microphys_mod
         vs_max, vg_max, vr_max, qs_mlt, qs0_crt, qi_gen, ql0_max, qi0_max,    &
         qi0_crt, qr0_crt, fast_sat_adj, rh_inc, rh_ins, rh_inr, const_vi,     &
         const_vs, const_vg, const_vr, use_ccn, rthresh, ccn_l, ccn_o, qc_crt, &
-        tau_g2v, tau_v2g, tau_revp, sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v,      &
+        tau_g2v, tau_v2g, &
+        tau_revp, &
+        sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v,      &
         tau_i2s, tau_l2r, qi_lim, ql_gen, c_paut, c_psaci, c_pgacs,           &
         z_slope_liq, z_slope_ice, prog_ccn, c_cracw, alin, clin, tice,        &
         rad_snow, rad_graupel, rad_rain, cld_min, use_ppm, mono_prof,         &
@@ -337,7 +342,10 @@ contains
 !! cloud microphysics.
 subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
         qv_dt, ql_dt, qr_dt, qi_dt, qs_dt, qg_dt, qa_dt, pt_dt, pt, w,    &
-        uin, vin, udt, vdt, dz, delp, area, dt_in, land, rain, snow, ice, &
+        uin, vin, udt, vdt, dz, delp, area, dt_in, land, cnv_fraction,    &
+        anv_icefall, lsc_icefall, &
+        revap, isubl, evapc,                                              &
+        rain, snow, ice, &
         graupel, m2_rain, m2_sol, hydrostatic, phys_hydrostatic,          &
         iis, iie, jjs, jje, kks, kke, ktop, kbot)
     
@@ -352,7 +360,10 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     
     real, intent (in), dimension (:, :) :: area !< cell area
     real, intent (in), dimension (:, :) :: land !< land fraction
-    
+    real, intent (in), dimension (:, :) :: cnv_fraction !< diagnosed convective fraction
+
+    real, intent (in) :: anv_icefall, lsc_icefall
+
     real, intent (in), dimension (:, :, :) :: delp, dz, uin, vin
     real, intent (in), dimension (:, :, :) :: pt, qv, ql, qr, qg, qa, qn
     
@@ -362,7 +373,10 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     real, intent (inout), dimension (:, :, :) :: qi_dt, qs_dt, qg_dt
     
     real, intent (out), dimension (:, :) :: rain, snow, ice, graupel
-    real, intent (out), dimension (:, :, :) :: m2_rain, m2_sol ! Rain and Ice fluxes (kg/m^2/s)
+    real, intent (out), dimension (:, :, :) :: m2_rain, m2_sol ! Rain and Ice fluxes (Pa kg/kg)
+    real, intent (out), dimension (:, :, :) :: revap ! Rain evaporation
+    real, intent (out), dimension (:, :, :) :: isubl ! Ice sublimation
+    real, intent (out), dimension (:, :, :) :: evapc ! Cloud evaporation
     
     ! logical :: used
     
@@ -376,6 +390,7 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     real, dimension (iie - iis + 1, jje - jjs + 1) :: prec_mp, prec1, cond, w_var, rh0
     
     real, dimension (iie - iis + 1, jje - jjs + 1, kke - kks + 1) :: vt_r, vt_s, vt_g, vt_i, qn2
+    real, dimension (iie - iis + 1, jje - jjs + 1, kke - kks + 1) :: fqa, fqal, fqai
     
     real :: allmax
     
@@ -385,7 +400,12 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     ie = iie - iis + 1
     je = jje - jjs + 1
     ke = kke - kks + 1
-    
+   
+   ! Convective condensate ratios - treat all clouds as large-scale
+    fqa = 0.0
+    fqal = 0.0
+    fqai = 0.0
+ 
     ! call mpp_clock_begin (gfdl_mp_clock)
     
     ! -----------------------------------------------------------------------
@@ -455,8 +475,12 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     do j = js, je
         call mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs, qg,&
             qa, qn, dz, is, ie, js, je, ks, ke, ktop, kbot, j, dt_in, ntimes,  &
+            fqa, fqal, fqai,                                                   &
             rain (:, j), snow (:, j), graupel (:, j), ice (:, j), m2_rain,     &
-            m2_sol, cond (:, j), area (:, j), land (:, j), udt, vdt, pt_dt,    &
+            m2_sol, cond (:, j), area (:, j), land (:, j), cnv_fraction(:, j), &
+            anv_icefall, lsc_icefall,                                          &
+            revap, isubl, evapc,                                               &
+            udt, vdt, pt_dt,                                                   &
             qv_dt, ql_dt, qr_dt, qi_dt, qs_dt, qg_dt, qa_dt, w_var, vt_r,      &
             vt_s, vt_g, vt_i, qn2)
     enddo
@@ -467,20 +491,11 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     
     if (ks < ktop) then
         do k = ks, ktop
-            if (do_qa) then
-                do j = js, je
-                    do i = is, ie
-                        qa_dt (i, j, k) = 0.
-                    enddo
+            do j = js, je
+                do i = is, ie
+                    qa_dt (i, j, k) = 0.
                 enddo
-            else
-                do j = js, je
-                    do i = is, ie
-                        ! qa_dt (i, j, k) = - qa (i, j, k) * rdt
-                        qa_dt (i, j, k) = 0. ! gfs
-                    enddo
-                enddo
-            endif
+            enddo
         enddo
     endif
     
@@ -539,7 +554,7 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     ! used = send_data (id_snow, snow, time, is_in = iis, js_in = jjs)
     ! if (mp_print .and. seconds == 0) then
     ! tot_prec = g_sum (snow, is, ie, js, je, area, 1)
-    ! if (master) write (*, *) 'mean snow = ', tot_prec
+    ! if (root_proc) write (*, *) 'mean snow = ', tot_prec
     ! endif
     ! endif
     !
@@ -548,7 +563,7 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     ! used = send_data (id_graupel, graupel, time, is_in = iis, js_in = jjs)
     ! if (mp_print .and. seconds == 0) then
     ! tot_prec = g_sum (graupel, is, ie, js, je, area, 1)
-    ! if (master) write (*, *) 'mean graupel = ', tot_prec
+    ! if (root_proc) write (*, *) 'mean graupel = ', tot_prec
     ! endif
     ! endif
     !
@@ -557,7 +572,7 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     ! used = send_data (id_ice, ice, time, is_in = iis, js_in = jjs)
     ! if (mp_print .and. seconds == 0) then
     ! tot_prec = g_sum (ice, is, ie, js, je, area, 1)
-    ! if (master) write (*, *) 'mean ice_mp = ', tot_prec
+    ! if (root_proc) write (*, *) 'mean ice_mp = ', tot_prec
     ! endif
     ! endif
     !
@@ -566,7 +581,7 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     ! used = send_data (id_rain, rain, time, is_in = iis, js_in = jjs)
     ! if (mp_print .and. seconds == 0) then
     ! tot_prec = g_sum (rain, is, ie, js, je, area, 1)
-    ! if (master) write (*, *) 'mean rain = ', tot_prec
+    ! if (root_proc) write (*, *) 'mean rain = ', tot_prec
     ! endif
     ! endif
     !
@@ -586,7 +601,7 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     ! if (seconds == 0) then
     ! prec1 (:, :) = prec1 (:, :) * dt_in / 86400.
     ! tot_prec = g_sum (prec1, is, ie, js, je, area, 1)
-    ! if (master) write (*, *) 'daily prec_mp = ', tot_prec
+    ! if (root_proc) write (*, *) 'daily prec_mp = ', tot_prec
     ! prec1 (:, :) = 0.
     ! endif
     ! endif
@@ -611,7 +626,9 @@ end subroutine gfdl_cloud_microphys_driver
 ! -----------------------------------------------------------------------
 subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
         qg, qa, qn, dz, is, ie, js, je, ks, ke, ktop, kbot, j, dt_in, ntimes, &
+        fqa, fqal, fqai,                                                      &
         rain, snow, graupel, ice, m2_rain, m2_sol, cond, area1, land,         &
+        cnv_fraction, anv_icefall, lsc_icefall, revap, isubl, evapc,          &
         u_dt, v_dt, pt_dt, qv_dt, ql_dt, qr_dt, qi_dt, qs_dt, qg_dt, qa_dt,   &
         w_var, vt_r, vt_s, vt_g, vt_i, qn2)
     
@@ -625,13 +642,18 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
     real, intent (in) :: dt_in
     
     real, intent (in), dimension (is:) :: area1, land
-    
+    real, intent (in), dimension (is:) :: cnv_fraction
+   
+    real, intent (in) :: anv_icefall, lsc_icefall
+ 
     real, intent (in), dimension (is:, js:, ks:) :: uin, vin, delp, pt, dz
     real, intent (in), dimension (is:, js:, ks:) :: qv, ql, qr, qg, qa, qn
+    real, intent (inout), dimension (is:, js:, ks:) :: fqa, fqal, fqai
     
     real, intent (inout), dimension (is:, js:, ks:) :: qi, qs
     real, intent (inout), dimension (is:, js:, ks:) :: u_dt, v_dt, w, pt_dt, qa_dt
     real, intent (inout), dimension (is:, js:, ks:) :: qv_dt, ql_dt, qr_dt, qi_dt, qs_dt, qg_dt
+    real, intent (  out), dimension (is:, js:, ks:) :: revap, isubl, evapc
     
     real, intent (inout), dimension (is:) :: rain, snow, ice, graupel, cond
     
@@ -641,12 +663,12 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
     
     real, intent (out), dimension (is:, js:, ks:) :: m2_rain, m2_sol
     
-    real, dimension (ktop:kbot) :: qvz, qlz, qrz, qiz, qsz, qgz, qaz
+    real, dimension (ktop:kbot) :: qvz, qlz, qrz, qiz, qsz, qgz, qaz, fqaz, fqalz, fqaiz
     real, dimension (ktop:kbot) :: vtiz, vtsz, vtgz, vtrz
     real, dimension (ktop:kbot) :: dp0, dp1, dz0, dz1
     real, dimension (ktop:kbot) :: qv0, ql0, qr0, qi0, qs0, qg0, qa0
     real, dimension (ktop:kbot) :: t0, den, den0, tz, p1, denfac
-    real, dimension (ktop:kbot) :: ccn, c_praut, m1_rain, m1_sol, m1
+    real, dimension (ktop:kbot) :: ccn, c_praut, m1_rain, m1_sol, m1, evap1, subl1, evapc1
     real, dimension (ktop:kbot) :: u0, v0, u1, v1, w1
     
     real :: cpaut, rh_adj, rh_rain
@@ -722,9 +744,13 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
             qgz (k) = qgz (k) * omq
             
             qa0 (k) = qa (i, j, k)
-            qaz (k) = 0.
+            qaz (k) = qa (i, j, k)
             dz0 (k) = dz (i, j, k)
-            
+
+            fqaz (k) = fqa (i, j, k)
+            fqalz (k) = fqal (i, j, k)
+            fqaiz (k) = fqai (i, j, k)
+
             den0 (k) = - dp1 (k) / (grav * dz0 (k)) ! density of dry air
             p1 (k) = den0 (k) * rdgas * t0 (k) ! dry air pressure
             
@@ -813,9 +839,12 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
         if (fix_negative) &
             call neg_adj (ktop, kbot, tz, dp1, qvz, qlz, qrz, qiz, qsz, qgz)
         
-        m2_rain (:, j, :) = 0.
-        m2_sol (:, j, :) = 0.
-        
+        m2_rain (i, j, :) = 0.
+        m2_sol (i, j, :) = 0.
+        revap (i, j, :) = 0.
+        isubl (i, j, :) = 0.
+        evapc (i, j, :) = 0.
+ 
         do n = 1, ntimes
             
             ! -----------------------------------------------------------------------
@@ -841,11 +870,13 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
             ! -----------------------------------------------------------------------
             
             call warm_rain (dt_rain, ktop, kbot, dp1, dz1, tz, qvz, qlz, qrz, qiz, qsz, &
-                qgz, den, denfac, ccn, c_praut, rh_rain, vtrz, r1, m1_rain, w1, h_var)
-            
+                qgz, qaz, den, denfac, ccn, c_praut, rh_rain, vtrz, r1, evap1, subl1, m1_rain, w1, h_var)
+
             rain (i) = rain (i) + r1
-            
+ 
             do k = ktop, kbot
+                revap (i,j,k) = revap (i,j,k) + evap1(k)
+                isubl (i,j,k) = isubl (i,j,k) + subl1(k)
                 m2_rain (i, j, k) = m2_rain (i, j, k) + m1_rain (k)
                 m1 (k) = m1 (k) + m1_rain (k)
             enddo
@@ -854,7 +885,8 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
             ! sedimentation of cloud ice, snow, and graupel
             ! -----------------------------------------------------------------------
             
-            call fall_speed (ktop, kbot, den, qsz, qiz, qgz, qlz, tz, vtsz, vtiz, vtgz)
+            call fall_speed (ktop, kbot, p1, cnv_fraction(i), anv_icefall, lsc_icefall, &
+                             den, qsz, qiz, qgz, qlz, tz, vtsz, vtiz, vtgz)
             
             call terminal_fall (dts, ktop, kbot, tz, qvz, qlz, qrz, qgz, qsz, qiz, &
                 dz1, dp1, den, vtgz, vtsz, vtiz, r1, g1, s1, i1, m1_sol, w1)
@@ -877,11 +909,13 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
             ! -----------------------------------------------------------------------
             
             call warm_rain (dt_rain, ktop, kbot, dp1, dz1, tz, qvz, qlz, qrz, qiz, qsz, &
-                qgz, den, denfac, ccn, c_praut, rh_rain, vtrz, r1, m1_rain, w1, h_var)
-            
+                qgz, qaz, den, denfac, ccn, c_praut, rh_rain, vtrz, r1, evap1, subl1, m1_rain, w1, h_var)
+
             rain (i) = rain (i) + r1
             
             do k = ktop, kbot
+                revap (i,j,k) = revap (i,j,k) + evap1(k)
+                isubl (i,j,k) = isubl (i,j,k) + subl1(k)
                 m2_rain (i, j, k) = m2_rain (i, j, k) + m1_rain (k)
                 m2_sol (i, j, k) = m2_sol (i, j, k) + m1_sol (k)
                 m1 (k) = m1 (k) + m1_rain (k) + m1_sol (k)
@@ -891,10 +925,14 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
             ! ice - phase microphysics
             ! -----------------------------------------------------------------------
             
-            call icloud (ktop, kbot, tz, p1, qvz, qlz, qrz, qiz, qsz, qgz, dp1, den, &
-                denfac, vtsz, vtgz, vtrz, qaz, rh_adj, rh_rain, dts, h_var)
-            
-        enddo
+            call icloud (ktop, kbot, tz, p1, qvz, qlz, qrz, qiz, qsz, qgz, fqaz, fqalz, fqaiz, dp1, den, &
+                denfac, vtsz, vtgz, vtrz, qaz, evapc1, rh_adj, rh_rain, dts, h_var)
+                        
+            do k = ktop, kbot
+                evapc (i,j,k) = evapc(i,j,k) + evapc1(k) * rdt
+            end do
+
+        enddo ! ntimes
         
         ! -----------------------------------------------------------------------
         ! momentum transportation during sedimentation
@@ -915,6 +953,13 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
                 w (i, j, k) = w1 (k)
             enddo
         endif
+
+        ! update convective fractions
+        do k = ktop, kbot
+          fqa(i,j,k) = fqaz(k)
+          fqal(i,j,k) = fqalz(k)
+          fqai(i,j,k) = fqaiz(k)
+        end do
         
         ! -----------------------------------------------------------------------
         ! update moist air mass (actually hydrostatic pressure)
@@ -938,13 +983,9 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
         ! -----------------------------------------------------------------------
         
         do k = ktop, kbot
-            if (do_qa) then
-                qa_dt (i, j, k) = 0.
-            else
-                qa_dt (i, j, k) = qa_dt (i, j, k) + rdt * (qaz (k) / real (ntimes) - qa0 (k))
-            endif
+             qa_dt (i, j, k) =  rdt * (qaz (k) - qa0 (k))
         enddo
-        
+
         ! -----------------------------------------------------------------------
         ! fms diagnostics:
         ! -----------------------------------------------------------------------
@@ -1048,8 +1089,8 @@ end subroutine sedi_heat
 !> warm rain cloud microphysics
 ! -----------------------------------------------------------------------
 
-subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, &
-        den, denfac, ccn, c_praut, rh_rain, vtr, r1, m1_rain, w1, h_var)
+subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, qa, &
+        den, denfac, ccn, c_praut, rh_rain, vtr, r1, evap1, subl1, m1_rain, w1, h_var)
     
     implicit none
     
@@ -1062,14 +1103,14 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, &
     real, intent (in), dimension (ktop:kbot) :: denfac, ccn, c_praut
     
     real, intent (inout), dimension (ktop:kbot) :: tz, vtr
-    real, intent (inout), dimension (ktop:kbot) :: qv, ql, qr, qi, qs, qg
-    real, intent (inout), dimension (ktop:kbot) :: m1_rain, w1
-    
+    real, intent (inout), dimension (ktop:kbot) :: qv, ql, qr, qi, qs, qg, qa
+    real, intent (inout), dimension (ktop:kbot) :: evap1, subl1, m1_rain, w1
+
     real, intent (out) :: r1
     
     real, parameter :: so3 = 7. / 3.
     
-    real, dimension (ktop:kbot) :: dl, dm
+    real, dimension (ktop:kbot) :: dl, dm, revap, isubl, qadum
     real, dimension (ktop:kbot + 1) :: ze, zt
     
     real :: sink, dq, qc0, qc
@@ -1093,6 +1134,8 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, &
     ! terminal speed of rain
     ! -----------------------------------------------------------------------
     
+    evap1 (:) = 0.
+    subl1 (:) = 0.
     m1_rain (:) = 0.
     
     call check_column (ktop, kbot, qr, no_fall)
@@ -1131,8 +1174,10 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, &
         ! -----------------------------------------------------------------------
         
         ! if (.not. fast_sat_adj) &
-        call revap_racc (ktop, kbot, dt5, tz, qv, ql, qr, qi, qs, qg, den, denfac, rh_rain, h_var)
-        
+        call revap_racc (ktop, kbot, dt5, tz, qv, ql, qr, qi, qs, qg, revap, isubl, den, denfac, rh_rain, h_var)
+        evap1 = revap
+        subl1 = isubl
+ 
         if (do_sedi_w) then
             do k = ktop, kbot
                 dm (k) = dp (k) * (1. + qv (k) + ql (k) + qr (k) + qi (k) + qs (k) + qg (k))
@@ -1181,7 +1226,9 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, &
         ! evaporation and accretion of rain for the remaing 1 / 2 time step
         ! -----------------------------------------------------------------------
         
-        call revap_racc (ktop, kbot, dt5, tz, qv, ql, qr, qi, qs, qg, den, denfac, rh_rain, h_var)
+        call revap_racc (ktop, kbot, dt5, tz, qv, ql, qr, qi, qs, qg, revap, isubl, den, denfac, rh_rain, h_var)
+        evap1 = evap1 + revap
+        subl1 = subl1 + isubl
         
     endif
     
@@ -1213,6 +1260,7 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, &
                     sink = min (dq, dt * c_praut (k) * den (k) * exp (so3 * log (ql (k))))
                     ql (k) = ql (k) - sink
                     qr (k) = qr (k) + sink
+                    qa (k) = qa(k) * SQRT( max(qi(k)+ql(k),0.0) / max(qi(k)+ql(k) + sink,qrmin) )
                 endif
             endif
         enddo
@@ -1220,8 +1268,15 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, &
     else
         
         ! -----------------------------------------------------------------------
-        ! with subgrid varaibility
+        ! with subgrid variability
         ! -----------------------------------------------------------------------
+
+#define INCLOUD
+#ifdef INCLOUD
+       ! Use In-Cloud condensate
+       qadum = max(qa,qrmin)
+       ql = ql/qadum
+       qi = qi/qadum
         
         call linear_prof (kbot - ktop + 1, ql (ktop), dl (ktop), z_slope_liq, h_var)
         
@@ -1250,20 +1305,61 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, &
                     ! revised continuous form: linearly decays (with subgrid dl) to zero at qc == ql + dl
                     ! --------------------------------------------------------------------
                     sink = min (1., dq / dl (k)) * dt * c_praut (k) * den (k) * exp (so3 * log (ql (k)))
+                    sink = min(ql(k), max(0.,sink))
                     ql (k) = ql (k) - sink
-                    qr (k) = qr (k) + sink
+                    qr (k) = qr (k) + sink*qadum(k)
+                    qa (k ) = qa(k) * SQRT( max(qi(k)+ql(k),0.0) / max(qi(k) + ql(k) + sink,qrmin) )
                 endif
             endif
         enddo
+       ! Revert In-Cloud condensate
+       ql = ql*qadum
+       qi = qi*qadum
+#else
+        call linear_prof (kbot - ktop + 1, ql (ktop), dl (ktop), z_slope_liq, h_var)
+
+        do k = ktop, kbot
+            qc0 = fac_rc * ccn (k)
+            if (tz (k) > t_wfr + dt_fr) then
+                dl (k) = min (max (1.e-6, dl (k)), 0.5 * ql (k))
+                ! --------------------------------------------------------------------
+                ! as in klein's gfdl am2 stratiform scheme (with subgrid variations)
+                ! --------------------------------------------------------------------
+                if (use_ccn) then
+                    ! --------------------------------------------------------------------
+                    ! ccn is formulted as ccn = ccn_surface * (den / den_surface)
+                    ! --------------------------------------------------------------------
+                    qc = qc0
+                else
+                    qc = qc0 / den (k)
+                endif
+                dq = 0.5 * (ql (k) + dl (k) - qc)
+                ! --------------------------------------------------------------------
+                ! dq = dl if qc == q_minus = ql - dl
+                ! dq = 0 if qc == q_plus = ql + dl
+                ! --------------------------------------------------------------------
+                if (dq > 0.) then ! q_plus > qc
+                    ! --------------------------------------------------------------------
+                    ! revised continuous form: linearly decays (with subgrid dl) to zero at qc == ql + dl
+                    ! --------------------------------------------------------------------
+                    sink = min (1., dq / dl (k)) * dt * c_praut (k) * den (k) * exp (so3 * log (ql (k)))
+                    sink = min(ql(k), max(0.,sink))
+                    ql (k) = ql (k) - sink
+                    qr (k) = qr (k) + sink
+                    qa (k) = qa (k) * SQRT( max(qi(k)+ql(k),0.0) / max(qi(k) + ql(k) + sink,qrmin ) )
+                endif
+            endif
+        enddo
+#endif
     endif
-    
+
 end subroutine warm_rain
 
 ! -----------------------------------------------------------------------
 !> evaporation of rain
 ! -----------------------------------------------------------------------
 
-subroutine revap_racc (ktop, kbot, dt, tz, qv, ql, qr, qi, qs, qg, den, denfac, rh_rain, h_var)
+subroutine revap_racc (ktop, kbot, dt, tz, qv, ql, qr, qi, qs, qg, revap, isubl, den, denfac, rh_rain, h_var)
     
     implicit none
     
@@ -1275,15 +1371,19 @@ subroutine revap_racc (ktop, kbot, dt, tz, qv, ql, qr, qi, qs, qg, den, denfac, 
     real, intent (in), dimension (ktop:kbot) :: den, denfac
     
     real, intent (inout), dimension (ktop:kbot) :: tz, qv, qr, ql, qi, qs, qg
+
+    real, intent (inout), dimension (ktop:kbot) :: revap, isubl
     
     real, dimension (ktop:kbot) :: lhl, cvm, q_liq, q_sol, lcpk
     
     real :: dqv, qsat, dqsdt, evap, t2, qden, q_plus, q_minus, sink
     real :: qpz, dq, dqh, tin
-    real :: fac_revp
- 
+    real :: fac_revp 
     integer :: k
-    
+   
+    revap(:) = 0.
+    isubl(:) = 0.
+ 
     do k = ktop, kbot
         
         if (tz (k) > t_wfr .and. qr (k) > qrmin) then
@@ -1332,7 +1432,7 @@ subroutine revap_racc (ktop, kbot, dt, tz, qv, ql, qr, qi, qs, qg, den, denfac, 
                     exp (0.725 * log (qden))) / (crevp (4) * t2 + crevp (5) * qsat * den (k))
                 fac_revp = 1. - exp (- dt / tau_revp)
                 evap = min (qr (k), dt * fac_revp * evap, dqv / (1. + lcpk (k) * dqsdt))
-              !!evap = min (qr (k), dt * evap, dqv / (1. + lcpk (k) * dqsdt))
+          !!!!! evap = min (qr (k), dt *            evap, dqv / (1. + lcpk (k) * dqsdt))
                 ! -----------------------------------------------------------------------
                 ! alternative minimum evap in dry environmental air
                 ! sink = min (qr (k), dim (rh_rain * qsat, qv (k)) / (1. + lcpk (k) * dqsdt))
@@ -1343,6 +1443,7 @@ subroutine revap_racc (ktop, kbot, dt, tz, qv, ql, qr, qi, qs, qg, den, denfac, 
                 q_liq (k) = q_liq (k) - evap
                 cvm (k) = c_air + qv (k) * c_vap + q_liq (k) * c_liq + q_sol (k) * c_ice
                 tz (k) = tz (k) - evap * lhl (k) / cvm (k)
+                revap(k) = evap / dt
             endif
             
             ! -----------------------------------------------------------------------
@@ -1355,6 +1456,7 @@ subroutine revap_racc (ktop, kbot, dt, tz, qv, ql, qr, qi, qs, qg, den, denfac, 
                 sink = sink / (1. + sink) * ql (k)
                 ql (k) = ql (k) - sink
                 qr (k) = qr (k) + sink
+                isubl(k) = sink / dt
             endif
             
         endif ! warm - rain
@@ -1430,17 +1532,19 @@ end subroutine linear_prof
 !>@author: Shian-Jiann lin, gfdl
 ! =======================================================================
 
-subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
-        den, denfac, vts, vtg, vtr, qak, rh_adj, rh_rain, dts, h_var)
+subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, fqak, fqalk, fqaik, dp1, &
+        den, denfac, vts, vtg, vtr, qak, evapc, rh_adj, rh_rain, dts, h_var)
     
     implicit none
     
     integer, intent (in) :: ktop, kbot
     
     real, intent (in), dimension (ktop:kbot) :: p1, dp1, den, denfac, vts, vtg, vtr
+    real, intent (inout), dimension(ktop:kbot) :: fqak, fqalk, fqaik
     
     real, intent (inout), dimension (ktop:kbot) :: tzk, qvk, qlk, qrk, qik, qsk, qgk, qak
-    
+    real, intent(inout), dimension(ktop:kbot) :: evapc
+
     real, intent (in) :: rh_adj, rh_rain, dts, h_var
     
     real, dimension (ktop:kbot) :: lcpk, icpk, tcpk, di, lhl, lhi
@@ -1461,6 +1565,8 @@ subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
     
     rdts = 1. / dts
     
+    evapc(:) = 0.0
+
     ! -----------------------------------------------------------------------
     ! define conversion scalar / factor
     ! -----------------------------------------------------------------------
@@ -1906,16 +2012,16 @@ subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
     ! -----------------------------------------------------------------------
     
     call subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tzk, qvk, &
-        qlk, qrk, qik, qsk, qgk, qak, h_var, rh_rain)
-    
+        qlk, qrk, qik, qsk, qgk, qak, fqak, fqalk, fqaik, evapc, h_var, rh_rain)
+
 end subroutine icloud
 
 ! =======================================================================
-!>temperature sentive high vertical resolution processes
+!>temperature sensitive high vertical resolution processes
 ! =======================================================================
 
 subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
-    ql, qr, qi, qs, qg, qa, h_var, rh_rain)
+    ql, qr, qi, qs, qg, qa, fqa, fqal, fqai, evapc, h_var, rh_rain)
     
     implicit none
     
@@ -1924,9 +2030,12 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
     real, intent (in), dimension (ktop:kbot) :: p1, den, denfac
     
     real, intent (in) :: dts, rh_adj, h_var, rh_rain
+
+    real, intent (inout), dimension (ktop:kbot) :: fqa, fqal, fqai
     
     real, intent (inout), dimension (ktop:kbot) :: tz, qv, ql, qr, qi, qs, qg, qa
-    
+    real, intent (inout), dimension(ktop:kbot) :: evapc    
+
     real, dimension (ktop:kbot) :: lcpk, icpk, tcpk, tcp3, lhl, lhi
     real, dimension (ktop:kbot) :: cvm, q_liq, q_sol, q_cond
     
@@ -1940,7 +2049,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
     ! -----------------------------------------------------------------------
     
     real :: rh, rqi, tin, qsw, qsi, qpz, qstar
-    real :: dqsdt, dwsdt, dq, dq0, factor, tmp
+    real :: dqsdt, dwsdt, dq, dq0, factor, tmp, oldqa, qlcn
     real :: q_plus, q_minus, dt_evap, dt_pisub
     real :: evap, sink, tc, pisub, q_adj, dtmp
     real :: pssub, pgsub, tsq, qden, fac_g2v, fac_v2g
@@ -1994,7 +2103,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
             q_sol (k) = q_sol (k) + sink
             cvm (k) = c_air + qv (k) * c_vap + q_liq (k) * c_liq + q_sol (k) * c_ice
             tz (k) = tz (k) + sink * (lhl (k) + lhi (k)) / cvm (k)
-            if (.not. do_qa) qa (k) = qa (k) + 1. ! air fully saturated; 100 % cloud cover
+            qa (k) = 1. ! air fully saturated; 100 % cloud cover
             cycle
         endif
         
@@ -2023,6 +2132,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
                 qv (k) = qpz
                 ql (k) = 0.
                 qi (k) = 0.
+                qa (k) = 0.
                 cycle ! cloud free
             endif
         endif
@@ -2033,25 +2143,48 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         
         qsw = wqs2 (tz (k), den (k), dwsdt)
         dq0 = qsw - qv (k)
-        if (dq0 > 0.) then
-            ! SJL 20170703 added ql factor to prevent the situation of high ql and low RH
-            ! factor = min (1., fac_l2v * sqrt (max (0., ql (k)) / 1.e-5) * 10. * dq0 / qsw)
-            ! factor = fac_l2v
-            ! factor = 1
+#define CNVQL
+#ifdef CNVQL
+        qlcn = ql(k)*fqa(k)
+        if (dq0 > 0. .and. qlcn>qcmin) then
             factor = min (1., fac_l2v * (10. * dq0 / qsw)) ! the rh dependent factor = 1 at 90%
-            evap = min (ql (k), factor * dq0 / (1. + tcp3 (k) * dwsdt))
-        else ! condensate all excess vapor into cloud water
-            ! -----------------------------------------------------------------------
-            ! evap = fac_v2l * dq0 / (1. + tcp3 (k) * dwsdt)
-            ! sjl, 20161108
-            ! -----------------------------------------------------------------------
-            evap = dq0 / (1. + tcp3 (k) * dwsdt)
+            evap = min (qlcn, factor * qlcn / (1. + tcp3 (k) * dwsdt))
+           ! Adjust convective fraction of liquid condensates
+            if (evap.lt.qlcn) then
+              fqal(k) = (qlcn-evap)/(ql(k)-evap)    ! new conv liquid / new total liquid
+            else
+              fqal(k) = 0.
+            end if
+            fqal(k) = min(1.,max(0.,fqal(k)))
+           ! Adjust convective fraction of cloud fractions
+            oldqa = qa(k)
+            qa(k) = qa(k) * max(qi(k) + ql(k)-evap,0.0) / max(qi(k)+ql(k),qrmin)     ! new total condensate / old condensate 
+            if (qa(k).gt.0.) then
+              fqa(k) = (fqa(k)-1.)*oldqa/qa(k) + 1.  ! new conv frac / new total frac
+            else
+              fqa(k) = 0.0
+            end if
+            fqa(k) = min(1.,max(0.,fqa(k)))
+        else
+            evap = 0.
         endif
+#else
+        if (dq0 > 0.) then
+            factor = min (1., fac_l2v * (10. * dq0 / qsw)) ! the rh dependent factor = 1 at 90%
+            evap = min (ql (k), factor * ql(k) / (1. + tcp3 (k) * dwsdt))
+        else
+           ! ! condensate all excess vapor into cloud water
+           !evap = dq0 / (1. + tcp3 (k) * dwsdt)
+            evap = 0.
+        endif
+        qa(k) = max(0.,min(1.,qa(k) * max(qi(k) + ql(k)-evap,0.0) / max(qi(k)+ql(k),qrmin)))     ! new total condensate / old condensate 
+#endif
         qv (k) = qv (k) + evap
         ql (k) = ql (k) - evap
         q_liq (k) = q_liq (k) - evap
         cvm (k) = c_air + qv (k) * c_vap + q_liq (k) * c_liq + q_sol (k) * c_ice
         tz (k) = tz (k) - evap * lhl (k) / cvm (k)
+        evapc(k) = evap
         
         ! -----------------------------------------------------------------------
         ! update heat capacity and latend heat coefficient
@@ -2260,7 +2393,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! combine water species
         ! -----------------------------------------------------------------------
         
-        if (do_qa) cycle
+     !  if (do_qa) cycle
         
         if (rad_snow) then
             q_sol (k) = qi (k) + qs (k)
@@ -2280,7 +2413,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! use the "liquid - frozen water temperature" (tin) to compute saturated specific humidity
         ! -----------------------------------------------------------------------
         
-        tin = tz (k) - (lcpk (k) * q_cond (k) + icpk (k) * q_sol (k)) ! minimum temperature
+        tin = tz (k) - (lcpk (k) * q_liq (k) + icpk (k) * q_sol (k)) ! minimum temperature
         ! tin = tz (k) - ((lv00 + d0_vap * tz (k)) * q_cond (k) + &
         ! (li00 + dc_ice * tz (k)) * q_sol (k)) / (c_air + qpz * c_vap)
         
@@ -2313,19 +2446,17 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! assuming subgrid linear distribution in horizontal; this is effectively a smoother for the
         ! binary cloud scheme
         ! -----------------------------------------------------------------------
-        
-        if (qpz > qrmin) then
-            ! partial cloudiness by pdf:
-            dq = max (qcmin, h_var * qpz)
-            q_plus = qpz + dq ! cloud free if qstar > q_plus
-            q_minus = qpz - dq
-            if (qstar < q_minus) then
-                qa (k) = qa (k) + 1. ! air fully saturated; 100 % cloud cover
-            elseif (qstar < q_plus .and. q_cond (k) > qc_crt) then
-                qa (k) = qa (k) + (q_plus - qstar) / (dq + dq) ! partial cloud cover
-                ! qa (k) = sqrt (qa (k) + (q_plus - qstar) / (dq + dq))
-            endif
-        endif
+         if (qpz > qrmin) then
+             ! partial cloudiness by pdf:
+             dq = max (qcmin, h_var * qpz)
+             q_plus = qpz + dq ! cloud free if qstar > q_plus
+             q_minus = qpz - dq
+             if (qstar < q_minus) then
+                 qa (k) = 1. ! air fully saturated; 100 % cloud cover
+             elseif (qstar < q_plus .and. q_cond (k) > qc_crt) then
+                 qa (k) = min(1., qa (k) + (q_plus - qstar) / (dq + dq) ) ! partial cloud cover
+             endif
+         endif
         
     enddo
     
@@ -2412,7 +2543,7 @@ subroutine revap_rac1 (hydrostatic, is, ie, dt, tz, qv, ql, qr, qi, qs, qg, den,
             ! accretion: pracc
             ! -----------------------------------------------------------------------
             
-            if (qr (i) > qrmin .and. ql (i) > 1.e-8 .and. qsat < q_plus) then
+            if (qr (i) > qrmin .and. ql (i) > qrmin .and. qsat < q_plus) then
                 denfac (i) = sqrt (sfcrho / den (i))
                 sink = dt * denfac (i) * cracw * exp (0.95 * log (qr (i) * den (i)))
                 sink = sink / (1. + sink) * ql (i)
@@ -3157,13 +3288,15 @@ end subroutine cs_limiters
 !>@brief The subroutine 'fall_speed' calculates vertical fall speed.
 ! =======================================================================
 
-subroutine fall_speed (ktop, kbot, den, qs, qi, qg, ql, tk, vts, vti, vtg)
+subroutine fall_speed (ktop, kbot, pl, cnv_fraction, anv_icefall, lsc_icefall, &
+                       den, qs, qi, qg, ql, tk, vts, vti, vtg)
     
     implicit none
     
     integer, intent (in) :: ktop, kbot
     
-    real, intent (in), dimension (ktop:kbot) :: den, qs, qi, qg, ql, tk
+    real, intent (in) :: cnv_fraction, anv_icefall, lsc_icefall 
+    real, intent (in), dimension (ktop:kbot) :: pl, den, qs, qi, qg, ql, tk
     real, intent (out), dimension (ktop:kbot) :: vts, vti, vtg
     
     ! fall velocity constants:
@@ -3177,7 +3310,20 @@ subroutine fall_speed (ktop, kbot, den, qs, qi, qg, ql, tk, vts, vti, vtg)
     real, parameter :: cc = - 0.0516344
     real, parameter :: dd = 0.00216078
     real, parameter :: ee = 1.9714
-    
+   
+    real, parameter :: aaC = - 4.18334e-5
+    real, parameter :: bbC = - 0.00525867
+    real, parameter :: ccC = - 0.0486519
+    real, parameter :: ddC = 0.00251197
+    real, parameter :: eeC = 1.91523
+
+    real, parameter :: aaL = - 1.70704e-5
+    real, parameter :: bbL = - 0.00319109
+    real, parameter :: ccL = - 0.0169876
+    real, parameter :: ddL = 0.00410839
+    real, parameter :: eeL = 1.93644
+
+ 
     ! marshall - palmer constants
     
     real, parameter :: vcons = 6.6280504
@@ -3187,8 +3333,8 @@ subroutine fall_speed (ktop, kbot, den, qs, qi, qg, ql, tk, vts, vti, vtg)
     
     real, dimension (ktop:kbot) :: qden, tc, rhof
     
-    real :: vi0
-    
+    real :: vi1, vi0, pl0, viCNV, viLSC, XIm, LXIm, IWC
+    real :: rBB, C0, C1, DIAM, lnP 
     integer :: k
     
     ! -----------------------------------------------------------------------
@@ -3211,17 +3357,58 @@ subroutine fall_speed (ktop, kbot, den, qs, qi, qg, ql, tk, vts, vti, vtg)
     if (const_vi) then
         vti (:) = vi_fac
     else
-        ! -----------------------------------------------------------------------
-        ! use deng and mace (2008, grl), which gives smaller fall speed than hd90 formula
-        ! -----------------------------------------------------------------------
-        vi0 = 0.01 * vi_fac
+        vi1 = 0.01 * vi_fac
         do k = ktop, kbot
             if (qi (k) < thi) then ! this is needed as the fall - speed maybe problematic for small qi
                 vti (k) = vf_min
             else
-                tc (k) = tk (k) - tice
-                vti (k) = (3. + log10 (qi (k) * den (k))) * (tc (k) * (aa * tc (k) + bb) + cc) + dd * tc (k) + ee
-                vti (k) = vi0 * exp (log_10 * vti (k))
+                tc (k) = tk (k) - tice ! deg C
+#define DENG_MACE
+#ifdef DENG_MACE
+               ! -----------------------------------------------------------------------
+               ! use deng and mace (2008, grl)
+               ! -----------------------------------------------------------------------
+                IWC    = qi (k) * den (k) * 1.e3 ! g/m3
+                viCNV   = anv_icefall*10.0**(log10(IWC) * (tc (k) * (aaC * tc (k) + bbC) + ccC) + ddC * tc (k) + eeC)
+                viLSC   = lsc_icefall*10.0**(log10(IWC) * (tc (k) * (aaL * tc (k) + bbL) + ccL) + ddL * tc (k) + eeL)
+               ! Combine 
+                vti (k) = viLSC*(1.0-cnv_fraction) + viCNV*(cnv_fraction)
+              !! Global
+              ! vti (k) = (3. + log10 (qi (k) * den (k))) * (tc (k) * (aa * tc (k) + bb) + cc) + dd * tc (k) + ee
+              ! vti (k) = exp (log_10 * vti (k))
+#else
+               ! -----------------------------------------------------------------------
+               ! use Mishra et al (2014, JGR) 'Parameterization of ice fall speeds in 
+               !                               midlatitude cirrus: Results from SPartICus'
+               ! -----------------------------------------------------------------------
+                IWC    = qi (k) * den (k) * 1.e6 ! Units are mg/m3
+                viCNV  = MAX(10.0,anv_icefall*(1.119*tc(k) + 14.21*log10(IWC) + 68.85))
+                viLSC  = MAX(10.0,lsc_icefall*(1.411*tc(k) + 11.71*log10(IWC) + 82.35))
+               ! Combine 
+                vti (k) = viLSC*(1.0-cnv_fraction) + viCNV*(cnv_fraction)
+#endif
+               ! Units from cm/s to m/s
+                vti (k) = vi1 * vti (k)
+
+!#define PRES_SCALE
+#ifdef PRES_SCALE
+               ! Include pressure sensitivity (eq 14 in https://doi.org/10.1175/JAS-D-12-0124.1)
+                !------ice cloud effective radius ----- [klaus wyser, 1998]
+                if(tk(k)>273.15) then
+                 rBB  = -2.
+                else
+                 IWC  = qi (k) * den (k)
+                 rBB  = -2. + log10(1.e3*IWC/50.)*(1.e-3*(273.15-tk(k))**1.5)
+                endif
+                rBB   = MIN((MAX(rBB,-6.)),-2.)
+                DIAM  = 2.0*(377.4 + 203.3 * rBB+ 37.91 * rBB **2 + 2.3696 * rBB **3)
+                lnP   = log(pl(k)/100.0)
+                C0    = -1.04 + 0.298*lnP
+                C1    =  0.67 - 0.097*lnP
+                ! apply pressure scaling
+                vti (k) = vti (k) * (C0 + C1*log(DIAM))
+#endif
+               ! Limits
                 vti (k) = min (vi_max, max (vf_min, vti (k)))
             endif
         enddo
@@ -3306,12 +3493,12 @@ subroutine setupm
     fac_rc = (4. / 3.) * pie * rhor * rthresh ** 3
     
     if (prog_ccn) then
-        ! if (master) write (*, *) 'prog_ccn option is .t.'
+        ! if (root_proc) write (*, *) 'prog_ccn option is .t.'
     else
         den_rc = fac_rc * ccn_o * 1.e6
-        ! if (master) write (*, *) 'mp: for ccn_o = ', ccn_o, 'ql_rc = ', den_rc
+        ! if (root_proc) write (*, *) 'mp: for ccn_o = ', ccn_o, 'ql_rc = ', den_rc
         den_rc = fac_rc * ccn_l * 1.e6
-        ! if (master) write (*, *) 'mp: for ccn_l = ', ccn_l, 'ql_rc = ', den_rc
+        ! if (root_proc) write (*, *) 'mp: for ccn_l = ', ccn_l, 'ql_rc = ', den_rc
     endif
     
     vdifu = 2.11e-5
@@ -3433,8 +3620,10 @@ subroutine gfdl_cloud_microphys_init ()
     ! integer :: unit, io, ierr, k, logunit
     ! logical :: flag
     ! real :: tmp, q1, q2
-    
-    ! master = (mpp_pe () .eq.mpp_root_pe ())
+   
+    call fms_init()     
+ 
+    ! root_proc = (mpp_pe () .eq.mpp_root_pe ())
     
 #ifdef INTERNAL_FILE_NML
     read (input_nml_file, nml = gfdl_cloud_microphysics_nml)
@@ -3452,9 +3641,16 @@ subroutine gfdl_cloud_microphys_init ()
         call close_file(nlunit)
     endif
 #endif
+
+    if (mpp_pe() .EQ. mpp_root_pe()) then
+        write (*, *) " ================================================================== "
+        write (*, *) "gfdl_cloud_microphys_mod"
+        write (*, nml = gfdl_cloud_microphysics_nml)
+        write (*, *) " ================================================================== "
+    endif
     
     ! write version number and namelist to log file
-   !if (me == master) then
+   !if (me == root_proc) then
    !    write (logunit, *) " ================================================================== "
    !    write (logunit, *) "gfdl_cloud_microphys_mod"
    !    write (logunit, nml = gfdl_cloud_microphysics_nml)
@@ -3471,7 +3667,7 @@ subroutine gfdl_cloud_microphys_init ()
     tice0 = tice - 0.01
     t_wfr = tice - 40.0 ! supercooled water can exist down to - 48 c, which is the "absolute"
     
-    ! if (master) write (logunit, nml = gfdl_cloud_microphys_nml)
+    ! if (root_proc) write (logunit, nml = gfdl_cloud_microphys_nml)
     !
     ! id_vtr = register_diag_field (mod_name, 'vt_r', axes (1:3), time, &
     ! 'rain fall speed', 'm / s', missing_value = missing_value)
@@ -3498,7 +3694,7 @@ subroutine gfdl_cloud_microphys_init ()
     ! id_prec = register_diag_field (mod_name, 'prec_lin', axes (1:2), time, &
     ! 'prec_lin', 'mm / day', missing_value = missing_value)
     
-    ! if (master) write (*, *) 'prec_lin diagnostics initialized.', id_prec
+    ! if (root_proc) write (*, *) 'prec_lin diagnostics initialized.', id_prec
     
     ! id_cond = register_diag_field (mod_name, 'cond_lin', axes (1:2), time, &
     ! 'total condensate', 'kg / m ** 2', missing_value = missing_value)
@@ -3509,7 +3705,7 @@ subroutine gfdl_cloud_microphys_init ()
     
     ! testing the water vapor tables
     
-    ! if (mp_debug .and. master) then
+    ! if (mp_debug .and. root_proc) then
     ! write (*, *) 'testing water vapor tables in gfdl_cloud_microphys'
     ! tmp = tice - 90.
     ! do k = 1, 25
@@ -3520,7 +3716,7 @@ subroutine gfdl_cloud_microphys_init ()
     ! enddo
     ! endif
     
-    ! if (master) write (*, *) 'gfdl_cloud_micrphys diagnostics initialized.'
+    ! if (root_proc) write (*, *) 'gfdl_cloud_micrphys diagnostics initialized.'
     
     ! gfdl_mp_clock = mpp_clock_id ('gfdl_cloud_microphys', grain = clock_routine)
     
@@ -3560,7 +3756,7 @@ subroutine setup_con
     
     implicit none
     
-    ! master = (mpp_pe () .eq.mpp_root_pe ())
+    ! root_proc = (mpp_pe () .eq.mpp_root_pe ())
     
     rgrav = 1. / grav
     
@@ -3655,8 +3851,8 @@ subroutine qsmith_init
     
     if (.not. tables_are_initialized) then
         
-        ! master = (mpp_pe () .eq. mpp_root_pe ())
-        ! if (master) print *, ' gfdl mp: initializing qs tables'
+        ! root_proc = (mpp_pe () .eq. mpp_root_pe ())
+        ! if (root_proc) print *, ' gfdl mp: initializing qs tables'
         
         ! debug code
         ! print *, mpp_pe (), allocated (table), allocated (table2), &
@@ -3718,7 +3914,7 @@ real function wqs1 (ta, den)
     
     tmin = table_ice - 160.
     ap1 = 10. * dim (ta, tmin) + 1.
-    ap1 = min (2621., ap1)
+    ap1 = min(2621., ap1)
     it = ap1
     es = tablew (it) + (ap1 - it) * desw (it)
     wqs1 = es / (rvgas * ta * den)
@@ -3839,7 +4035,7 @@ real function iqs2 (ta, den, dqdt)
     
     tmin = table_ice - 160.
     ap1 = 10. * dim (ta, tmin) + 1.
-    ap1 = min (2621., ap1)
+    ap1 = min(2621., ap1)
     it = ap1
     es = table2 (it) + (ap1 - it) * des2 (it)
     iqs2 = es / (rvgas * ta * den)
@@ -3925,7 +4121,7 @@ real function wqsat_moist (ta, qv, pa)
     
     tmin = table_ice - 160.
     ap1 = 10. * dim (ta, tmin) + 1.
-    ap1 = min (2621., ap1)
+    ap1 = min(2621., ap1)
     it = ap1
     es = tablew (it) + (ap1 - it) * desw (it)
     wqsat_moist = eps * es * (1. + zvir * qv) / pa
