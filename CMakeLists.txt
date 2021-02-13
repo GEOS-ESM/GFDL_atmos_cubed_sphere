@@ -77,7 +77,7 @@ elseif (FV_PRECISION STREQUAL R8)
    endforeach()
 endif ()
 
-set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT} ${OpenMP_Fortran_FLAGS}")
+set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT}")
 
 if (CRAY_POINTER)
   set_target_properties (${this} PROPERTIES COMPILE_FLAGS ${CRAY_POINTER})
@@ -86,8 +86,8 @@ endif()
 #target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING)
 target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING USE_COND MOIST_CAPPA)
 
-
-
+# Enable OpenMP
+target_link_libraries(${this} PRIVATE OpenMP::OpenMP_Fortran)
 
 esma_add_subdirectories(
   model/mapz-driver
