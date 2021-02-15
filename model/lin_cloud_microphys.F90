@@ -2146,43 +2146,16 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         
         qsw = wqs2 (tz (k), den (k), dwsdt)
         dq0 = qsw - qv (k)
-#define CNVQL
-#ifdef CNVQL
-        qlcn = ql(k)*fqa(k)
-        if (dq0 > 0. .and. qlcn>qcmin) then
-!            factor = min (1., fac_l2v * max(1.,10. * dq0 / qsw)) 
-            factor = min (1., fac_l2v * (10. * dq0 / qsw)) ! the rh dependent factor = 1 at 90%
-            evap = min(dq0, min (qlcn, factor * qlcn / (1. + tcp3 (k) * dwsdt)))
-           ! Adjust convective fraction of liquid condensates
-            if (evap.lt.qlcn) then
-              fqal(k) = (qlcn-evap)/(ql(k)-evap)    ! new conv liquid / new total liquid
-            else
-              fqal(k) = 0.
-            end if
-            fqal(k) = min(1.,max(0.,fqal(k)))
-           ! Adjust convective fraction of cloud fractions
-            oldqa = qa(k)
-            qa(k) = qa(k) * max(qi(k) + ql(k)-evap,0.0) / max(qi(k)+ql(k),qrmin)     ! new total condensate / old condensate 
-            if (qa(k).gt.0.) then
-              fqa(k) = (fqa(k)-1.)*oldqa/qa(k) + 1.  ! new conv frac / new total frac
-            else
-              fqa(k) = 0.0
-            end if
-            fqa(k) = min(1.,max(0.,fqa(k)))
-        else
-            evap = 0.
-        endif
-#else
         if (dq0 > 0.) then
             factor = min (1., fac_l2v * (10. * dq0 / qsw)) ! the rh dependent factor = 1 at 90%
-            evap = min (ql (k), factor * ql(k) / (1. + tcp3 (k) * dwsdt))
-        else
-           ! ! condensate all excess vapor into cloud water
-           !evap = dq0 / (1. + tcp3 (k) * dwsdt)
-            evap = 0.
+            evap = min (ql (k), factor * dq0 / (1. + tcp3 (k) * dwsdt))
+        else ! condensate all excess vapor into cloud water
+            ! -----------------------------------------------------------------------
+            ! evap = fac_v2l * dq0 / (1. + tcp3 (k) * dwsdt)
+            ! sjl, 20161108
+            ! -----------------------------------------------------------------------
+            evap = dq0 / (1. + tcp3 (k) * dwsdt)
         endif
-        qa(k) = max(0.,min(1.,qa(k) * max(qi(k) + ql(k)-evap,0.0) / max(qi(k)+ql(k),qrmin)))     ! new total condensate / old condensate 
-#endif
         qv (k) = qv (k) + evap
         ql (k) = ql (k) - evap
         q_liq (k) = q_liq (k) - evap
