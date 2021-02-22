@@ -91,9 +91,10 @@ module fv_cmp_mod
     real, parameter :: dc_ice = c_liq - c_ice !< 2213.5, isobaric heating / colling
     
     real, parameter :: tice = 273.16 !< freezing temperature
-    real, parameter :: t_wfr = tice - 10. !< homogeneous freezing temperature
-    real, parameter :: dt_fr = 25.
-    
+    real, parameter :: t_wfr = tice
+    real, parameter :: dt_fr = 36.
+    integer, parameter :: expfr = 9
+   
     real, parameter :: lv0 = hlv - dc_vap * tice !< 3.13905782e6, evaporation latent heat coefficient at 0 deg k
     real, parameter :: li00 = hlf - dc_ice * tice !< - 2.7105966e5, fusion latent heat coefficient at 0 deg k
     
@@ -119,7 +120,7 @@ contains
 !>@details This is designed for single-moment 6-class cloud microphysics schemes.
 !! It handles the heat release due to in situ phase changes.
 subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
-        te0, qv, ql, qi, qr, qs, qg, hs, dpln, delz, pt, dp, q_con, cappa, &
+        te0, qv, ql, qi, qr, qs, qg, hs, pmid, dpln, delz, pt, dp, q_con, cappa, &
         area, dtdt, out_dt, last_step, do_qa, qa)
     
     implicit none
@@ -131,7 +132,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real, intent (in) :: zvir, mdt ! remapping time step
     
     real, intent (in), dimension (is - ng:ie + ng, js - ng:je + ng) :: dp, delz, hs
-    real, intent (in), dimension (is:ie, js:je) :: dpln
+    real, intent (in), dimension (is:ie, js:je) :: pmid, dpln
     
     real, intent (inout), dimension (is - ng:ie + ng, js - ng:je + ng) :: pt, qv, ql, qi, qr, qs, qg
     real, intent (inout), dimension (is - ng:, js - ng:) :: q_con, cappa
@@ -152,7 +153,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real :: sdt, dt_bigg, adj_fac
     real :: fac_smlt, fac_r2g, fac_i2s, fac_imlt, fac_l2r, fac_v2l, fac_l2v, fac_frz
     real :: factor, qim, tice0, c_air, c_vap, dw
-    
+
     integer :: i, j
     
     sdt = 0.5 * mdt ! half remapping time step
@@ -170,7 +171,6 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     fac_l2r = 1. - exp (- mdt / tau_l2r)
     
     fac_l2v = 1. - exp (- sdt / tau_l2v)
-    fac_l2v = min (sat_adj0, fac_l2v)
     
     fac_imlt = 1. - exp (- sdt / tau_imlt)
     fac_smlt = 1. - exp (- mdt / tau_smlt)
@@ -268,9 +268,8 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            if (qi (i, j) > 1.e-8 .and. pt1 (i) > t_wfr) then
-                factor = max(0.,min(1.,((pt1(i)-t_wfr)/(tice-t_wfr))**2))
-                sink (i) = min (qi (i, j), factor * fac_imlt * (pt1 (i) - t_wfr) / icp2 (i))
+            if (qi (i, j) > 1.e-8 .and. pt1 (i) > tice) then
+                sink (i) = min (qi (i, j), fac_imlt * (pt1 (i) - tice) / icp2 (i))
                 qi (i, j) = qi (i, j) - sink (i)
                 ! sjl, may 17, 2017
                 ! tmp = min (sink (i), dim (ql_mlt, ql (i, j))) ! max ql amount
@@ -332,11 +331,11 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-! BUG !!!   dtmp = tice - t_wfr - dt_fr - pt1 (i)
+! Edit !!   dtmp = tice - t_wfr - dt_fr - pt1 (i)
             dtmp = t_wfr - dt_fr - pt1 (i)
             if (ql (i, j) > 0. .and. dtmp > 0.) then
-      ! GEOS !  sink (i) = min (ql (i, j), dtmp / icp2 (i))
-                sink (i) = min (ql (i, j), ql (i, j) * dtmp * fac_frz, dtmp / icp2 (i))
+! Rm for GEOS ! sink (i) = min (ql (i, j), dtmp / icp2 (i))
+                sink (i) = min (ql (i, j), dtmp / icp2 (i), ql (i, j) * fac_frz)
                 ql (i, j) = ql (i, j) - sink (i)
                 qi (i, j) = qi (i, j) + sink (i)
                 q_liq (i) = q_liq (i) - sink (i)
@@ -355,7 +354,8 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
             lhi (i) = li00 + dc_ice * pt1 (i)
             lcp2 (i) = lhl (i) / cvm (i)
             icp2 (i) = lhi (i) / cvm (i)
-            tcp3 (i) = lcp2 (i) + icp2 (i) * min (1., dim (tice, pt1 (i)) / 48.)
+            rqi = max(0.0,min(1.0,sin(0.5*pi*(1.0 - (pt1 (i) - (t_wfr-dt_fr)) / dt_fr))))**expfr
+            tcp3 (i) = lcp2 (i) + icp2 (i) * rqi
         enddo
         
         ! -----------------------------------------------------------------------
@@ -393,9 +393,11 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
             lhi (i) = li00 + dc_ice * pt1 (i)
             lcp2 (i) = lhl (i) / cvm (i)
             icp2 (i) = lhi (i) / cvm (i)
-            tcp3 (i) = lcp2 (i) + icp2 (i) * min (1., dim (tice, pt1 (i)) / 48.)
+            rqi = max(0.0,min(1.0,sin(0.5*pi*(1.0 - (pt1 (i) - (t_wfr-dt_fr)) / dt_fr))))**expfr
+            tcp3 (i) = lcp2 (i) + icp2 (i) * rqi
         enddo
-        
+       
+#ifdef SKIP 
         if (last_step) then
             
             ! -----------------------------------------------------------------------
@@ -437,7 +439,8 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
             enddo
             
         endif
-        
+#endif
+ 
         ! -----------------------------------------------------------------------
         ! homogeneous freezing of cloud water to cloud ice
         ! -----------------------------------------------------------------------
@@ -730,20 +733,14 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 if (tin <= t_wfr-dt_fr) then
                     ! ice phase:
                     qstar (i) = iqs1 (tin, den (i))
-                elseif (tin >= tice) then
+                elseif (tin >= t_wfr) then
                     ! liquid phase:
                     qstar (i) = wqs1 (tin, den (i))
                 else
-                    ! mixed phase:
+                   ! mixed phase:
                     qsi = iqs1 (tin, den (i))
                     qsw = wqs1 (tin, den (i))
-                  ! if (q_cond (i) > 1.e-6) then
-                  !     rqi = q_sol (i) / q_cond (i)
-                  ! else
-                  !     ! mostly liquid water clouds at initial cloud development stage
-                        rqi = max(0.0,min(1.0,sin(0.5*pi*(1.0 - (tin - (t_wfr-dt_fr)) / dt_fr))))**4.0
-                  !     rqi = ((tice - tin) / (tice - t_wfr))
-                  ! endif
+                    rqi = max(0.0,min(1.0,sin(0.5*pi*(1.0 - (tin - (t_wfr-dt_fr)) / dt_fr))))**expfr
                     qstar (i) = rqi * qsi + (1. - rqi) * qsw
                 endif
                 
