@@ -146,7 +146,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real, dimension (is:ie) :: mc_air, lhl, lhi
     
     real :: qsw, rh
-    real :: tc, qsi, dqsdt, dq, dq0, pidep, qi_crt, tmp, dtmp, ptc
+    real :: tc, qsi, dqsdt, dq, dq0, pidep, qi_crt, tmp, dtmp
     real :: tin, rqi, q_plus, q_minus
     real :: sdt, dt_bigg, adj_fac
     real :: fac_smlt, fac_r2g, fac_i2s, fac_imlt, fac_l2r, fac_v2l, fac_l2v, fac_frz
@@ -735,12 +735,8 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                     if (q_cond (i) > 1.e-6) then
                         rqi = q_sol (i) / q_cond (i)
                     else
-                       !! mostly liquid water clouds at initial cloud development stage
-                       !rqi = ((tice - tin) / (tice - t_wfr))
-                      ! Use MODIS polynomial from Hu et al, DOI: (10.1029/2009JD012384) 
-                        tc = tin-tice ! convert to celcius
-                        ptc = 7.6725 + 1.0118*tc + 0.1422*tc**2 + 0.0106*tc**3 + 0.000339*tc**4 + 0.00000395*tc**5
-                        rqi = 1.0 - (1.0/(1.0 + exp(-1*ptc))) 
+                        ! mostly liquid water clouds at initial cloud development stage
+                        rqi = ((tice - tin) / (tice - t_wfr))
                     endif
                     qstar (i) = rqi * qsi + (1. - rqi) * qsw
                 endif
