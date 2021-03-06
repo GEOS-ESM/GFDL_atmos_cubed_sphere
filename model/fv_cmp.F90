@@ -118,7 +118,7 @@ contains
 !>@details This is designed for single-moment 6-class cloud microphysics schemes.
 !! It handles the heat release due to in situ phase changes.
 subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
-        te0, qv, ql, qi, qr, qs, qg, hs, dpln, delz, pt, dp, q_con, cappa, &
+        te0, qv, ql, qi, qr, qs, qg, hs, dpln, pmid, delz, pt, dp, q_con, cappa, &
         area, dtdt, out_dt, last_step, do_qa, qa)
     
     implicit none
@@ -130,7 +130,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real, intent (in) :: zvir, mdt ! remapping time step
     
     real, intent (in), dimension (is - ng:ie + ng, js - ng:je + ng) :: dp, delz, hs
-    real, intent (in), dimension (is:ie, js:je) :: dpln
+    real, intent (in), dimension (is:ie, js:je) :: dpln, pmid
     
     real, intent (inout), dimension (is - ng:ie + ng, js - ng:je + ng) :: pt, qv, ql, qi, qr, qs, qg
     real, intent (inout), dimension (is - ng:, js - ng:) :: q_con, cappa
@@ -151,6 +151,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real :: sdt, dt_bigg, adj_fac
     real :: fac_smlt, fac_r2g, fac_i2s, fac_imlt, fac_l2r, fac_v2l, fac_l2v, fac_frz
     real :: factor, qim, tice0, c_air, c_vap, dw
+    real :: a1
 
     integer :: i, j
     
@@ -749,7 +750,17 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 dw = dw_ocean + (dw_land - dw_ocean) * min (1., abs (hs (i, j)) / (10. * grav))
                 ! "scale - aware" subgrid variability: 100 - km as the base
                 hvar (i) = min (0.2, max (0.01, dw * sqrt (sqrt (area (i, j)) / 100.e3)))
-                
+                ! Include ramp to keep low level RHCRIT at 1.0
+                a1 = 1.0
+                if (pmid(i,j) .le. 75000.0) then
+                  a1 = (1.0-hvar(i))
+                else
+                  a1 = (1.0-hvar(i)) + (1.0-(1.0-hvar(i)))/(19.) * &
+                       ((atan( (2.*(pmid(i,j)-75000.0)/(102000.0-75000.0)-1.) * &
+                       tan(20.*pi/21.-0.5*pi) ) + 0.5*pi) * 21./pi - 1.)
+                end if
+                hvar (i) = 1.0-a1
+ 
                 ! -----------------------------------------------------------------------
                 ! partial cloudiness by pdf:
                 ! assuming subgrid linear distribution in horizontal; this is effectively a smoother for the
