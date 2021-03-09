@@ -752,11 +752,11 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 hvar (i) = min (0.2, max (0.01, dw * sqrt (sqrt (area (i, j)) / 100.e3)))
                 ! Include ramp to keep low level RHCRIT at 1.0
                 a1 = 1.0
-                if (pmid(i,j) .le. 75000.0) then
+                if (pmid(i,j) .le. 50000.0) then
                   a1 = (1.0-hvar(i))
                 else
                   a1 = (1.0-hvar(i)) + (1.0-(1.0-hvar(i)))/(19.) * &
-                       ((atan( (2.*(pmid(i,j)-75000.0)/(102000.0-75000.0)-1.) * &
+                       ((atan( (2.*(pmid(i,j)-50000.0)/(102000.0-50000.0)-1.) * &
                        tan(20.*pi/21.-0.5*pi) ) + 0.5*pi) * 21./pi - 1.)
                 end if
                 hvar (i) = 1.0-a1
@@ -773,14 +773,25 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 ! icloud_f = 0: bug - fixed
                 ! icloud_f = 1: old fvgfs gfdl) mp implementation
                 ! icloud_f = 2: binary cloud scheme (0 / 1)
+                ! icloud_f = 3: triangular pdf
                 ! -----------------------------------------------------------------------
-                
                 if (rh > 0.75 .and. qpz (i) > 1.e-6) then
                     dq = hvar (i) * qpz (i)
                     q_plus = qpz (i) + dq
                     q_minus = qpz (i) - dq
-#ifdef GFDL_TOP_HAT
-                    if (icloud_f == 2) then
+                    if (icloud_f == 3) then
+                     ! triangular
+                     if(q_plus.le.qstar(i)) then
+                       qa (i, j) = 0.
+                     elseif ( (qpz(i).le.qstar(i)).and.(qstar(i).lt.q_plus) ) then ! partial cloud cover
+                       qa (i, j) = min(1., qa (i, j) + (q_plus-qstar(i))*(q_plus-qstar(i)) / ( (q_plus-q_minus)*(q_plus-qpz(i)) ))
+                     elseif ( (q_minus.le.qstar(i)).and.(qstar(i).lt.qpz(i)) ) then ! partial cloud cover
+                       qa (i, j) = min(1., 1. - ( (qstar(i)-q_minus)*(qstar(i)-q_minus) / ( (q_plus-q_minus)*(qpz(i)-q_minus) )))
+                      elseif ( qstar(i).le.q_minus ) then
+                       qa (i, j) = 1. ! air fully saturated; 100 % cloud cover
+                      endif
+                    else
+                      if (icloud_f == 2) then
                         if (qpz (i) > qstar (i)) then
                             qa (i, j) = 1.
                         elseif (qstar (i) < q_plus .and. q_cond (i) > 1.e-6) then
@@ -789,7 +800,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                         else
                             qa (i, j) = 0.
                         endif
-                    else
+                      else
                         if (qstar (i) < q_minus) then
                             qa (i, j) = 1.
                         else
@@ -808,19 +819,8 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                             endif
                             qa (i, j) = min (1., qa (i, j))
                         endif
+                      endif
                     endif
-#else
-                 ! triangular
-                  if(q_plus.le.qstar(i)) then
-                     qa (i, j) = 0.
-                  elseif ( (qpz(i).le.qstar(i)).and.(qstar(i).lt.q_plus) ) then ! partial cloud cover
-                     qa (i, j) = min(1., qa (i, j) + (q_plus-qstar(i))*(q_plus-qstar(i)) / ( (q_plus-q_minus)*(q_plus-qpz(i)) ))
-                  elseif ( (q_minus.le.qstar(i)).and.(qstar(i).lt.qpz(i)) ) then ! partial cloud cover
-                     qa (i, j) = min(1., 1. - ( (qstar(i)-q_minus)*(qstar(i)-q_minus) / ( (q_plus-q_minus)*(qpz(i)-q_minus) )))
-                  elseif ( qstar(i).le.q_minus ) then
-                     qa (i, j) = 1. ! air fully saturated; 100 % cloud cover
-                  endif
-#endif
                 else
                     qa (i, j) = 0.
                 endif
