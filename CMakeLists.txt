@@ -86,8 +86,8 @@ endif()
 #target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING)
 target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING USE_COND MOIST_CAPPA)
 
-
-
+# Enable OpenMP
+target_link_libraries(${this} PRIVATE OpenMP::OpenMP_Fortran)
 
 esma_add_subdirectories(
   model/mapz-driver
