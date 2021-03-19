@@ -244,7 +244,11 @@ subroutine remap_edge(q1,q2,is,ie,km,kn,ak,bk)
    integer i,k
    do i=is,ie
       do k=1,kn+1
-         q2(i,k)=ak(k)+bk(k)*q1(i,km+1)
+         if (bk(k)==0.0) then
+            q2(i,k)=0.0
+         else
+            q2(i,k)=bk(k)*q1(i,km+1)
+         end if
       enddo
    enddo
 
