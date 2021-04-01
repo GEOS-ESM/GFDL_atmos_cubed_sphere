@@ -442,7 +442,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         do i = is, ie
             dtmp = tice - pt1 (i) ! [ - 40, - 48]
             if (ql (i, j) > 0. .and. dtmp > 0.) then
-                newqi = new_ice_condensate(mdt, pt1 (i), ql (i,j), qi (i,j))
+                newqi = new_ice_condensate(pt1 (i), ql (i,j), qi (i,j))
                 sink (i) = max(0.0,min (newqi, fac_frz * dtmp / icp2 (i)))
                 ql (i, j) = ql (i, j) - sink (i)
                 qi (i, j) = qi (i, j) + sink (i)
@@ -469,7 +469,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         do i = is, ie
             dtmp = tice0 - pt1 (i)
             if (ql (i, j) > 1.e-8 .and. dtmp > 0.) then
-                newqi = new_ice_condensate(mdt, pt1 (i), ql (i,j), qi (i,j))
+                newqi = new_ice_condensate(pt1 (i), ql (i,j), qi (i,j))
                 sink (i) = 3.3333e-10 * dt_bigg * (exp (0.66 * dtmp) - 1.) * den (i) * ql (i, j) ** 2
                 sink (i) = max(0.0,min (newqi, fac_frz * dtmp / icp2 (i), sink (i)))
                 ql (i, j) = ql (i, j) - sink (i)
@@ -582,8 +582,10 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 endif
                 if (dq > 0.) then ! vapor - > ice
                     tmp = tice - pt1 (i)
-                    qi_crt = 4.92e-11 * exp (1.33 * log (1.e3 * exp (0.15 * tmp)))
-               !    qi_crt = qi_gen * min (qi_lim, 0.1 * tmp) / den (i)
+           ! WRF    qi_crt = 4.92e-11 * exp (1.33 * log (1.e3 * exp (0.15 * tmp)))
+           ! GFDL   qi_crt = qi_gen * min (qi_lim, 0.1 * tmp) / den (i)
+           ! GEOS impose CALIPSO ice polynomial from 0 C to -40 C on qi_crt  
+                    qi_crt = calipso_ice_polynomial(pt1(i)) * qi_gen / den (i)
                     src (i) = min (sink (i), max (qi_crt - qi (i, j), pidep), tmp / tcp2 (i))
                 else
                     pidep = pidep * min (1., dim (pt1 (i), t_sub) * 0.2)
@@ -1164,17 +1166,13 @@ subroutine qs_table2 (n)
     
 end subroutine qs_table2
 
-real function new_ice_condensate(dt, tk, qlk, qik)
+real function new_ice_condensate(tk, qlk, qik)
 
-     real, intent(in) :: dt, tk, qlk, qik
+     real, intent(in) :: tk, qlk, qik
      real :: ptc, ifrac
 
      ifrac = calipso_ice_polynomial(tk)
-     if (qlk+qik > 1.e-12) then
-        new_ice_condensate = max(0.0,ifrac*(qlk+qik) - qik)
-     else
-        new_ice_condensate = 0.0
-     endif
+     new_ice_condensate = max(0.0,ifrac*(qlk+qik) - qik)
 
 end function new_ice_condensate
 

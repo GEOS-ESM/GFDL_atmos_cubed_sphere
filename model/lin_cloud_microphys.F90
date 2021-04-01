@@ -1572,7 +1572,7 @@ subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
 
         if (tzk (k) <= tice) then
 
-            newqi = new_ice_condensate(dt5, tzk (k), qlk (k), qik (k))
+            newqi = new_ice_condensate(tzk (k), qlk (k), qik (k))
  
             ! -----------------------------------------------------------------------
             ! pihom: homogeneous freezing of cloud water into cloud ice
@@ -2152,7 +2152,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         
         tc = tice - tz (k)
         if (ql (k) > qrmin .and. tc > 0.) then
-            newqi = new_ice_condensate(dts, tz (k), ql (k), qi (k))
+            newqi = new_ice_condensate(tz (k), ql (k), qi (k))
             sink = 3.3333e-10 * dts * (exp (0.66 * tc) - 1.) * den (k) * ql (k) * ql (k)
             sink = max(0.0,min (newqi, tau_frz * tc / icpk (k), sink))
             ql (k) = ql (k) - sink
@@ -4829,17 +4829,13 @@ subroutine cloud_diagnosis (is, ie, js, je, den, qw, qi, qr, qs, qg, t, &
     
 end subroutine cloud_diagnosis
 
-real function new_ice_condensate(dt, tk, qlk, qik)
+real function new_ice_condensate(tk, qlk, qik)
 
-     real, intent(in) :: dt, tk, qlk, qik
+     real, intent(in) :: tk, qlk, qik
      real :: ptc, ifrac
 
      ifrac = calipso_ice_polynomial(tk)
-     if (qlk+qik > qcmin) then
-        new_ice_condensate = max(0.0,ifrac*(qlk+qik) - qik)
-     else
-        new_ice_condensate = 0.0
-     endif
+     new_ice_condensate = max(0.0,ifrac*(qlk+qik) - qik)
  
 end function new_ice_condensate
 
