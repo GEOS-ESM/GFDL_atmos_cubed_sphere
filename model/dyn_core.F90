@@ -269,11 +269,6 @@ contains
 
     integer :: is,  ie,  js,  je
     integer :: isd, ied, jsd, jed
-!$  integer :: omp_get_num_threads
-
-!!$omp parallel
-!!$ print *, 'dyn_core num threads...', omp_get_num_threads()
-!!$omp end parallel
 
       is  = bd%is
       ie  = bd%ie
