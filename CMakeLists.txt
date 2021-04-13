@@ -48,11 +48,17 @@ set (srcs
   geos_utils/rs_scaleMod.F90
   )
 
-
-esma_add_library (${this}
-  SRCS ${srcs}
-  DEPENDENCIES MAPL gftl-shared
-  INCLUDES ${INC_ESMF})
+if (ESMA_USE_GFE_NAMESPACE)
+   esma_add_library (${this}
+      SRCS ${srcs}
+      DEPENDENCIES MAPL GFTL_SHARED::gftl-shared
+      INCLUDES ${INC_ESMF})
+else ()
+   esma_add_library (${this}
+      SRCS ${srcs}
+      DEPENDENCIES MAPL gftl-shared
+      INCLUDES ${INC_ESMF})
+endif ()
 
 if (FV_PRECISION STREQUAL R4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
@@ -85,6 +91,15 @@ if (CRAY_POINTER)
 endif()
 
 target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING)
+
+option(HYDROSTATIC "Build FV dynamics as hydrostatic" ON)
+if (HYDROSTATIC)
+   ecbuild_info("Building FV dynamics as hydrostatic")
+else()
+   ecbuild_info("Building FV dynamics as non-hydrostatic")
+   ecbuild_info("This sets MOIST_CAPPA and USE_COND preprocessor variables")
+   target_compile_definitions (${this} PRIVATE MOIST_CAPPA USE_COND)
+endif ()
 
 esma_add_subdirectories(
   model/mapz-driver
