@@ -56,9 +56,9 @@ module fv_cmp_mod
     use constants_mod, only: rvgas, rdgas, grav, hlv, hlf, cp_air
     use fv_mp_mod, only: is_master
     use fv_arrays_mod, only: r_grid
-    use gfdl_cloud_microphys_mod, only: ql_gen, qi_gen, qi0_max, ql_mlt, ql0_max, qi_lim, qs_mlt
+    use gfdl_cloud_microphys_mod, only: ql_gen, qi_gen, qi0_crt, qi0_max, ql_mlt, ql0_max, qi_lim, qs_mlt
     use gfdl_cloud_microphys_mod, only: icloud_f, sat_adj0, t_sub, cld_min
-    use gfdl_cloud_microphys_mod, only: tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_imlt, tau_l2r
+    use gfdl_cloud_microphys_mod, only: tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_imlt, tau_l2r, tau_frz
     use gfdl_cloud_microphys_mod, only: rad_rain, rad_snow, rad_graupel, dw_ocean, dw_land
     
     implicit none
@@ -71,6 +71,7 @@ module fv_cmp_mod
     real, parameter :: cp_vap = 4.0 * rvgas !< 1846.0, heat capacity of water vapor at constant pressure
     real, parameter :: cv_air = cp_air - rdgas !< 717.55, heat capacity of dry air at constant volume
     real, parameter :: cv_vap = 3.0 * rvgas !< 1384.5, heat capacity of water vapor at constant volume
+    real, parameter :: pi = 3.1415926535897931 !< gfs: ratio of circle circumference to diameter
     
     ! http: / / www.engineeringtoolbox.com / ice - thermal - properties - d_576.html
     ! c_ice = 2050.0 at 0 deg c
@@ -117,7 +118,7 @@ contains
 !>@details This is designed for single-moment 6-class cloud microphysics schemes.
 !! It handles the heat release due to in situ phase changes.
 subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
-        te0, qv, ql, qi, qr, qs, qg, hs, dpln, delz, pt, dp, q_con, cappa, &
+        te0, qv, ql, qi, qr, qs, qg, hs, dpln, pmid, delz, pt, dp, q_con, cappa, &
         area, dtdt, out_dt, last_step, do_qa, qa)
     
     implicit none
@@ -129,7 +130,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real, intent (in) :: zvir, mdt ! remapping time step
     
     real, intent (in), dimension (is - ng:ie + ng, js - ng:je + ng) :: dp, delz, hs
-    real, intent (in), dimension (is:ie, js:je) :: dpln
+    real, intent (in), dimension (is:ie, js:je) :: dpln, pmid
     
     real, intent (inout), dimension (is - ng:ie + ng, js - ng:je + ng) :: pt, qv, ql, qi, qr, qs, qg
     real, intent (inout), dimension (is - ng:, js - ng:) :: q_con, cappa
@@ -148,9 +149,10 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real :: tc, qsi, dqsdt, dq, dq0, pidep, qi_crt, tmp, dtmp
     real :: tin, rqi, q_plus, q_minus
     real :: sdt, dt_bigg, adj_fac
-    real :: fac_smlt, fac_r2g, fac_i2s, fac_imlt, fac_l2r, fac_v2l, fac_l2v
+    real :: fac_smlt, fac_r2g, fac_i2s, fac_imlt, fac_l2r, fac_v2l, fac_l2v, fac_frz
     real :: factor, qim, tice0, c_air, c_vap, dw
-    
+    real :: a1, newqi, newql
+
     integer :: i, j
     
     sdt = 0.5 * mdt ! half remapping time step
@@ -173,6 +175,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     fac_imlt = 1. - exp (- sdt / tau_imlt)
     fac_smlt = 1. - exp (- mdt / tau_smlt)
     
+    fac_frz = 1. - exp (- mdt / tau_frz)
     ! -----------------------------------------------------------------------
     ! define heat capacity of dry air and water vapor based on hydrostatical property
     ! -----------------------------------------------------------------------
@@ -437,9 +440,10 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            dtmp = t_wfr - pt1 (i) ! [ - 40, - 48]
+            dtmp = tice - pt1 (i) ! [ - 40, - 48]
             if (ql (i, j) > 0. .and. dtmp > 0.) then
-                sink (i) = min (ql (i, j), ql (i, j) * dtmp * 0.125, dtmp / icp2 (i))
+                newqi = new_ice_condensate(pt1 (i), ql (i,j), qi (i,j))
+                sink (i) = max(0.0,min (newqi, fac_frz * dtmp / icp2 (i)))
                 ql (i, j) = ql (i, j) - sink (i)
                 qi (i, j) = qi (i, j) + sink (i)
                 q_liq (i) = q_liq (i) - sink (i)
@@ -463,10 +467,11 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            tc = tice0 - pt1 (i)
-            if (ql (i, j) > 0.0 .and. tc > 0.) then
-                sink (i) = 3.3333e-10 * dt_bigg * (exp (0.66 * tc) - 1.) * den (i) * ql (i, j) ** 2
-                sink (i) = min (ql (i, j), tc / icp2 (i), sink (i))
+            dtmp = tice0 - pt1 (i)
+            if (ql (i, j) > 1.e-8 .and. dtmp > 0.) then
+                newqi = new_ice_condensate(pt1 (i), ql (i,j), qi (i,j))
+                sink (i) = 3.3333e-10 * dt_bigg * (exp (0.66 * dtmp) - 1.) * den (i) * ql (i, j) ** 2
+                sink (i) = max(0.0,min (newqi, fac_frz * dtmp / icp2 (i), sink (i)))
                 ql (i, j) = ql (i, j) - sink (i)
                 qi (i, j) = qi (i, j) + sink (i)
                 q_liq (i) = q_liq (i) - sink (i)
@@ -577,7 +582,10 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 endif
                 if (dq > 0.) then ! vapor - > ice
                     tmp = tice - pt1 (i)
-                    qi_crt = qi_gen * min (qi_lim, 0.1 * tmp) / den (i)
+           ! WRF    qi_crt = 4.92e-11 * exp (1.33 * log (1.e3 * exp (0.15 * tmp)))
+           ! GFDL   qi_crt = qi_gen * min (qi_lim, 0.1 * tmp) / den (i)
+           ! GEOS impose CALIPSO ice polynomial from 0 C to -40 C on qi_crt  
+                    qi_crt = calipso_ice_polynomial(pt1(i)) * qi_gen / den (i)
                     src (i) = min (sink (i), max (qi_crt - qi (i, j), pidep), tmp / tcp2 (i))
                 else
                     pidep = pidep * min (1., dim (pt1 (i), t_sub) * 0.2)
@@ -624,7 +632,13 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            qim = qi0_max / den (i)
+         !  ! higher than 10 m is considered "land" and will have higher subgrid variability
+         !  dw = dw_ocean + (dw_land - dw_ocean) * min (1., abs (hs (i, j)) / (10. * grav))
+         !  ! "scale - aware" subgrid variability: 100 - km as the base
+         !  hvar (i) = min (0.2, max (0.01, dw * sqrt (sqrt (area (i, j)) / 100.e3)))
+         !  qim = (hvar(i)**3) * qi0_crt / den (i)
+         !  qim = qi0_crt / den (i)
+            qim = qi0_crt * (1.0 - min(qi_lim,exp(0.05 * (pt1(i)-tice)))) / den (i)
             if (qi (i, j) > qim) then
                 sink (i) = fac_i2s * (qi (i, j) - qim)
                 qi (i, j) = qi (i, j) - sink (i)
@@ -730,12 +744,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                     ! mixed phase:
                     qsi = iqs1 (tin, den (i))
                     qsw = wqs1 (tin, den (i))
-                    if (q_cond (i) > 1.e-6) then
-                        rqi = q_sol (i) / q_cond (i)
-                    else
-                        ! mostly liquid water clouds at initial cloud development stage
-                        rqi = ((tice - tin) / (tice - t_wfr))
-                    endif
+                    rqi = calipso_ice_polynomial(tin)
                     qstar (i) = rqi * qsi + (1. - rqi) * qsw
                 endif
                 
@@ -743,7 +752,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 dw = dw_ocean + (dw_land - dw_ocean) * min (1., abs (hs (i, j)) / (10. * grav))
                 ! "scale - aware" subgrid variability: 100 - km as the base
                 hvar (i) = min (0.2, max (0.01, dw * sqrt (sqrt (area (i, j)) / 100.e3)))
-                
+ 
                 ! -----------------------------------------------------------------------
                 ! partial cloudiness by pdf:
                 ! assuming subgrid linear distribution in horizontal; this is effectively a smoother for the
@@ -756,13 +765,25 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 ! icloud_f = 0: bug - fixed
                 ! icloud_f = 1: old fvgfs gfdl) mp implementation
                 ! icloud_f = 2: binary cloud scheme (0 / 1)
+                ! icloud_f = 3: triangular pdf
                 ! -----------------------------------------------------------------------
-                
                 if (rh > 0.75 .and. qpz (i) > 1.e-6) then
                     dq = hvar (i) * qpz (i)
                     q_plus = qpz (i) + dq
                     q_minus = qpz (i) - dq
-                    if (icloud_f == 2) then
+                    if (icloud_f == 3) then
+                     ! triangular
+                     if(q_plus.le.qstar(i)) then
+                       qa (i, j) = 0.
+                     elseif ( (qpz(i).le.qstar(i)).and.(qstar(i).lt.q_plus) ) then ! partial cloud cover
+                       qa (i, j) = min(1., qa (i, j) + (q_plus-qstar(i))*(q_plus-qstar(i)) / ( (q_plus-q_minus)*(q_plus-qpz(i)) ))
+                     elseif ( (q_minus.le.qstar(i)).and.(qstar(i).lt.qpz(i)) ) then ! partial cloud cover
+                       qa (i, j) = min(1., 1. - ( (qstar(i)-q_minus)*(qstar(i)-q_minus) / ( (q_plus-q_minus)*(qpz(i)-q_minus) )))
+                      elseif ( qstar(i).le.q_minus ) then
+                       qa (i, j) = 1. ! air fully saturated; 100 % cloud cover
+                      endif
+                    else
+                      if (icloud_f == 2) then
                         if (qpz (i) > qstar (i)) then
                             qa (i, j) = 1.
                         elseif (qstar (i) < q_plus .and. q_cond (i) > 1.e-6) then
@@ -771,7 +792,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                         else
                             qa (i, j) = 0.
                         endif
-                    else
+                      else
                         if (qstar (i) < q_minus) then
                             qa (i, j) = 1.
                         else
@@ -790,6 +811,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                             endif
                             qa (i, j) = min (1., qa (i, j))
                         endif
+                      endif
                     endif
                 else
                     qa (i, j) = 0.
@@ -1010,10 +1032,11 @@ subroutine qs_table (n)
     real (kind = r_grid) :: delt = 0.1
     real (kind = r_grid) :: tmin, tem, esh20
     real (kind = r_grid) :: wice, wh2o, fac0, fac1, fac2
-    real (kind = r_grid) :: esupc (200)
+    real (kind = r_grid) :: esupc (400)
     
     integer :: i
-    
+    real :: tk
+ 
     tmin = tice - 160.
     
     ! -----------------------------------------------------------------------
@@ -1029,31 +1052,34 @@ subroutine qs_table (n)
     enddo
     
     ! -----------------------------------------------------------------------
-    ! compute es over water between - 20 deg c and 102 deg c.
+    ! compute es over water between - 40 deg c and 102 deg c.
     ! -----------------------------------------------------------------------
     
-    do i = 1, 1221
-        tem = 253.16 + delt * real (i - 1)
+    do i = 1, 1421
+        tem = 233.16 + delt * real (i - 1)
         fac0 = (tem - tice) / (tem * tice)
         fac1 = fac0 * lv0
         fac2 = (dc_vap * log (tem / tice) + fac1) / rvgas
         esh20 = e00 * exp (fac2)
-        if (i <= 200) then
+        if (i <= 400) then
             esupc (i) = esh20
         else
-            table (i + 1400) = esh20
+            table (i + 1200) = esh20
         endif
     enddo
     
     ! -----------------------------------------------------------------------
-    ! derive blended es over ice and supercooled water between - 20 deg c and 0 deg c
+    ! derive blended es over ice and supercooled water between - 40 deg c and 0 deg c
     ! -----------------------------------------------------------------------
     
-    do i = 1, 200
-        tem = 253.16 + delt * real (i - 1)
-        wice = 0.05 * (tice - tem)
-        wh2o = 0.05 * (tem - 253.16)
-        table (i + 1400) = wice * table (i + 1400) + wh2o * esupc (i)
+    do i = 1, 400
+        tem = 233.16 + delt * real (i - 1)
+     !  wice = 0.05 * (tice - tem)
+     !  wh2o = 0.05 * (tem - 253.16)
+        tk = tem
+        wice = calipso_ice_polynomial(tk)
+        wh2o = 1.0 - wice
+        table (i + 1200) = wice * table (i + 1200) + wh2o * esupc (i)
     enddo
     
 end subroutine qs_table
@@ -1139,5 +1165,44 @@ subroutine qs_table2 (n)
     table2 (i1) = tem1
     
 end subroutine qs_table2
+
+real function new_ice_condensate(tk, qlk, qik)
+
+     real, intent(in) :: tk, qlk, qik
+     real :: ptc, ifrac
+
+     ifrac = calipso_ice_polynomial(tk)
+     new_ice_condensate = max(0.0,ifrac*(qlk+qik) - qik)
+
+end function new_ice_condensate
+
+real function new_liq_condensate(dt, tk, qlk, qik)
+
+     real, intent(in) :: dt, tk, qlk, qik
+     real :: lfrac
+
+     lfrac = 1.0 - calipso_ice_polynomial(tk)
+     if (qlk+qik > 1.e-12) then
+        new_liq_condensate = max(0.0,lfrac*(qlk+qik) - qlk)
+     else
+        new_liq_condensate = 0.0
+     endif
+
+end function new_liq_condensate
+
+real function calipso_ice_polynomial(tk)
+  ! Citation: Hu, Y., S. Rodier, K. Xu, W. Sun, J. Huang, B. Lin, P. Zhai, and D. Josset (2010), 
+  !           Occurrence, liquid water content, and fraction of supercooled water clouds from 
+  !           combined CALIOP/IIR/MODIS measurements, J. Geophys. Res., 115, D00H34, 
+  !           doi:10.1029/2009JD012384. 
+     real, intent(in) :: tk ! temperature in K
+     real :: tc, ptc
+
+     tc = min(0.0,max(t_wfr-tice, tk-tice)) ! convert to celcius
+     ptc = 7.6725 + 1.0118*tc + 0.1422*tc**2 + 0.0106*tc**3 + 0.000339*tc**4 + 0.00000395*tc**5
+     calipso_ice_polynomial = 1.0 - (1.0/(1.0 + exp(-1*ptc)))
+   ! Returning the fraction of ice for given T(K)
+
+end function calipso_ice_polynomial
 
 end module fv_cmp_mod
