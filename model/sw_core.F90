@@ -271,12 +271,12 @@
            enddo
            do j=js-1,jep1
               do i=is-1,iep1    
-                 delpc(i,j) = delp(i,j) + ((fx1(i,j)-fx1(i+1,j))+(fy1(i,j)-fy1(i,j+1)))*gridstruct%rarea(i,j)
+                 delpc(i,j) = delp(i,j) + (fx1(i,j)-fx1(i+1,j)+fy1(i,j)-fy1(i,j+1))*gridstruct%rarea(i,j)
 #ifdef SW_DYNAMICS
                    ptc(i,j) = pt(i,j)
 #else
                    ptc(i,j) = (pt(i,j)*delp(i,j) +   &
-                              ((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*gridstruct%rarea(i,j))/delpc(i,j)
+                              (fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*gridstruct%rarea(i,j))/delpc(i,j)
 #endif
               enddo
            enddo
@@ -300,11 +300,11 @@
            enddo
            do j=js-1,je+1
               do i=is-1,ie+1    
-                 delpc(i,j) = delp(i,j) + ((fx1(i,j)-fx1(i+1,j))+(fy1(i,j)-fy1(i,j+1)))*gridstruct%rarea(i,j)
+                 delpc(i,j) = delp(i,j) + (fx1(i,j)-fx1(i+1,j)+fy1(i,j)-fy1(i,j+1))*gridstruct%rarea(i,j)
                    ptc(i,j) = (pt(i,j)*delp(i,j) +   &
-                              ((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*gridstruct%rarea(i,j))/delpc(i,j)
-                    wc(i,j) = (w(i,j)*delp(i,j) + ((fx2(i,j)-fx2(i+1,j)) +    &
-                               (fy2(i,j)-fy2(i,j+1)))*gridstruct%rarea(i,j))/delpc(i,j)
+                              (fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*gridstruct%rarea(i,j))/delpc(i,j)
+                    wc(i,j) = (w(i,j)*delp(i,j) + (fx2(i,j)-fx2(i+1,j) +    &
+                               fy2(i,j)-fy2(i,j+1))*gridstruct%rarea(i,j))/delpc(i,j)
               enddo
            enddo
       endif
@@ -407,7 +407,7 @@
 
       do j=js,je+1
          do i=is,ie+1
-            vort(i,j) =  (fx(i,j-1) - fx(i,j)) + (fy(i,j) - fy(i-1,j))
+            vort(i,j) =  fx(i,j-1) - fx(i,j) - fy(i-1,j) + fy(i,j)
          enddo
       enddo
 
@@ -926,12 +926,12 @@
 
       do j=jsd,jed
          do i=is,ie
-            ra_x(i,j) = area(i,j) + (xfx_adv(i,j) - xfx_adv(i+1,j))
+            ra_x(i,j) = area(i,j) + xfx_adv(i,j) - xfx_adv(i+1,j)
          enddo
       enddo
       do j=js,je
          do i=isd,ied
-            ra_y(i,j) = area(i,j) + (yfx_adv(i,j) - yfx_adv(i,j+1))
+            ra_y(i,j) = area(i,j) + yfx_adv(i,j) - yfx_adv(i,j+1)
          enddo
       enddo
 
@@ -974,7 +974,7 @@
                  call del6_vt_flux(nord_w, npx, npy, damp4, w, wk, fx2, fy2, gridstruct, bd)
                 do j=js,je
                    do i=is,ie
-                      dw(i,j) = ((fx2(i,j)-fx2(i+1,j))+(fy2(i,j)-fy2(i,j+1)))*rarea(i,j)
+                      dw(i,j) = (fx2(i,j)-fx2(i+1,j)+fy2(i,j)-fy2(i,j+1))*rarea(i,j)
 ! 0.5 * [ (w+dw)**2 - w**2 ] = w*dw + 0.5*dw*dw
 !                   heat_source(i,j) = -d_con*dw(i,j)*(w(i,j)+0.5*dw(i,j))
                     heat_source(i,j) = dd8 - dw(i,j)*(w(i,j)+0.5*dw(i,j))
@@ -986,7 +986,7 @@
                           gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy)
             do j=js,je
                do i=is,ie
-                  w(i,j) = delp(i,j)*w(i,j) + ((gx(i,j)-gx(i+1,j))+(gy(i,j)-gy(i,j+1)))*rarea(i,j)
+                  w(i,j) = delp(i,j)*w(i,j) + (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
                enddo
             enddo
         endif
@@ -996,7 +996,7 @@
                 xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
             do j=js,je
                do i=is,ie
-                  q_con(i,j) = delp(i,j)*q_con(i,j) + ((gx(i,j)-gx(i+1,j))+(gy(i,j)-gy(i,j+1)))*rarea(i,j)
+                  q_con(i,j) = delp(i,j)*q_con(i,j) + (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
                enddo
             enddo
 #endif
@@ -1018,12 +1018,12 @@
         do j=js,je
            do i=is,ie
                 wk(i,j) = delp(i,j)
-              delp(i,j) = wk(i,j) + ((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j)
+              delp(i,j) = wk(i,j) + (fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j)
 #ifdef SW_DYNAMICS
               ptc(i,j) = pt(i,j)
 #else
               pt(i,j) = (pt(i,j)*wk(i,j) +               &
-                        ((gx(i,j)-gx(i+1,j))+(gy(i,j)-gy(i,j+1)))*rarea(i,j))/delp(i,j)
+                        (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j))/delp(i,j)
 #endif
            enddo
         enddo
@@ -1034,7 +1034,7 @@
            do j=js,je
               do i=is,ie
                  q(i,j,k,iq) = (q(i,j,k,iq)*wk(i,j) +               &
-                         ((gx(i,j)-gx(i+1,j))+(gy(i,j)-gy(i,j+1)))*rarea(i,j))/delp(i,j)
+                         (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j))/delp(i,j)
               enddo
            enddo
         enddo
@@ -1051,10 +1051,10 @@
            do i=is,ie
 #ifndef SW_DYNAMICS
               pt(i,j) = pt(i,j)*delp(i,j) +               &
-                         ((gx(i,j)-gx(i+1,j))+(gy(i,j)-gy(i,j+1)))*rarea(i,j)
+                         (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
 #endif
               delp(i,j) = delp(i,j) +                     &
-                         ((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j)
+                         (fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j)
 #ifndef SW_DYNAMICS
               pt(i,j) = pt(i,j) / delp(i,j)
 
@@ -1095,7 +1095,7 @@
          if (nested) then
             do j=js2,je1
                do i=is2,ie1
-                  vb(i,j) = dt5*((vc(i-1,j)+vc(i,j))-(uc(i,j-1)+uc(i,j))*cosa(i,j))*rsina(i,j)
+                  vb(i,j) = dt5*(vc(i-1,j)+vc(i,j)-(uc(i,j-1)+uc(i,j))*cosa(i,j))*rsina(i,j)
                enddo
             enddo
          else
@@ -1107,7 +1107,7 @@
 
             do j=js2,je1
                do i=is2,ie1
-                  vb(i,j) = dt5*((vc(i-1,j)+vc(i,j))-(uc(i,j-1)+uc(i,j))*cosa(i,j))*rsina(i,j)
+                  vb(i,j) = dt5*(vc(i-1,j)+vc(i,j)-(uc(i,j-1)+uc(i,j))*cosa(i,j))*rsina(i,j)
                enddo
 
                if ( is==1 ) then
@@ -1151,7 +1151,7 @@
             do j=js,je+1
  
                   do i=is2,ie1
-                     ub(i,j) = dt5*((uc(i,j-1)+uc(i,j))-(vc(i-1,j)+vc(i,j))*cosa(i,j))*rsina(i,j)
+                     ub(i,j) = dt5*(uc(i,j-1)+uc(i,j)-(vc(i-1,j)+vc(i,j))*cosa(i,j))*rsina(i,j)
                   enddo
 
             enddo
@@ -1172,7 +1172,7 @@
                   enddo
                else
                   do i=is2,ie1
-                     ub(i,j) = dt5*((uc(i,j-1)+uc(i,j))-(vc(i-1,j)+vc(i,j))*cosa(i,j))*rsina(i,j)
+                     ub(i,j) = dt5*(uc(i,j-1)+uc(i,j)-(vc(i-1,j)+vc(i,j))*cosa(i,j))*rsina(i,j)
                   enddo
                endif
             enddo
@@ -1246,7 +1246,7 @@
 ! wk is "volume-mean" relative vorticity
        do j=jsd,jed
           do i=isd,ied
-             wk(i,j) = rarea(i,j)*( (vt(i,j)-vt(i,j+1)) + (ut(i+1,j)-ut(i,j)) )
+             wk(i,j) = rarea(i,j)*(vt(i,j)-vt(i,j+1)-ut(i,j)+ut(i+1,j))
           enddo
        enddo
 
@@ -1355,7 +1355,7 @@
 
       do j=js,je+1
          do i=is,ie+1
-            delpc(i,j) = (vort(i,j-1) - vort(i,j)) + (ptc(i-1,j) - ptc(i,j))
+            delpc(i,j) = vort(i,j-1) - vort(i,j) + ptc(i-1,j) - ptc(i,j)
          enddo
       enddo
 
@@ -1409,7 +1409,7 @@
         if ( fill_c ) call fill_corners(vc, uc, npx, npy, VECTOR=.true., DGRID=.true.)
         do j=js-nt,je+1+nt
            do i=is-nt,ie+1+nt
-              divg_d(i,j) = (uc(i,j-1) - uc(i,j)) + (vc(i-1,j) - vc(i,j))
+              divg_d(i,j) = uc(i,j-1) - uc(i,j) + vc(i-1,j) - vc(i,j)
            enddo
         enddo
 
@@ -1503,12 +1503,12 @@
                   xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac)
     do j=js,je+1
        do i=is,ie
-          u(i,j) = vt(i,j) + (ke(i,j) - ke(i+1,j)) + fy(i,j)
+          u(i,j) = vt(i,j) + ke(i,j) - ke(i+1,j) + fy(i,j)
        enddo
     enddo
     do j=js,je
        do i=is,ie+1
-          v(i,j) = ut(i,j) + (ke(i,j) - ke(i,j+1)) - fx(i,j)
+          v(i,j) = ut(i,j) + ke(i,j) - ke(i,j+1) - fx(i,j)
        enddo
     enddo
 
@@ -1661,7 +1661,7 @@
       nt = nord-n
       do j=js-nt-1,je+nt+1
          do i=is-nt-1,ie+nt+1
-            d2(i,j) = ((fx2(i,j)-fx2(i+1,j))+(fy2(i,j)-fy2(i,j+1)))*gridstruct%rarea(i,j)
+            d2(i,j) = (fx2(i,j)-fx2(i+1,j)+fy2(i,j)-fy2(i,j+1))*gridstruct%rarea(i,j)
          enddo
       enddo
 
@@ -1751,7 +1751,7 @@
         enddo
         do j=js-1,je+2
            do i=is-1,ie+2
-              divg_d(i,j) = gridstruct%rarea_c(i,j)*((vf(i,j-1)-vf(i,j))+(uf(i-1,j)-uf(i,j)))
+              divg_d(i,j) = gridstruct%rarea_c(i,j)*(vf(i,j-1)-vf(i,j)+uf(i-1,j)-uf(i,j))
            enddo
         enddo
   else
@@ -1784,7 +1784,7 @@
 
     do j=js,je+1
        do i=is,ie+1
-          divg_d(i,j) = (vf(i,j-1) - vf(i,j)) + (uf(i-1,j) - uf(i,j))
+          divg_d(i,j) = vf(i,j-1) - vf(i,j) + uf(i-1,j) - uf(i,j)
        enddo
     enddo
 
@@ -1864,7 +1864,7 @@
         enddo
         do j=jsd+1,jed
            do i=isd+1,ied
-              divg_d(i,j) = rarea_c(i,j)*((vf(i,j-1)-vf(i,j))+(uf(i-1,j)-uf(i,j)))
+              divg_d(i,j) = rarea_c(i,j)*(vf(i,j-1)-vf(i,j)+uf(i-1,j)-uf(i,j))
            enddo
         enddo
     else
@@ -1885,7 +1885,7 @@
 
        do j=jsd+1,jed
           do i=isd+1,ied
-             divg_d(i,j) = ((vf(i,j-1) - vf(i,j)) + (uf(i-1,j) - uf(i,j)))*rarea_c(i,j)
+             divg_d(i,j) = (vf(i,j-1) - vf(i,j) + uf(i-1,j) - uf(i,j))*rarea_c(i,j)
           enddo
        enddo
 
@@ -1973,7 +1973,7 @@ end subroutine divergence_corner_nest
        enddo
        do j=js,je+1
           do i=is,ie+1
-             smag_c(i,j) = rarea_c(i,j)*((vt(i,j-1)-vt(i,j)) + (ut(i,j)-ut(i-1,j)))
+             smag_c(i,j) = rarea_c(i,j)*(vt(i,j-1)-vt(i,j)-ut(i-1,j)+ut(i,j))
           enddo
        enddo
 ! Fix the corners?? if grid_type /= 4
@@ -1992,7 +1992,7 @@ end subroutine divergence_corner_nest
 
        do j=jsd,jed
           do i=isd,ied
-             wk(i,j) = rarea(i,j)*((vt(i,j)-vt(i,j+1))+(ut(i,j)-ut(i+1,j)))
+             wk(i,j) = rarea(i,j)*(vt(i,j)-vt(i,j+1)+ut(i,j)-ut(i+1,j))
           enddo
        enddo
        call a2b_ord4(wk, sh, gridstruct, npx, npy, is, ie, js, je, ng, .false.)
@@ -2198,6 +2198,19 @@ end subroutine divergence_corner_nest
            do i=is-1, ie+1
               smt5(i) = 3.*abs(b0(i)) < abs(bl(i)-br(i))
            enddo
+!WMP
+! fix edge issues
+   if ( (.not.nested) .and. grid_type < 3) then
+     if( is==1 ) then
+       smt5(0) = bl(0)*br(0) < 0.
+       smt5(1) = bl(1)*br(1) < 0.
+     endif
+     if( (ie+1)==npx ) then
+        smt5(npx-1) = bl(npx-1)*br(npx-1) < 0.
+        smt5(npx  ) = bl(npx  )*br(npx  ) < 0.
+     endif
+   endif
+!WMP
         endif
 
 !DEC$ VECTOR ALWAYS
@@ -2607,6 +2620,23 @@ end subroutine divergence_corner_nest
               smt6(i,j) = 3.*abs(b0(i,j)) < abs(bl(i,j)-br(i,j))
            enddo
         enddo
+!WMP
+! fix edge issues
+   if ( (.not.nested) .and. grid_type < 3) then
+     if( js==1 ) then
+       do i=is,ie+1
+          smt6(i,0) = bl(i,0)*br(i,0) < 0.
+          smt6(i,1) = bl(i,1)*br(i,1) < 0.
+       enddo
+     endif
+     if( (je+1)==npy ) then
+       do i=is,ie+1
+          smt6(i,npy-1) = bl(i,npy-1)*br(i,npy-1) < 0.
+          smt6(i,npy  ) = bl(i,npy  )*br(i,npy  ) < 0.
+       enddo
+     endif
+   endif
+!WMP
         do j=js,je+1
 !DEC$ VECTOR ALWAYS
         do i=is,ie+1
