@@ -2101,6 +2101,8 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! cloud water < -- > vapor adjustment:
         ! -----------------------------------------------------------------------
         
+!#define CLDEVP
+#ifdef CLDEVP
         qsw = wqs2 (tz (k), den (k), dwsdt)
         dq0 = qsw - qv (k)
         if (dq0 > 0.) then
@@ -2116,6 +2118,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         cvm (k) = c_air + qv (k) * c_vap + q_liq (k) * c_liq + q_sol (k) * c_ice
         tz (k) = tz (k) - evap * lhl (k) / cvm (k)
         evapc(k) = evap
+#endif
         
         ! -----------------------------------------------------------------------
         ! update heat capacity and latend heat coefficient
