@@ -2133,7 +2133,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         
         dtmp = t_wfr - tz (k) ! [ - 40, - 48]
         if (dtmp > 0. .and. ql (k) > qcmin) then
-            sink = min (ql (k), tau_frz * dtmp / icpk (k))
+            sink = min (ql (k), fac_frz * dtmp / icpk (k))
             ql (k) = ql (k) - sink
             qi (k) = qi (k) + sink
             q_liq (k) = q_liq (k) - sink
@@ -2157,7 +2157,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         if (ql (k) > qrmin .and. tc > 0.) then
             newqi = new_ice_condensate(tz (k), ql (k), qi (k))
             sink = 3.3333e-10 * dts * (exp (0.66 * tc) - 1.) * den (k) * ql (k) * ql (k)
-            sink = max(0.0,min (newqi, tau_frz * tc / icpk (k), sink))
+            sink = max(0.0,min (newqi, fac_frz * tc / icpk (k), sink))
             ql (k) = ql (k) - sink
             qi (k) = qi (k) + sink
             q_liq (k) = q_liq (k) - sink
