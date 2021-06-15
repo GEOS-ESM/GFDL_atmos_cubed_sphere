@@ -41,7 +41,7 @@
 !     <td>mp_reduce_min, is_master</td>
 !   </tr>
 !   <tr>
-!     <td>gfdl_cloud_microphys_mod</td>
+!     <td>gfdl_cloud_microphys_mod (as gfdl2_cloud_microphysics from moist)</td>
 !     <td>wqs1, wqs2, wqsat2_moist</td>
 !   </tr>
 !   <tr>
@@ -58,7 +58,7 @@ module fv_sg_mod
   use constants_mod,      only: rdgas, rvgas, cp_air, cp_vapor, hlv, hlf, kappa, grav
   use tracer_manager_mod, only: get_tracer_index
   use field_manager_mod,  only: MODEL_ATMOS
-  use gfdl_cloud_microphys_mod, only: wqs2, wqsat2_moist
+  use gfdl2_cloud_microphys_mod, only: wqs2, wqsat2_moist
   use fv_mp_mod,          only: mp_reduce_min, is_master
 
 implicit none

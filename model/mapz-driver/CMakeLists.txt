@@ -33,7 +33,7 @@ endif ()
 ecbuild_add_executable(
   TARGET mapz-driver
   SOURCES ${srcs}
-  LIBS ${FMS} MAPL)
+  LIBS ${FMS} MAPL GEOSmoist_GridComp)
 target_compile_definitions(mapz-driver PRIVATE MAPL_MODE SPMD TIMING)
 target_compile_options(mapz-driver PRIVATE ${TRACEBACK})
 set_target_properties(${this} PROPERTIES Fortran_MODULE_DIRECTORY ${esma_include}/${this})
