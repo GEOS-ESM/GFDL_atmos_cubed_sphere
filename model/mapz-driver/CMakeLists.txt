@@ -21,6 +21,10 @@ set(srcs
   output/output.f90
   main.F90)
 
+if (USE_GFDL_MP_FROM_FV)
+  list(APPEND srcs ../lin_cloud_microphys.F90)
+endif ()
+
 if (FV_PRECISION STREQUAL R4)
   set(FMS fms_r4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
@@ -32,7 +36,7 @@ endif ()
 ecbuild_add_executable(
   TARGET mapz-driver
   SOURCES ${srcs}
-  LIBS ${FMS} MAPL GEOSmoist_GridComp)
-target_compile_definitions(mapz-driver PRIVATE MAPL_MODE SPMD TIMING)
+  LIBS ${FMS} MAPL $<$<NOT:$<BOOL:${USE_GFDL_MP_FROM_FV}>>:GEOSmoist_GridComp>)
+target_compile_definitions(mapz-driver PRIVATE MAPL_MODE SPMD TIMING $<$<BOOL:${USE_GFDL_MP_FROM_FV}>:USE_GFDL_MP_FROM_FV>)
 target_compile_options(mapz-driver PRIVATE ${TRACEBACK})
 set_target_properties(${this} PROPERTIES Fortran_MODULE_DIRECTORY ${esma_include}/${this})

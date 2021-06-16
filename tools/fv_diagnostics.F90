@@ -91,7 +91,7 @@ module fv_diagnostics_mod
 !     <td>timing_on, timing_off</td>
 !   </tr>
 !   <tr>
-!     <td>gfdl_cloud_microphys_mod (as gfdl2_cloud_microphysics from moist)</td>
+!     <td>gfdl_cloud_microphys_mod</td>
 !     <td>wqs1, qsmith_init</td>
 !   </tr>
 !   <tr>
@@ -141,7 +141,11 @@ module fv_diagnostics_mod
  use sat_vapor_pres_mod, only: compute_qs, lookup_es
 
  use fv_arrays_mod, only: max_step 
+#ifdef USE_GFDL_MP_FROM_FV
+ use gfdl_cloud_microphys_mod, only: wqs1, qsmith_init
+#else
  use gfdl2_cloud_microphys_mod, only: wqs1, qsmith_init
+#endif
 
  implicit none
  private
