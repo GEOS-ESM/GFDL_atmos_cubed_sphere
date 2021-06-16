@@ -2,7 +2,6 @@ esma_set_this ()
 
 set (srcs
   tools/fv_treat_da_inc.F90
-  model/lin_cloud_microphys.F90
   model/fv_cmp.F90
   geos_utils/fill_corner.F90
   geos_utils/flow_proj.F90
@@ -48,15 +47,20 @@ set (srcs
   geos_utils/rs_scaleMod.F90
   )
 
+# You can't use generator expressions in set()
+if (USE_GFDL_MP_FROM_FV)
+  list(APPEND srcs model/lin_cloud_microphys.F90)
+endif ()
+
 if (ESMA_USE_GFE_NAMESPACE)
    esma_add_library (${this}
       SRCS ${srcs}
-      DEPENDENCIES MAPL GFTL_SHARED::gftl-shared
+      DEPENDENCIES MAPL GFTL_SHARED::gftl-shared $<$<NOT:$<BOOL:${USE_GFDL_MP_FROM_FV}>>:GEOSmoist_GridComp>
       INCLUDES ${INC_ESMF})
 else ()
    esma_add_library (${this}
       SRCS ${srcs}
-      DEPENDENCIES MAPL gftl-shared
+      DEPENDENCIES MAPL gftl-shared $<$<NOT:$<BOOL:${USE_GFDL_MP_FROM_FV}>>:GEOSmoist_GridComp>
       INCLUDES ${INC_ESMF})
 endif ()
 
@@ -81,6 +85,10 @@ elseif (FV_PRECISION STREQUAL R8)
    foreach(flag ${tmp})
      target_compile_options (${this} PRIVATE $<$<COMPILE_LANGUAGE:Fortran>:${flag}>)
    endforeach()
+endif ()
+
+if (USE_GFDL_MP_FROM_FV)
+  target_compile_definitions (${this} PRIVATE USE_GFDL_MP_FROM_FV)
 endif ()
 
 set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT}")
