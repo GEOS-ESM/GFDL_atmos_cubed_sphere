@@ -188,7 +188,11 @@ module gfdl_cloud_microphys_mod
     
     real :: cld_min = 0.05 !< minimum cloud fraction
     real :: tice = 273.16 !< set tice = 165. to trun off ice - phase phys (kessler emulator)
-    
+   
+    real :: log_10 = log (10.)
+    real :: tice0 = 273.16 - 0.01
+    real :: t_wfr = 273.16 - 40.0 ! supercooled water can exist down to - 48 c, which is the "absolute"
+ 
     real :: t_min = 178. !< min temp to freeze - dry all water vapor
     real :: t_sub = 184. !< min temp for sublimation of cloud ice
     real :: mp_time = 150. !< maximum micro - physics time step (sec)
@@ -301,8 +305,6 @@ module gfdl_cloud_microphys_mod
     logical :: mp_print = .false. !< cloud microphysics debugging printout
     
     ! real :: global_area = - 1.
-    
-    real :: log_10, tice0, t_wfr
     
     ! -----------------------------------------------------------------------
     ! namelist
@@ -3578,11 +3580,6 @@ subroutine gfdl_cloud_microphys_init ()
         call setupm
         do_setup = .false.
     endif
-    
-    log_10 = log (10.)
-    
-    tice0 = tice - 0.01
-    t_wfr = tice - 40.0 ! supercooled water can exist down to - 48 c, which is the "absolute"
     
     ! if (root_proc) write (logunit, nml = gfdl_cloud_microphys_nml)
     !
