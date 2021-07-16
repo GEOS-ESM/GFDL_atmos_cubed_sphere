@@ -91,6 +91,9 @@ endif()
 
 target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING)
 
+# Enable OpenMP
+target_link_libraries(${this} PRIVATE OpenMP::OpenMP_Fortran)
+
 option(HYDROSTATIC "Build FV dynamics as hydrostatic" ON)
 if (HYDROSTATIC)
    ecbuild_info("Building FV dynamics as hydrostatic")
