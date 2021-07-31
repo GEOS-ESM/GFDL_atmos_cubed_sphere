@@ -100,6 +100,9 @@ else()
    target_compile_definitions (${this} PRIVATE MOIST_CAPPA USE_COND)
 endif ()
 
+# Enable OpenMP
+target_link_libraries(${this} PRIVATE OpenMP::OpenMP_Fortran)
+
 esma_add_subdirectories(
   model/mapz-driver
   model/tp-core-driver)
