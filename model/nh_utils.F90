@@ -186,8 +186,8 @@ CONTAINS
 
      do j=js1, je1
         do i=is1,ie1
-           gz(i,j,k) = (gz2(i,j)*area(i,j) + ( fx(i,j)- fx(i+1,j))+( fy(i,j)- fy(i,j+1))) &
-                     / (         area(i,j) + (xfx(i,j)-xfx(i+1,j))+(yfx(i,j)-yfx(i,j+1)))
+           gz(i,j,k) = (gz2(i,j)*area(i,j) +  fx(i,j)- fx(i+1,j)+ fy(i,j)- fy(i,j+1)) &
+                     / (         area(i,j) + xfx(i,j)-xfx(i+1,j)+yfx(i,j)-yfx(i,j+1))
         enddo
      enddo
 6000 continue
@@ -269,12 +269,12 @@ CONTAINS
 
      do j=jsd,jed
         do i=is,ie
-           ra_x(i,j) = area(i,j) + (xfx_adv(i,j,k) - xfx_adv(i+1,j,k))
+           ra_x(i,j) = area(i,j) + xfx_adv(i,j,k) - xfx_adv(i+1,j,k)
         enddo
      enddo
      do j=js,je
         do i=isd,ied
-           ra_y(i,j) = area(i,j) + (yfx_adv(i,j,k) - yfx_adv(i,j+1,k))
+           ra_y(i,j) = area(i,j) + yfx_adv(i,j,k) - yfx_adv(i,j+1,k)
         enddo
      enddo
 
@@ -289,8 +289,8 @@ CONTAINS
      call del6_vt_flux(ndif(k), npx, npy, damp(k), z2, wk2, fx2, fy2, gridstruct, bd)
      do j=js,je
         do i=is,ie
-           zh(i,j,k) = (z2(i,j)*area(i,j)+(fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))  &
-                     / ((ra_x(i,j)+ra_y(i,j))-area(i,j)) + ((fx2(i,j)-fx2(i+1,j))+(fy2(i,j)-fy2(i,j+1)))*rarea(i,j)
+           zh(i,j,k) = (z2(i,j)*area(i,j)+fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))  &
+                     / (ra_x(i,j)+ra_y(i,j)-area(i,j)) + (fx2(i,j)-fx2(i+1,j)+fy2(i,j)-fy2(i,j+1))*rarea(i,j)
         enddo
      enddo
    else
@@ -298,8 +298,8 @@ CONTAINS
                    fx, fy, xfx_adv(is,jsd,k), yfx_adv(isd,js,k), gridstruct, bd, ra_x, ra_y, lim_fac)
      do j=js,je
         do i=is,ie
-           zh(i,j,k) = (zh(i,j,k)*area(i,j)+(fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))   &
-                     / ((ra_x(i,j) + ra_y(i,j)) - area(i,j))
+           zh(i,j,k) = (zh(i,j,k)*area(i,j)+fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))   &
+                     / (ra_x(i,j) + ra_y(i,j) - area(i,j))
 !          zh(i,j,k) = rarea(i,j)*(fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))   &
 !                    + zh(i,j,k)*(3.-rarea(i,j)*(ra_x(i,j) + ra_y(i,j)))
         enddo
