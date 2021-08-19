@@ -414,7 +414,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                     factor = - min (1., fac_l2v * 10. * (1. - qv (i, j) / wqsat (i))) ! the rh dependent factor = 1 at 90%
                     src (i) = - min (ql (i, j), factor * dq0)
                 endif
-                adj_fac = 1.
+      ! WMP     adj_fac = 1.
                 qv (i, j) = qv (i, j) - src (i)
                 ql (i, j) = ql (i, j) + src (i)
                 q_liq (i) = q_liq (i) + src (i)

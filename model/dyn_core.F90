@@ -694,24 +694,24 @@ contains
        else
 ! Sponge layers with del-2 damping on divergence, vorticity, w, z, and air mass (delp).
 ! no special damping of potential temperature in sponge layers
-              if ( k==1 ) then
+              if ( k<=MAX(1,flagstruct%n_sponge-2) ) then
 ! Divergence damping:
                    nord_k=0; d2_divg = max(0.01, flagstruct%d2_bg, flagstruct%d2_bg_k1)
 ! Vertical velocity:
                    nord_w=0; damp_w = d2_divg
                    if ( flagstruct%do_vort_damp ) then
 ! damping on delp and vorticity:
-                        nord_v(k)=0; 
+                        nord_v(k)=0;
 #ifndef HIWPP
                         damp_vt(k) = 0.5*d2_divg
 #endif
                    endif
                    d_con_k = 0.
-              elseif ( k<=MAX(2,flagstruct%n_sponge-1) .and. flagstruct%d2_bg_k2>0.01 ) then
+              elseif ( k==MAX(2,flagstruct%n_sponge-1) .and. flagstruct%d2_bg_k2>0.01 ) then
                    nord_k=0; d2_divg = max(flagstruct%d2_bg, flagstruct%d2_bg_k2)
                    nord_w=0; damp_w = d2_divg
                    if ( flagstruct%do_vort_damp ) then
-                        nord_v(k)=0; 
+                        nord_v(k)=0;
 #ifndef HIWPP
                         damp_vt(k) = 0.5*d2_divg
 #endif
@@ -1175,8 +1175,12 @@ contains
        do k=1,n_con
           delt = abs(bdt*flagstruct%delt_max)
 ! Sponge layers:
-          if ( k == 1 ) delt = 0.1*delt
-          if ( k == 2 ) delt = 0.5*delt
+          if ( flagstruct%n_sponge == 0) then 
+            if ( k == 1 ) delt = 0.1*delt
+            if ( k == 2 ) delt = 0.5*delt
+          else
+            delt = delt*MIN(1.0,FLOAT(k-1)/FLOAT(flagstruct%n_sponge))
+          endif
           do j=js,je
              do i=is,ie
 #ifdef MOIST_CAPPA
