@@ -764,7 +764,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 ! -----------------------------------------------------------------------
                 ! icloud_f = 0: bug - fixed
                 ! icloud_f = 1: old fvgfs gfdl) mp implementation
-                ! icloud_f = 2: binary cloud scheme (0 / 1)
+                ! icloud_f = 2: top-hat pdf !!! used to be binary cloud scheme (0 / 1)
                 ! icloud_f = 3: triangular pdf
                 ! -----------------------------------------------------------------------
                 if (rh > 0.75 .and. qpz (i) > 1.e-6) then
@@ -774,24 +774,32 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                     if (icloud_f == 3) then
                      ! triangular
                      if(q_plus.le.qstar(i)) then
-                       qa (i, j) = 0.
+                       qa (i, j) = 0.0  ! no cloud cover 
                      elseif ( (qpz(i).le.qstar(i)).and.(qstar(i).lt.q_plus) ) then ! partial cloud cover
                        qa (i, j) = min(1., qa (i, j) + (q_plus-qstar(i))*(q_plus-qstar(i)) / ( (q_plus-q_minus)*(q_plus-qpz(i)) ))
                      elseif ( (q_minus.le.qstar(i)).and.(qstar(i).lt.qpz(i)) ) then ! partial cloud cover
                        qa (i, j) = min(1., 1. - ( (qstar(i)-q_minus)*(qstar(i)-q_minus) / ( (q_plus-q_minus)*(qpz(i)-q_minus) )))
                       elseif ( qstar(i).le.q_minus ) then
-                       qa (i, j) = 1. ! air fully saturated; 100 % cloud cover
+                       qa (i, j) = 1.0  ! air fully saturated; 100 % cloud cover
                       endif
                     else
                       if (icloud_f == 2) then
-                        if (qpz (i) > qstar (i)) then
-                            qa (i, j) = 1.
-                        elseif (qstar (i) < q_plus .and. q_cond (i) > 1.e-6) then
-                            qa (i, j) = ((q_plus - qstar (i)) / dq) ** 2
-                            qa (i, j) = min (1., qa (i, j))
-                        else
-                            qa (i, j) = 0.
-                        endif
+                       ! top-hat
+                       if(q_plus.le.qstar(i)) then
+                         qa (i, j) = 0.0  ! no cloud cover 
+                       elseif (qstar(i) < q_plus .and. q_cond (i) > 1.e-6) then
+                         qa (i, j) = max(0.0, min(1., (q_plus - qstar(i)) / (dq + dq) )) ! partial cloud cover
+                       elseif (qstar(i) .le. q_minus) then
+                         qa (i, j) = 1.0  ! air fully saturated; 100 % cloud cover
+                       endif
+                     !!!if (qpz (i) > qstar (i)) then
+                     !!!    qa (i, j) = 1.
+                     !!!elseif (qstar (i) < q_plus .and. q_cond (i) > 1.e-6) then
+                     !!!    qa (i, j) = ((q_plus - qstar (i)) / dq) ** 2
+                     !!!    qa (i, j) = min (1., qa (i, j))
+                     !!!else
+                     !!!    qa (i, j) = 0.
+                     !!!endif
                       else
                         if (qstar (i) < q_minus) then
                             qa (i, j) = 1.
