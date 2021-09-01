@@ -46,7 +46,7 @@ module fv_cmp_mod
 !     <td>is_master</td>
 !   </tr>
 !   <tr>
-!     <td>gfdl_cloud_microphys_mod</td>
+!     <td>lin_gfdl_cloud_microphys_mod</td>
 !     <td>ql_gen, qi_gen, qi0_max, ql_mlt, ql0_max, qi_lim, qs_mlt,
 !         tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_imlt, tau_l2r,
 !         rad_rain, rad_snow, rad_graupel, dw_ocean, dw_land</td>
@@ -56,10 +56,10 @@ module fv_cmp_mod
     use constants_mod, only: rvgas, rdgas, grav, hlv, hlf, cp_air
     use fv_mp_mod, only: is_master
     use fv_arrays_mod, only: r_grid
-    use gfdl_cloud_microphys_mod, only: ql_gen, qi_gen, qi0_max, ql_mlt, ql0_max, qi_lim, qs_mlt
-    use gfdl_cloud_microphys_mod, only: icloud_f, sat_adj0, t_sub, cld_min
-    use gfdl_cloud_microphys_mod, only: tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_imlt, tau_l2r
-    use gfdl_cloud_microphys_mod, only: rad_rain, rad_snow, rad_graupel, dw_ocean, dw_land
+    use lin_gfdl_cloud_microphys_mod, only: ql_gen, qi_gen, qi0_max, ql_mlt, ql0_max, qi_lim, qs_mlt
+    use lin_gfdl_cloud_microphys_mod, only: icloud_f, sat_adj0, t_sub, cld_min
+    use lin_gfdl_cloud_microphys_mod, only: tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_imlt, tau_l2r
+    use lin_gfdl_cloud_microphys_mod, only: rad_rain, rad_snow, rad_graupel, dw_ocean, dw_land
     
     implicit none
     

@@ -34,7 +34,7 @@
 ! developer: shian-jiann lin, linjiong zhou
 ! =======================================================================
 
-module gfdl_cloud_microphys_mod
+module lin_gfdl_cloud_microphys_mod
     
     ! use mpp_mod, only: stdlog, mpp_pe, mpp_root_pe, mpp_clock_id, &
     ! mpp_clock_begin, mpp_clock_end, clock_routine, &
@@ -3456,7 +3456,7 @@ subroutine gfdl_cloud_microphys_init ()
     ! write version number and namelist to log file
    !if (me == master) then
    !    write (logunit, *) " ================================================================== "
-   !    write (logunit, *) "gfdl_cloud_microphys_mod"
+   !    write (logunit, *) "lin_gfdl_cloud_microphys_mod"
    !    write (logunit, nml = gfdl_cloud_microphysics_nml)
    !endif
  
@@ -4715,4 +4715,4 @@ subroutine cloud_diagnosis (is, ie, js, je, den, qw, qi, qr, qs, qg, t, &
     
 end subroutine cloud_diagnosis
 
-end module gfdl_cloud_microphys_mod
+end module lin_gfdl_cloud_microphys_mod
