@@ -23,11 +23,11 @@ set(srcs
   main.F90)
 
 if (FV_PRECISION STREQUAL R4)
-  set(FMS fms_r4)
+  set(FMS FMS::FMS)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
-  set(FMS fms_r8)
+  set(FMS FMS::FMS)
 elseif (FV_PRECISION STREQUAL R8)
-   set(FMS fms_r8)
+  set(FMS FMS::FMS)
 endif ()
 
 ecbuild_add_executable(
