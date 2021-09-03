@@ -868,7 +868,7 @@ endif        ! end last_step check
               do j=js,je
                  do i=is,ie
                     dpln(i,j) = peln(i,k+1,j) - peln(i,k,j)
-                    pmid(i,j) = 0.5*(peln(i,k+1,j) - peln(i,k,j))
+                    pmid(i,j) = 0.5*(pe(i,k+1,j) + pe(i,k,j))/100.0 ! pressures at midlevel (hPa)
                  enddo
               enddo
               call fv_sat_adj(abs(mdt), r_vir, is, ie, js, je, ng, hydrostatic, fast_mp_consv, &

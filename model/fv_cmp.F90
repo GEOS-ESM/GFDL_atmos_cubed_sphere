@@ -752,6 +752,12 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 dw = dw_ocean + (dw_land - dw_ocean) * min (1., abs (hs (i, j)) / (10. * grav))
                 ! "scale - aware" subgrid variability: 100 - km as the base
                 hvar (i) = min (0.2, max (0.01, dw * sqrt (sqrt (area (i, j)) / 100.e3)))
+
+               ! turn hvar to limit clouds formed by pdf at upper levels
+               !hvar (i) = min(0.25, max(0.01, &
+               !            0.01 - (0.01-hvar (i))/(19.) * &
+               !            ((atan( (2.*(pmid(i,j)-200)/(750-200)-1.) * &
+               !            tan(20.*pi/21.-0.5*pi) ) + 0.5*pi) * 21./pi - 1.)))
  
                 ! -----------------------------------------------------------------------
                 ! partial cloudiness by pdf:
