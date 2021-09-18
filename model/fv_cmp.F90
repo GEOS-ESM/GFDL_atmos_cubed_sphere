@@ -720,15 +720,9 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 q_cond (i) = q_sol (i) + q_liq (i)
             enddo
             
-            ! -----------------------------------------------------------------------
-            ! use the "liquid - frozen water temperature" (tin) to compute saturated specific humidity
-            ! -----------------------------------------------------------------------
-            
             do i = is, ie
                 
-                tin = pt1 (i) - (lcp2 (i) * q_cond (i) + icp2 (i) * q_sol (i)) ! minimum temperature
-                ! tin = pt1 (i) - ((lv00 + d0_vap * pt1 (i)) * q_cond (i) + &
-                ! (li00 + dc_ice * pt1 (i)) * q_sol (i)) / (mc_air (i) + qpz (i) * c_vap)
+                tin = pt1 (i)
                 
                 ! -----------------------------------------------------------------------
                 ! determine saturated specific humidity
@@ -753,12 +747,6 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 ! "scale - aware" subgrid variability: 100 - km as the base
                 hvar (i) = min (0.2, max (0.01, dw * sqrt (sqrt (area (i, j)) / 100.e3)))
 
-               ! turn hvar to limit clouds formed by pdf at upper levels
-               !hvar (i) = min(0.25, max(0.01, &
-               !            0.01 - (0.01-hvar (i))/(19.) * &
-               !            ((atan( (2.*(pmid(i,j)-200)/(750-200)-1.) * &
-               !            tan(20.*pi/21.-0.5*pi) ) + 0.5*pi) * 21./pi - 1.)))
- 
                 ! -----------------------------------------------------------------------
                 ! partial cloudiness by pdf:
                 ! assuming subgrid linear distribution in horizontal; this is effectively a smoother for the
@@ -798,14 +786,6 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                        elseif (qstar(i) .le. q_minus) then
                          qa (i, j) = 1.0  ! air fully saturated; 100 % cloud cover
                        endif
-                     !!!if (qpz (i) > qstar (i)) then
-                     !!!    qa (i, j) = 1.
-                     !!!elseif (qstar (i) < q_plus .and. q_cond (i) > 1.e-6) then
-                     !!!    qa (i, j) = ((q_plus - qstar (i)) / dq) ** 2
-                     !!!    qa (i, j) = min (1., qa (i, j))
-                     !!!else
-                     !!!    qa (i, j) = 0.
-                     !!!endif
                       else
                         if (qstar (i) < q_minus) then
                             qa (i, j) = 1.
