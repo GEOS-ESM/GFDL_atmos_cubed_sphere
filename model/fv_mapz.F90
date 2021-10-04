@@ -268,14 +268,7 @@ contains
         snowwat = -1
         graupel = -1
         cld_amt = -1
-       case(6)
-        liq_wat = 2
-        ice_wat = 3
-        rainwat = 4
-        snowwat = 5
-        graupel = 6
-        cld_amt = -1
-       case(7)
+       case(6:7)
         liq_wat = 2
         ice_wat = 3
         rainwat = 4
@@ -883,7 +876,7 @@ endif        ! end last_step check
                              q(isd,jsd,k,ice_wat), q(isd,jsd,k,rainwat),    &
                              q(isd,jsd,k,snowwat), q(isd,jsd,k,graupel),    &
                              hs, dpln, pmid, delz(isd:,jsd:,k), pt(isd,jsd,k), delp(isd,jsd,k), q_con(isd:,jsd:,k), &
-              cappa(isd:,jsd:,k), gridstruct%area_64, dtdt(is:,js:,k), out_dt, last_step, cld_amt>0, q(isd,jsd,k,cld_amt))
+              cappa(isd:,jsd:,k), gridstruct%area_64, dtdt(is:,js:,k), out_dt, last_step, q(isd,jsd,k,cld_amt))
               if ( .not. hydrostatic  ) then
                  do j=js,je
                     do i=is,ie
@@ -3512,7 +3505,7 @@ endif        ! end last_step check
         qd(i) = ql(i) + qs(i)
         cvm(i) = (1.-(qv(i)+qd(i)))*cv_air + qv(i)*cv_vap + ql(i)*c_liq + qs(i)*c_ice
      enddo
-  case(6)
+  case(6:7)
      do i=is,ie 
         qv(i) = q(i,j,k,sphum)
         ql(i) = q(i,j,k,liq_wat) + q(i,j,k,rainwat) 
@@ -3593,7 +3586,7 @@ endif        ! end last_step check
         qd(i) = ql(i) + qs(i)
         cpm(i) = (1.-(qv(i)+qd(i)))*cp_air + qv(i)*cp_vapor + ql(i)*c_liq + qs(i)*c_ice
      enddo
-  case(6)
+  case(6:7)
      do i=is,ie 
         qv(i) = q(i,j,k,sphum)
         ql(i) = q(i,j,k,liq_wat) + q(i,j,k,rainwat) 

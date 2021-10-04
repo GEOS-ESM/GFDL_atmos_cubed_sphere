@@ -260,6 +260,14 @@ module fv_update_phys_mod
        rainwat = 4
        snowwat = 5
        graupel = 6
+       cld_amt = -1
+    case(7)
+       sphum = 1
+       liq_wat = 2
+       ice_wat = 3
+       rainwat = 4
+       snowwat = 5
+       graupel = 6
        cld_amt = 7
     end select
 #else
