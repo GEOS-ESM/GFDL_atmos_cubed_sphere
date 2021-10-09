@@ -757,7 +757,7 @@ contains
      rainwat = -1
      snowwat = -1
      graupel = -1
-   case(6)
+   case(6:7)
      liq_wat = 2
      ice_wat = 3
      rainwat = 4
