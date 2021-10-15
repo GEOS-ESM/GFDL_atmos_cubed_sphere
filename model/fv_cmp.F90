@@ -687,7 +687,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         if ((.not. do_qa) .and. last_step) then
-            ! FV3 will do the cloud PDF and not GFDL-MP
+            ! FV3 will do the cloud PDF
 
             ! -----------------------------------------------------------------------
             ! combine water species
