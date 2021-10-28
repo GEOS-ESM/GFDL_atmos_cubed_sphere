@@ -57,7 +57,7 @@ module fv_cmp_mod
     use fv_mp_mod, only: is_master
     use fv_arrays_mod, only: r_grid
     use gfdl_lin_cloud_microphys_mod, only: ql_gen, qi_gen, qi0_crt, qi0_max, ql_mlt, ql0_max, qi_lim, qs_mlt
-    use gfdl_lin_cloud_microphys_mod, only: do_qa, icloud_f, sat_adj0, t_sub, cld_min
+    use gfdl_lin_cloud_microphys_mod, only: icloud_f, sat_adj0, t_sub, cld_min
     use gfdl_lin_cloud_microphys_mod, only: tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_imlt, tau_l2r, tau_frz
     use gfdl_lin_cloud_microphys_mod, only: rad_rain, rad_snow, rad_graupel, dw_ocean, dw_land
     
@@ -119,7 +119,7 @@ contains
 !! It handles the heat release due to in situ phase changes.
 subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         te0, qv, ql, qi, qr, qs, qg, hs, dpln, pmid, delz, pt, dp, q_con, cappa, &
-        area, dtdt, out_dt, last_step, qa)
+        area, dtdt, out_dt, last_step, do_qa, qa)
     
     implicit none
     
@@ -137,6 +137,8 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real, intent (inout), dimension (is:ie, js:je) :: dtdt
     
     real, intent (out), dimension (is - ng:ie + ng, js - ng:je + ng) :: qa, te0
+
+    logical, intent (in) :: do_qa
     
     real (kind = r_grid), intent (in), dimension (is - ng:ie + ng, js - ng:je + ng) :: area
     
