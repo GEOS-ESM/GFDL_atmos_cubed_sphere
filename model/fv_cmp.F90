@@ -125,7 +125,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     
     integer, intent (in) :: is, ie, js, je, ng
     
-    logical, intent (in) :: hydrostatic, consv_te, out_dt, last_step
+    logical, intent (in) :: hydrostatic, consv_te, out_dt, last_step, do_qa
     
     real, intent (in) :: zvir, mdt ! remapping time step
     
@@ -137,8 +137,6 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real, intent (inout), dimension (is:ie, js:je) :: dtdt
     
     real, intent (out), dimension (is - ng:ie + ng, js - ng:je + ng) :: qa, te0
-
-    logical, intent (in) :: do_qa
     
     real (kind = r_grid), intent (in), dimension (is - ng:ie + ng, js - ng:je + ng) :: area
     
@@ -688,7 +686,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! compute cloud fraction
         ! -----------------------------------------------------------------------
         
-        if ((.not. do_qa) .and. last_step) then
+        if (do_qa .and. last_step) then
             ! FV3 will do the cloud PDF
 
             ! -----------------------------------------------------------------------
