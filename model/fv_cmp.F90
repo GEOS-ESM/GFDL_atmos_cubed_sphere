@@ -118,7 +118,7 @@ contains
 !>@details This is designed for single-moment 6-class cloud microphysics schemes.
 !! It handles the heat release due to in situ phase changes.
 subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
-        te0, qv, ql, qi, qr, qs, qg, hs, dpln, pmid, delz, pt, dp, q_con, cappa, &
+        te0, qv, ql, qi, qr, qs, qg, hs, dpln, pmid, delz, pt, dp, cappa, &
         area, dtdt, out_dt, last_step, do_qa, qa)
     
     implicit none
@@ -133,7 +133,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real, intent (in), dimension (is:ie, js:je) :: dpln, pmid
     
     real, intent (inout), dimension (is - ng:ie + ng, js - ng:je + ng) :: pt, qv, ql, qi, qr, qs, qg
-    real, intent (inout), dimension (is - ng:, js - ng:) :: q_con, cappa
+    real, intent (inout), dimension (is - ng:, js - ng:) :: cappa
     real, intent (inout), dimension (is:ie, js:je) :: dtdt
     
     real, intent (out), dimension (is - ng:ie + ng, js - ng:je + ng) :: qa, te0
@@ -605,9 +605,9 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         
         do i = is, ie
 #ifdef USE_COND
-            q_con (i, j) = q_liq (i) + q_sol (i)
+            q_cond (i) = q_liq (i) + q_sol (i)
             tmp = 1. + zvir * qv (i, j)
-            pt (i, j) = pt1 (i) * tmp * (1. - q_con (i, j))
+            pt (i, j) = pt1 (i) * tmp * (1. - q_cond (i))
             tmp = rdgas * tmp
             cappa (i, j) = tmp / (tmp + cvm (i))
 #else
