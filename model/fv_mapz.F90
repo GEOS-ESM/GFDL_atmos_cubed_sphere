@@ -95,6 +95,7 @@ module fv_mapz_mod
 
   implicit none
   real, parameter:: consv_min= 0.001         !< below which no correction applies
+  real, parameter:: te_min= -1.e25
   real, parameter:: t_min= 184.              !< below which applies stricter constraint
   real, parameter:: r2=1./2., r0=0.0
   real, parameter:: r3 = 1./3., r23 = 2./3., r12 = 1./12.
@@ -300,7 +301,7 @@ contains
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, last_step, &
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, adiabatic, &
-!$OMP                                  hs,w,ws,kord_wz,do_omega,omga,rrg,kord_mt,ua)    &
+!$OMP                                  hs,w,ws,kord_wz,do_omega,omga,rrg,kord_mt)    &
 !$OMP                          private(qv,gz,cvm,kp,k_next,bkh,dp2,   &
 !$OMP                                  pe0,pe1,pe2,pe3,pk1,pk2,pn2,phis,q2,tpe,dpln,pmid,dlnp,tmp)
   do 1000 j=js,je+1
@@ -386,6 +387,11 @@ contains
                      phis(i,k) = phis(i,k+1) - grav*delz(i,j,k)
                   enddo
                enddo
+               do k=1,km+1
+                  do i=is,ie
+                     phis(i,k) = phis(i,k) * pe(i,k,j)
+                  enddo
+               enddo
                do k=1,km
 #ifdef MOIST_CAPPA
                   call moist_cv(is,ie,isd,ied,jsd,jed, km, j, k, nwat, sphum, liq_wat, rainwat,    &
@@ -393,18 +399,22 @@ contains
                   do i=is,ie
                      cappa(i,j,k) = rdgas / ( rdgas + cvm(i)/(1.+r_vir*q(i,j,k,sphum)) )
                      pkz(i,j,k) = exp(cappa(i,j,k)/(1.-cappa(i,j,k))*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)))
-                     te(i,j,k) = cvm(i)*pt(i,j,k)*pkz(i,j,k)*(1.-gz(i)) + &
-                                     0.5*(phis(i,k)+phis(i,k+1) + w(i,j,k)**2 + 0.5*gridstruct%rsin2(i,j)*( &
+                    ! TE = KE + Cv*T_v + PE
+                     te(i,j,k) = 0.5*w(i,j,k)**2 + 0.25*gridstruct%rsin2(i,j)*( &
                                      u(i,j,k)**2+u(i,j+1,k)**2 + v(i,j,k)**2+v(i+1,j,k)**2 -  &
-                                    (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j)))
+                                    (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j)) &
+                                  + cvm(i)*pt(i,j,k)*pkz(i,j,k) &
+                                  + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j))
                   enddo
 #else
                   do i=is,ie
                      pkz(i,j,k) = exp(k1k*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)))
-                     te(i,j,k) = cv_air*pt(i,j,k)*pkz(i,j,k) + &
-                                     0.5*(phis(i,k)+phis(i,k+1) + w(i,j,k)**2 + 0.5*gridstruct%rsin2(i,j)*( &
+                    ! TE = KE + Cv*T_v + PE
+                     te(i,j,k) = 0.5*w(i,j,k)**2 + 0.25*gridstruct%rsin2(i,j)*( &
                                      u(i,j,k)**2+u(i,j+1,k)**2 + v(i,j,k)**2+v(i+1,j,k)**2 -  &
-                                    (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j)))
+                                    (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j)) &
+                                  + cv_air*pt(i,j,k)*pkz(i,j,k) &
+                                  + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j))
                   enddo
 #endif
                enddo
@@ -470,9 +480,16 @@ contains
 !----------------------------------
 ! map TE in log P using GMAO cubic
 !----------------------------------
-         call map1_cubic (km,   pe1,  te,       &
-                          km,   pe2,  te,       &
-                          is, ie, j, isd, ied, jsd, jed, akap, T_VAR=1, conserv=.true.)
+!        call map1_cubic (km,   pe1,  te,       &
+!                         km,   pe2,  te,       &
+!                         is, ie, j, isd, ied, jsd, jed, akap, T_VAR=1, conserv=.true.)
+!----------------------------------
+! Map TE using logp 
+!----------------------------------
+         call map_scalar(km,  peln(is,1,j),  te, gz,   &
+                         km,  pn2,           te,              &
+                         is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), te_min)
+
    endif
 
 !----------------
@@ -581,6 +598,15 @@ contains
       endif
 
 !----------
+! Update pe
+!----------
+   do k=1,km+1
+      do i=is,ie
+         pe(i,k,j) = pe2(i,k)
+      enddo
+   enddo
+
+!----------
 ! Update pk
 !----------
    do k=1,km+1
@@ -668,23 +694,29 @@ contains
                      phis(i,k) = phis(i,k+1) - grav*delz(i,j,k)
                   enddo
                enddo
+               do k=1,km+1
+                  do i=is,ie
+                     phis(i,k) = phis(i,k) * pe(i,k,j)
+                  enddo
+               enddo
                do k=1,km
 #ifdef MOIST_CAPPA
                   call moist_cv(is,ie,isd,ied,jsd,jed, km, j, k, nwat, sphum, liq_wat, rainwat,    &
                                 ice_wat, snowwat, graupel, q, gz, cvm)
                   do i=is,ie
-                     tpe = te(i,j,k) - ( &
-                                     0.5*(phis(i,k)+phis(i,k+1) + w(i,j,k)**2 + 0.5*gridstruct%rsin2(i,j)*( &
+                     tpe = te(i,j,k) - &
+                                   ( 0.5*w(i,j,k)**2 + 0.25*gridstruct%rsin2(i,j)*( &
                                      u(i,j,k)**2+u(i,j+1,k)**2 + v(i,j,k)**2+v(i+1,j,k)**2 -  &
-                                    (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j))) )
+                                    (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j)) &
+                                  + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j)) )
                      pt(i,j,k) = tpe/cvm(i)
                      cappa(i,j,k) = rdgas / ( rdgas + cvm(i)/(1.+r_vir*q(i,j,k,sphum)) )
                      pkz(i,j,k) = exp(cappa(i,j,k)*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)))
                   enddo
 #else
                   do i=is,ie
-                     tpe = te(i,j,k) - ( &
-                                     0.5*(phis(i,k)+phis(i,k+1) + w(i,j,k)**2 + 0.5*gridstruct%rsin2(i,j)*( &
+                     tpe = te(i,j,k) - &
+                                   ( 0.5*(phis(i,k)+phis(i,k+1) + w(i,j,k)**2 + 0.5*gridstruct%rsin2(i,j)*( &
                                      u(i,j,k)**2+u(i,j+1,k)**2 + v(i,j,k)**2+v(i+1,j,k)**2 -  &
                                     (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j))) )
                      pt(i,j,k) = tpe/cv_air
@@ -751,15 +783,9 @@ contains
 
   endif !(j < je+1)
 
-     do k=1,km
-        do i=is,ie
-           ua(i,j,k) = pe2(i,k+1)
-        enddo
-     enddo
-
 1000  continue
 
-!$OMP parallel default(none) shared(is,ie,js,je,km,kmp,ptop,u,v,pe,ua,isd,ied,jsd,jed,kord_mt, &
+!$OMP parallel default(none) shared(is,ie,js,je,km,kmp,ptop,u,v,pe,isd,ied,jsd,jed,kord_mt, &
 !$OMP                               remap_t,remap_pt,remap_te, &
 !$OMP                               te_2d,te,delp,hydrostatic,hs,rg,pt,peln, adiabatic, &
 !$OMP                               cp,delz,nwat,rainwat,liq_wat,ice_wat,snowwat,       &
@@ -769,15 +795,6 @@ contains
 !$OMP                               mdt,cld_amt,cappa,dtdt,out_dt,rrg,akap,do_sat_adj,  &
 !$OMP                               fast_mp_consv,kord_tm) &
 !$OMP                       private(pe0,pe1,pe2,pe3,qv,cvm,gz,phis,tpe,dpln,pmid,dlnp,tmp)
-
-!$OMP do
-  do k=2,km
-     do j=js,je
-        do i=is,ie
-           pe(i,k,j) = ua(i,j,k-1)
-        enddo
-     enddo
-  enddo
 
 dtmp = 0.
 if( last_step .and. (.not.do_adiabatic_init)  ) then
