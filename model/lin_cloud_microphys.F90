@@ -34,7 +34,7 @@
 ! developer: shian-jiann lin, linjiong zhou
 ! =======================================================================
 
-module gfdl_cloud_microphys_mod
+module gfdl_lin_cloud_microphys_mod
     
       use mpp_mod, only: mpp_pe, mpp_root_pe
     ! use mpp_mod, only: stdlog, mpp_pe, mpp_root_pe, mpp_clock_id, &
@@ -4868,4 +4868,4 @@ real function calipso_ice_polynomial(tk)
 
 end function calipso_ice_polynomial
 
-end module gfdl_cloud_microphys_mod
+end module gfdl_lin_cloud_microphys_mod

@@ -765,13 +765,7 @@ module fv_control_mod
       ! Define n_split if not in namelist
       if (ntiles==6) then
          dimx = 4.0*(npx-1)
-#ifdef MAPL_MODE
-  ! WMP  if ( hydrostatic ) then
-             ns0 = 5
-  ! WMP  else
-  ! WMP      ns0 = 6
-  ! WMP  endif
-#else
+#ifndef MAPL_MODE
          if ( hydrostatic ) then
             if ( npx >= 120 ) ns0 = 6
          else
