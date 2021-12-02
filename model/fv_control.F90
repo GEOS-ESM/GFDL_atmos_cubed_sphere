@@ -765,13 +765,7 @@ module fv_control_mod
       ! Define n_split if not in namelist
       if (ntiles==6) then
          dimx = 4.0*(npx-1)
-#ifdef MAPL_MODE
-  ! WMP  if ( hydrostatic ) then
-             ns0 = 5
-  ! WMP  else
-  ! WMP      ns0 = 6
-  ! WMP  endif
-#else
+#ifndef MAPL_MODE
          if ( hydrostatic ) then
             if ( npx >= 120 ) ns0 = 6
          else
@@ -807,7 +801,11 @@ module fv_control_mod
       n0split = max ( 1, n0split )
 
       if ( n_split == 0 ) then
+#ifdef MAPL_MODE
+           n_split = ceiling( real(n0split)/real(k_split*abs(p_split)) * stretch_fac + 0.5 )
+#else
            n_split = nint( real(n0split)/real(k_split*abs(p_split)) * stretch_fac + 0.5 )
+#endif
            if(is_master()) write(*,*) 'For k_split (remapping)=', k_split
            if(is_master()) write(*,198) 'n_split is set to ', n_split, ' for resolution-dt=',npx,npy,ntiles,dt_atmos
       else
