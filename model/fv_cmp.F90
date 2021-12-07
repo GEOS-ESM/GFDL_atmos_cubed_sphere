@@ -86,7 +86,12 @@ module fv_cmp_mod
     ! real, parameter :: c_liq = 4218.0 ! ifs: heat capacity of liquid at 0 deg c
     real, parameter :: c_ice = 1972.0 !< gfdl: heat capacity of ice at - 15 deg c
     real, parameter :: c_liq = 4185.5 !< gfdl: heat capacity of liquid at 15 deg c
-    
+   
+
+    real, parameter :: qrmin = 1.e-8 ! min value for suspended rain/snow/liquid/ice condensate
+    real, parameter :: qvmin = 1.e-20 !< min value for water vapor (treated as zero)
+    real, parameter :: qcmin = 1.e-12 !< min value for cloud condensates
+ 
     real, parameter :: dc_vap = cp_vap - c_liq !< - 2339.5, isobaric heating / cooling
     real, parameter :: dc_ice = c_liq - c_ice !< 2213.5, isobaric heating / colling
     
@@ -118,9 +123,9 @@ contains
 !>@details This is designed for single-moment 6-class cloud microphysics schemes.
 !! It handles the heat release due to in situ phase changes.
 subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
-        te0, qv, ql, qi, qr, qs, qg, hs, dpln, pmid, delz, pt, dp, cappa, &
+        te0, qv, ql, qi, qr, qs, qg, hs, dpln, delz, pt, dp, cappa, &
         area, dtdt, out_dt, last_step, do_qa, qa)
-    
+ 
     implicit none
     
     integer, intent (in) :: is, ie, js, je, ng
@@ -130,7 +135,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real, intent (in) :: zvir, mdt ! remapping time step
     
     real, intent (in), dimension (is - ng:ie + ng, js - ng:je + ng) :: dp, delz, hs
-    real, intent (in), dimension (is:ie, js:je) :: dpln, pmid
+    real, intent (in), dimension (is:ie, js:je) :: dpln
     
     real, intent (inout), dimension (is - ng:ie + ng, js - ng:je + ng) :: pt, qv, ql, qi, qr, qs, qg
     real, intent (inout), dimension (is - ng:, js - ng:) :: cappa
@@ -268,7 +273,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            if (qi (i, j) > 1.e-8 .and. pt1 (i) > tice) then
+            if (qi (i, j) > qcmin .and. pt1 (i) > tice) then
                 sink (i) = min (qi (i, j), fac_imlt * (pt1 (i) - tice) / icp2 (i))
                 qi (i, j) = qi (i, j) - sink (i)
                 ! sjl, may 17, 2017
@@ -468,7 +473,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         
         do i = is, ie
             dtmp = tice0 - pt1 (i)
-            if (ql (i, j) > 1.e-8 .and. dtmp > 0.) then
+            if (ql (i, j) > qcmin .and. dtmp > 0.) then
                 newqi = new_ice_condensate(pt1 (i), ql (i,j), qi (i,j))
                 sink (i) = 3.3333e-10 * dt_bigg * (exp (0.66 * dtmp) - 1.) * den (i) * ql (i, j) ** 2
                 sink (i) = max(0.0,min (newqi, fac_frz * dtmp / icp2 (i), sink (i)))
@@ -569,12 +574,12 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         do i = is, ie
             src (i) = 0.
             if (pt1 (i) < t_sub) then ! too cold to be accurate; freeze qv as a fix
-                src (i) = dim (qv (i, j), 1.e-6)
+                src (i) = dim (qv (i, j), qcmin)
             elseif (pt1 (i) < tice0) then
                 qsi = iqs2 (pt1 (i), den (i), dqsdt)
                 dq = qv (i, j) - qsi
                 sink (i) = adj_fac * dq / (1. + tcp2 (i) * dqsdt)
-                if (qi (i, j) > 1.e-8) then
+                if (qi (i, j) > qcmin) then
                     pidep = sdt * dq * 349138.78 * exp (0.875 * log (qi (i, j) * den (i))) &
                          / (qsi * den (i) * lat2 / (0.0243 * rvgas * pt1 (i) ** 2) + 4.42478e4)
                 else
@@ -763,18 +768,18 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 ! icloud_f = 2: top-hat pdf !!! used to be binary cloud scheme (0 / 1)
                 ! icloud_f = 3: triangular pdf
                 ! -----------------------------------------------------------------------
-                if (rh > 0.75 .and. qpz (i) > 1.e-6) then
+                if (rh > 0.75 .and. qpz (i) > qcmin) then
                     dq = hvar (i) * qpz (i)
                     q_plus = qpz (i) + dq
                     q_minus = qpz (i) - dq
                     if (icloud_f == 3) then
                      ! triangular
                      if(q_plus.le.qstar(i)) then
-                       qa (i, j) = 0.0  ! no cloud cover 
+                       qa (i, j) = qcmin  ! little/no cloud cover 
                      elseif ( (qpz(i).le.qstar(i)).and.(qstar(i).lt.q_plus) ) then ! partial cloud cover
-                       qa (i, j) = min(1., qa (i, j) + (q_plus-qstar(i))*(q_plus-qstar(i)) / ( (q_plus-q_minus)*(q_plus-qpz(i)) ))
+                       qa (i, j) = max(qcmin,min(1., qa (i, j) + (q_plus-qstar(i))*(q_plus-qstar(i)) / ( (q_plus-q_minus)*(q_plus-qpz(i)) )))
                      elseif ( (q_minus.le.qstar(i)).and.(qstar(i).lt.qpz(i)) ) then ! partial cloud cover
-                       qa (i, j) = min(1., 1. - ( (qstar(i)-q_minus)*(qstar(i)-q_minus) / ( (q_plus-q_minus)*(qpz(i)-q_minus) )))
+                       qa (i, j) = max(qcmin,min(1., 1. - ( (qstar(i)-q_minus)*(qstar(i)-q_minus) / ( (q_plus-q_minus)*(qpz(i)-q_minus) ))))
                       elseif ( qstar(i).le.q_minus ) then
                        qa (i, j) = 1.0  ! air fully saturated; 100 % cloud cover
                       endif
@@ -782,9 +787,9 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                       if (icloud_f == 2) then
                        ! top-hat
                        if(q_plus.le.qstar(i)) then
-                         qa (i, j) = 0.0  ! no cloud cover 
-                       elseif (qstar(i) < q_plus .and. q_cond (i) > 1.e-6) then
-                         qa (i, j) = max(0.0, min(1., (q_plus - qstar(i)) / (dq + dq) )) ! partial cloud cover
+                         qa (i, j) = qcmin  ! little/no cloud cover 
+                       elseif (qstar(i) < q_plus .and. q_cond (i) > qcmin) then
+                         qa (i, j) = max(qcmin, min(1., (q_plus - qstar(i)) / (dq + dq) )) ! partial cloud cover
                        elseif (qstar(i) .le. q_minus) then
                          qa (i, j) = 1.0  ! air fully saturated; 100 % cloud cover
                        endif
@@ -1178,7 +1183,7 @@ real function new_liq_condensate(dt, tk, qlk, qik)
      real :: lfrac
 
      lfrac = 1.0 - calipso_ice_polynomial(tk)
-     if (qlk+qik > 1.e-12) then
+     if (qlk+qik > qcmin) then
         new_liq_condensate = max(0.0,lfrac*(qlk+qik) - qlk)
      else
         new_liq_condensate = 0.0

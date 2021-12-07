@@ -844,69 +844,6 @@ endif        ! end last_step check
   if ( do_sat_adj ) then
                                            call timing_on('sat_adj2')
 
-!#define MAPL_MODE_FIX_SMALL_COND
-#ifdef MAPL_MODE_FIX_SMALL_COND && USE_COND
-   ! fix small cloud condensates
-     ! Cloud
-!$OMP do
-      do k=1,km
-        do j=js,je
-          do i=is,ie
-             if (q(i,j,k,cld_amt) < 1.e-5) then
-                 q(i,j,k,sphum) = q(i,j,k,sphum) + q(i,j,k,liq_wat) + q(i,j,k,ice_wat)
-                pt(i,j,k) = pt(i,j,k) - (hlv/cp_air)*q(i,j,k,liq_wat) &
-                                      - (hls/cp_air)*q(i,j,k,ice_wat)
-                 q(i,j,k,cld_amt)  = 0.0
-                 q(i,j,k,liq_wat)  = 0.0
-                 q(i,j,k,ice_wat)  = 0.0
-             endif
-          enddo
-        enddo
-      enddo
-     ! Liquid
-!$OMP do
-      do k=1,km
-        do j=js,je
-          do i=is,ie
-             if (q(i,j,k,liq_wat) < 1.e-8) then
-                 q(i,j,k,sphum) = q(i,j,k,sphum) + q(i,j,k,liq_wat)
-                pt(i,j,k) = pt(i,j,k) - (hlv/cp_air)*q(i,j,k,liq_wat)
-                 q(i,j,k,liq_wat)  = 0.0
-             endif
-          enddo
-        enddo
-      enddo
-     ! Ice
-!$OMP do
-      do k=1,km
-        do j=js,je
-          do i=is,ie
-             if (q(i,j,k,ice_wat) < 1.e-8) then
-                 q(i,j,k,sphum) = q(i,j,k,sphum) + q(i,j,k,ice_wat)
-                pt(i,j,k) = pt(i,j,k) - (hls/cp_air)*q(i,j,k,ice_wat)
-                 q(i,j,k,ice_wat)  = 0.0
-             endif
-          enddo
-        enddo
-      enddo
-     ! Liquid+Ice
-!$OMP do
-      do k=1,km
-        do j=js,je
-          do i=is,ie
-             if (q(i,j,k,liq_wat)+q(i,j,k,ice_wat) < 1.e-8) then
-                 q(i,j,k,sphum) = q(i,j,k,sphum) + q(i,j,k,liq_wat) + q(i,j,k,ice_wat)
-                pt(i,j,k) = pt(i,j,k) - (hlv/cp_air)*q(i,j,k,liq_wat) &
-                                      - (hls/cp_air)*q(i,j,k,ice_wat)
-                 q(i,j,k,cld_amt)  = 0.0
-                 q(i,j,k,liq_wat)  = 0.0
-                 q(i,j,k,ice_wat)  = 0.0
-             endif
-          enddo
-        enddo
-      enddo
-#endif
-
 !$OMP do
            do k=kmp,km
               do j=js,je
@@ -918,7 +855,7 @@ endif        ! end last_step check
                              te(isd,jsd,k), q(isd,jsd,k,sphum), q(isd,jsd,k,liq_wat),   &
                              q(isd,jsd,k,ice_wat), q(isd,jsd,k,rainwat),    &
                              q(isd,jsd,k,snowwat), q(isd,jsd,k,graupel),    &
-                             hs ,dpln, delz(isd:,jsd:,k), pt(isd,jsd,k), delp(isd,jsd,k), q_con(isd:,jsd:,k), &
+                             hs ,dpln, delz(isd:,jsd:,k), pt(isd,jsd,k), delp(isd,jsd,k), &
               cappa(isd:,jsd:,k), gridstruct%area_64, dtdt(is:,js:,k), out_dt, last_step, cld_amt>0, q(isd,jsd,k,cld_amt))
               if ( .not. hydrostatic  ) then
                  do j=js,je
