@@ -199,7 +199,7 @@ contains
 
   integer, intent(in):: remap_option  ! 0: remap  T in logP
                                       ! 1: remap PT in P
-                                      ! 2: remap TE in logP with GMAO cubic
+                                      ! 2: remap TE in logP 
 
 ! !DESCRIPTION:
 !
@@ -241,7 +241,7 @@ contains
      case(1)
      print*, ' REMAPPING PT in P'
      case(2)
-     print*, ' REMAPPING TE in logP with GMAO cubic'
+     print*, ' REMAPPING TE in logP'
      end select
      print*, ' REMAPPING CONSV:     ', consv
      print*, ' REMAPPING CONSV_MIN: ', consv_min
