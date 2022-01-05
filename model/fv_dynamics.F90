@@ -162,7 +162,7 @@ contains
   subroutine fv_dynamics(npx, npy, npz, nq_tot,  ng, bdt, consv_te, fill,               &
                         reproduce_sum, kappa, cp_air, zvir, ptop, ks, ncnst, n_split,     &
                         q_split, u, v, w, delz, hydrostatic, pt, delp, q,   &
-                        ps, pe, pk, peln, pkz, phis, q_con, omga, ua, va, uc, vc,          &
+                        ps, pe, pk, peln, pkz, phis, varflt, q_con, omga, ua, va, uc, vc,          &
                         ak, bk, mfx, mfy, cx, cy, ze0, hybrid_z, &
                         gridstruct, flagstruct, neststruct, idiag, bd, &
                         parent_grid, domain, diss_est, time_total)
@@ -215,6 +215,7 @@ contains
 ! Others:
 !-----------------------------------------------------------------------
     real, intent(inout) :: phis(bd%isd:bd%ied,bd%jsd:bd%jed)       !< Surface geopotential (g*Z_surf)
+    real, intent(inout) :: varflt(bd%is:bd%ie,bd%js:bd%je)         !< Variance of the filtered topography (m^2)
     real, intent(inout) :: omga(bd%isd:bd%ied,bd%jsd:bd%jed,npz)   !< Vertical pressure velocity (pa/s)
     real, intent(inout) :: uc(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz) !< (uc,vc) mostly used as the C grid winds
     real, intent(inout) :: vc(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz)
@@ -612,7 +613,7 @@ contains
 
                                            call timing_on('DYN_CORE')
       call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
-                    u, v, w, delz, pt, q, delp, pe, pk, phis, ws, omga, ptop, pfull, ua, va,           & 
+                    u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va,           & 
                     uc, vc, &
 #ifdef SINGLE_FV
                     mfxR8, mfyR8, cxR8, cyR8, &

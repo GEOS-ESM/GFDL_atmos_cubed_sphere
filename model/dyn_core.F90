@@ -105,21 +105,19 @@ module dyn_core_mod
 
   use constants_mod,      only: rdgas, radius, cp_air, pi
   use mpp_mod,            only: mpp_pe 
-  use mpp_domains_mod,    only: CGRID_NE, DGRID_NE, mpp_get_boundary, mpp_update_domains,  &
+  use mpp_domains_mod,    only: CGRID_NE, DGRID_NE, AGRID, mpp_get_boundary, mpp_update_domains,  &
                                 domain2d
   use mpp_parameter_mod,  only: CORNER
   use fv_mp_mod,          only: is_master
   use fv_mp_mod,          only: start_group_halo_update, complete_group_halo_update
   use fv_mp_mod,          only: group_halo_update_type
-  use sw_core_mod,        only: c_sw, d_sw
+  use sw_core_mod,        only: c_sw, d_sw, d2a2c_vect
   use a2b_edge_mod,       only: a2b_ord2, a2b_ord4
   use nh_core_mod,        only: Riem_Solver3, Riem_Solver_C, update_dz_c, update_dz_d, nest_halo_nh
   use tp_core_mod,        only: copy_corners
   use fv_timing_mod,      only: timing_on, timing_off
   use fv_diagnostics_mod, only: prt_maxmin, fv_time, prt_mxm
-#ifdef ROT3
   use fv_update_phys_mod, only: update_dwinds_phys
-#endif
 #if defined (ADA_NUDGE)
   use fv_ada_nudge_mod,   only: breed_slp_inline_ada
 #else
@@ -160,7 +158,7 @@ contains
 !-----------------------------------------------------------------------
  
  subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, n_split, zvir, cp, akap, cappa, grav, hydrostatic,  &
-                     u,  v,  w, delz, pt, q, delp, pe, pk, phis, ws, omga, ptop, pfull, ua, va, & 
+                     u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
                      uc, vc, mfx, mfy, cx, cy, pkz, peln, q_con, ak, bk, dpx, &
                      ks, gridstruct, flagstruct, neststruct, idiag, bd, domain, &
                      init_step, i_pack, end_step, diss_est,time_total)
@@ -197,6 +195,7 @@ contains
 !-----------------------------------------------------------------------
 ! dyn_aux:
     real, intent(inout):: phis(bd%isd:bd%ied,bd%jsd:bd%jed)      !< Surface geopotential (g*Z_surf)
+    real, intent(inout):: varflt(bd%is:bd%ie,bd%js:bd%je)        !< Variance of the filtered topography (m^2)
     real, intent(inout):: pe(bd%is-1:bd%ie+1, npz+1,bd%js-1:bd%je+1)  !< edge pressure (pascal)
     real, intent(inout):: peln(bd%is:bd%ie,npz+1,bd%js:bd%je)          !< ln(pe)
     real, intent(inout):: pk(bd%is:bd%ie,bd%js:bd%je, npz+1)        !< pe**kappa
@@ -401,8 +400,10 @@ contains
      if ( flagstruct%fv_debug ) then
           if(is_master()) write(*,*) 'n_split loop, it=', it
           if ( .not. flagstruct%hydrostatic )    &
-          call prt_mxm('delz',  delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-          call prt_mxm('PT',  pt, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+          call prt_mxm('delz',  delz, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
+          call prt_mxm('PT',      pt, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
+          call prt_mxm('U',        u, is, ie  , js, je+1, ng, npz, 1., gridstruct%area_64, domain)
+          call prt_mxm('V',        v, is, ie+1, js, je  , ng, npz, 1., gridstruct%area_64, domain)
      endif
 
      if (gridstruct%nested) then
@@ -1001,6 +1002,13 @@ contains
    if( flagstruct%RF_fast .and. flagstruct%tau > 0. )  &
    call Ray_fast(abs(dt), npx, npy, npz, pfull, flagstruct%tau, u, v, w,  &
                       ks, dp_ref, ptop, hydrostatic, flagstruct%rf_cutoff, bd)
+
+! *** Inline Beljaars turbulent-orographic-form-drag here
+! pt is virtual potential temperature
+                                       call timing_on('FV3_BELJAARS')
+   if( flagstruct%Beljaars_TOFD .and. (.not. hydrostatic) ) &
+   call Beljaars(abs(dt), npx, npy, npz, ng, varflt, pt, delz, u, v, grav, gridstruct, flagstruct, bd, domain)
+                                       call timing_on('FV3_BELJAARS')
 
 !-------------------------------------------------------------------------------------------------------
     if ( flagstruct%breed_vortex_inline ) then
@@ -2310,6 +2318,114 @@ do 1000 j=jfirst,jlast
       enddo
 
  end subroutine init_ijk_mem
+
+ subroutine Beljaars(dt, npx, npy, npz, ng, varflt, thv, delz, u, v, grav, gridstruct, flagstruct, bd, domain)
+ 
+    real, intent(in   ):: dt, grav
+    integer, intent(in):: npx, npy, npz, ng
+    type(fv_grid_type),  intent(INOUT), target :: gridstruct
+    type(fv_flags_type), intent(IN),    target :: flagstruct
+    type(fv_grid_bounds_type), intent(IN)      :: bd
+    type(domain2d),      intent(INOUT)         :: domain
+    real, intent(in   ):: varflt(bd%is :bd%ie   ,bd%js :bd%je )       !< standard deviation of the subgrid topography
+    real, intent(in   )::    thv(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz) !< Virtual potential temperture
+    real, intent(in   )::   delz(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz) !< layer thickness
+    real, intent(inout)::      u(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz) !< D grid zonal wind (m/s)
+    real, intent(inout)::      v(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz) !< D grid meridional wind (m/s)
+
+    real, dimension(bd%isd:bd%ied,  bd%jsd:bd%jed+1,npz) :: vc
+    real, dimension(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz) :: uc
+    real, dimension(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz) :: ua, va, ut, vt
+    real, dimension(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz+1) :: ze
+    real, dimension(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz) :: dudt_tofd, dvdt_tofd
+    integer :: i,j,L, ikpbl
+    real :: tcrib, var_temp, a1, wsp, zm
+    real, dimension(bd%is:bd%ie, bd%js:bd%je) :: a2, Hefold
+    real, parameter ::      &
+          dxmin_ss =  3000.0, &        ! minimum grid length for Beljaars
+          dxmax_ss = 12000.0           ! maximum grid length for Beljaars
+
+    integer :: is,  ie,  js,  je
+    integer :: isd, ied, jsd, jed
+
+    is  = bd%is
+    ie  = bd%ie
+    js  = bd%js
+    je  = bd%je
+    isd = bd%isd
+    ied = bd%ied
+    jsd = bd%jsd
+    jed = bd%jed
+
+! https://www.ecmwf.int/sites/default/files/elibrary/2003/7594-new-parametrization-turbulent-orographic-form-drag.pdf
+
+! Get updated winds on A-grid and layer heights
+    do l=1,npz
+      call d2a2c_vect(u(:,:,L), v(:,:,L), ua(:,:,L), va(:,:,L), uc(:,:,L), vc(:,:,L), ut(:,:,L), vt(:,:,L), &
+                      .true., gridstruct, bd, npx, npy, gridstruct%nested, flagstruct%grid_type)
+    end do
+    ze(:,:,npz+1) = 0
+    do l=npz,1,-1
+      ze(:,:,l) = ze(:,:,l+1) - delz(:,:,l) ! delz is negative
+    end do
+
+    call prt_mxm('UA', ua, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+    call prt_mxm('VA', va, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+    call prt_mxm('STDFLT', varflt, is, ie, js, je, 0, 1, 1., gridstruct%area_64, domain)
+
+    do j=js,je
+       do i=is,ie
+! Find the PBL height
+             ikpbl = npz
+             do l=npz-1,1,-1
+                zm = 0.5*(ze(i,j,l+1)+ze(i,j,l))
+                tcrib = grav*(thv(i,j,l)-thv(i,j,npz))*zm / &
+                        (thv(i,j,npz)*MAX(ua(i,j,l)**2+va(i,j,l)**2,1.0E-8))
+                if (tcrib >= 0.25) then
+                   ikpbl = l
+                   exit
+                end if
+             end do
+! determine the efolding height
+             var_temp = MIN(varflt(i,j),150.0) + &
+                        MAX(0.,0.2*(varflt(i,j)-150.0))
+             var_temp = MIN(var_temp, 250.)
+            ! (IH*kflt**n1)**-1 = (0.00102*0.00035**-1.9)**-1 = 0.00026615161
+             a1=0.00026615161*var_temp**2
+            ! k1**(n1-n2) = 0.003**(-1.9 - -2.8) = 0.003**0.9 = 0.005363
+             a2(i,j)=a1*0.005363 * &
+                     MAX(0.0,MIN(1.0,dxmax_ss*(1.-dxmin_ss/SQRT(gridstruct%area_64(i,j))/(dxmax_ss-dxmin_ss))))
+           ! Revise e-folding height based on PBL height and topographic std. dev.
+             zm = 0.5*(ze(i,j,ikpbl+1)+ze(i,j,ikpbl))
+             Hefold(i,j) = MIN(MAX(2*varflt(i,j),zm),1500.)
+       end do
+    end do
+    call prt_mxm('A2', a2, is, ie, js, je, 0, 1, 1., gridstruct%area_64, domain)
+    call prt_mxm('Hefold', Hefold, is, ie, js, je, 0, 1, 1., gridstruct%area_64, domain)
+    do l=1,npz
+       do j=js,je
+          do i=is,ie
+               zm = 0.5*(ze(i,j,l+1)+ze(i,j,l))
+               wsp=min(10.0,SQRT(ua(i,j,l)**2 + va(i,j,l)**2))
+               ! alpha*beta*Cmd*Ccorr*2.109 = 12.*1.*0.005*0.6*2.109 = 0.0759
+               var_temp = 0.0759*EXP(-(zm/Hefold(i,j))**1.5)*a2(i,j)*zm**(-1.2) ! this is greater than zero
+               !  Note:  This is a semi-implicit treatment of the time differencing
+               !  per Beljaars et al. (2004, QJRMS)
+               dudt_tofd(i,j,l) = - var_temp*wsp*ua(i,j,l)/(1. + var_temp*dt*wsp)
+               dvdt_tofd(i,j,l) = - var_temp*wsp*va(i,j,l)/(1. + var_temp*dt*wsp)
+          end do
+       end do
+   end do
+
+   call prt_mxm('DUTFD', dudt_tofd, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+   call prt_mxm('DVTFD', dvdt_tofd, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+
+! regrid tendencies update d-grid winds
+    call mpp_update_domains(dudt_tofd, dvdt_tofd, domain, gridtype=AGRID)
+    call update_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, dt, dudt_tofd, dvdt_tofd, &
+                            u, v, gridstruct, npx, npy, npz, domain)
+
+ end subroutine Beljaars
 
 !>@brief The subroutine 'Ray_fast' computes a simple "inline" version of the Rayleigh friction.
  subroutine Ray_fast(dt, npx, npy, npz, pfull, tau, u, v, w,  &

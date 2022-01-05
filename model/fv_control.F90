@@ -197,6 +197,7 @@ module fv_control_mod
    logical , pointer :: full_zs_filter
 
    logical , pointer :: RF_fast
+   logical , pointer :: Beljaars_TOFD
    logical , pointer :: consv_am
    logical , pointer :: do_sat_adj
    logical , pointer :: do_f3d
@@ -662,7 +663,7 @@ module fv_control_mod
                          dddmp, d2_bg, d4_bg, vtdm4, trdm2, d_ext, delt_max, beta, non_ortho, n_sponge, n_zfilter, &
                          warm_start, adjust_dry_mass, mountain, d_con, ke_bg, nord, nord_tr, convert_ke, use_old_omega, &
                          dry_mass, grid_type, do_Held_Suarez, do_reed_physics, reed_cond_only, &
-                         consv_te, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, &
+                         consv_te, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, Beljaars_TOFD, &
                          range_warn, dwind_2d, inline_q, z_tracer, reproduce_sum, adiabatic, do_vort_damp, no_dycore,   &
                          tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, fv_sg_adj, breed_vortex_inline,  &
                          na_init, nudge_dz, hybrid_z, Make_NH, n_zs_filter, nord_zs_filter, full_zs_filter, reset_eta,         &
@@ -1186,6 +1187,7 @@ module fv_control_mod
      nord_zs_filter                => Atm%flagstruct%nord_zs_filter
      full_zs_filter                => Atm%flagstruct%full_zs_filter
      RF_fast                       => Atm%flagstruct%RF_fast
+     Beljaars_TOFD                 => Atm%flagstruct%Beljaars_TOFD
      consv_am                      => Atm%flagstruct%consv_am
      do_sat_adj                    => Atm%flagstruct%do_sat_adj
      do_f3d                        => Atm%flagstruct%do_f3d

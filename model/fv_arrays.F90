@@ -420,6 +420,12 @@ module fv_arrays_mod
                                   !< heat added) is reduced. The default is .false., which applies the Rayleigh
                                   !< drag every physics timestep.
 
+   logical :: Beljaars_TOFD = .true.  !< Option controlling whether to apply Beljaars turbulent-orographic-form-drag
+                                      !< on the dynamic/acoustic timestep rather than on the physics timestep.
+                                      !< This can help stabilize the model by applying the damping more weakly 
+                                      !< more frequently, so the instantaneous amount of damping (and thereby 
+                                      !< heat added) is reduced.
+
    logical :: consv_am  = .false.   !< Whether to enable Angular momentum fixer. The default is .false.
 
 
@@ -1223,6 +1229,7 @@ module fv_arrays_mod
 ! Others:
 !-----------------------------------------------------------------------
     real, _ALLOCATABLE :: phis(:,:)     _NULL  !< Surface geopotential (g*Z_surf)
+    real, _ALLOCATABLE :: varflt(:,:)   _NULL  !< variance of the filtered topography (m^2)
     real, _ALLOCATABLE :: omga(:,:,:)   _NULL  !< Vertical pressure velocity (pa/s)
     real, _ALLOCATABLE :: ua(:,:,:)     _NULL  !< (ua, va) are mostly used as the A grid winds
     real, _ALLOCATABLE :: va(:,:,:)     _NULL
@@ -1460,6 +1467,7 @@ contains
     allocate (   Atm%diss_est(isd:ied  ,jsd:jed  ,npz) )
     allocate ( Atm%ts(is:ie,js:je) )
     allocate ( Atm%phis(isd:ied  ,jsd:jed  ) )
+    allocate ( Atm%varflt(is:ie  ,js:je  ) )
     allocate ( Atm%omga(isd:ied  ,jsd:jed  ,npz) ); Atm%omga=0.
     allocate (   Atm%ua(isd:ied  ,jsd:jed  ,npz) )
     allocate (   Atm%va(isd:ied  ,jsd:jed  ,npz) )
@@ -1781,6 +1789,7 @@ contains
     deallocate ( Atm%peln )
     deallocate (  Atm%pkz )
     deallocate ( Atm%phis )
+    deallocate ( Atm%varflt )
     deallocate ( Atm%omga )
     deallocate (   Atm%ua )
     deallocate (   Atm%va )
