@@ -420,7 +420,7 @@ module fv_arrays_mod
                                   !< heat added) is reduced. The default is .false., which applies the Rayleigh
                                   !< drag every physics timestep.
 
-   logical :: Beljaars_TOFD = .true.  !< Option controlling whether to apply Beljaars turbulent-orographic-form-drag
+   logical :: Beljaars_TOFD = .false. !< Option controlling whether to apply Beljaars turbulent-orographic-form-drag
                                       !< on the dynamic/acoustic timestep rather than on the physics timestep.
                                       !< This can help stabilize the model by applying the damping more weakly 
                                       !< more frequently, so the instantaneous amount of damping (and thereby 
