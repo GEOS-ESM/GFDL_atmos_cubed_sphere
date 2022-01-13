@@ -43,9 +43,6 @@ set (srcs
   tools/external_sst.F90
   tools/fv_nudge.F90
   model/fv_nesting.F90
-  geos_utils/fv_regrid_c2c.F90
-  geos_utils/fv_regridding_utils.F90
-  geos_utils/rs_scaleMod.F90
   )
 
 if (ESMA_USE_GFE_NAMESPACE)
@@ -90,6 +87,9 @@ if (CRAY_POINTER)
 endif()
 
 target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING)
+
+# Enable OpenMP
+target_link_libraries(${this} PRIVATE OpenMP::OpenMP_Fortran)
 
 option(HYDROSTATIC "Build FV dynamics as hydrostatic" ON)
 if (HYDROSTATIC)
