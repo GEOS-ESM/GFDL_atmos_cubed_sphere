@@ -1005,10 +1005,12 @@ contains
 
 ! *** Inline Beljaars turbulent-orographic-form-drag here
 ! pt is virtual potential temperature
+#ifdef DO_TOFD
                                        call timing_on('FV3_BELJAARS')
    if( flagstruct%Beljaars_TOFD .and. (.not. hydrostatic) ) &
    call Beljaars(abs(dt), npx, npy, npz, ng, varflt, pt, delz, u, v, grav, gridstruct, flagstruct, bd, domain)
                                        call timing_on('FV3_BELJAARS')
+#endif
 
 !-------------------------------------------------------------------------------------------------------
     if ( flagstruct%breed_vortex_inline ) then
@@ -2319,6 +2321,7 @@ do 1000 j=jfirst,jlast
 
  end subroutine init_ijk_mem
 
+#ifdef DO_TOFD                         
  subroutine Beljaars(dt, npx, npy, npz, ng, varflt, thv, delz, u, v, grav, gridstruct, flagstruct, bd, domain)
  
     real, intent(in   ):: dt, grav
@@ -2339,8 +2342,8 @@ do 1000 j=jfirst,jlast
     real, dimension(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz+1) :: ze
     real, dimension(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz) :: dudt_tofd, dvdt_tofd
     integer :: i,j,L, ikpbl
-    real :: tcrib, var_temp, a1, wsp, zm
-    real, dimension(bd%is:bd%ie, bd%js:bd%je) :: a2, Hefold
+    real :: tcrib, var_temp, a2, wsp, zm
+    real, dimension(bd%is:bd%ie, bd%js:bd%je) :: Hefold
     real, parameter ::      &
           dxmin_ss =  3000.0, &        ! minimum grid length for Beljaars
           dxmax_ss = 12000.0           ! maximum grid length for Beljaars
@@ -2369,9 +2372,9 @@ do 1000 j=jfirst,jlast
       ze(:,:,l) = ze(:,:,l+1) - delz(:,:,l) ! delz is negative
     end do
 
-    call prt_mxm('UA', ua, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-    call prt_mxm('VA', va, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-    call prt_mxm('STDFLT', varflt, is, ie, js, je, 0, 1, 1., gridstruct%area_64, domain)
+   !call prt_mxm('UA', ua, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+   !call prt_mxm('VA', va, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+   !call prt_mxm('STDFLT', varflt, is, ie, js, je, 0, 1, 1., gridstruct%area_64, domain)
 
     do j=js,je
        do i=is,ie
@@ -2386,39 +2389,35 @@ do 1000 j=jfirst,jlast
                    exit
                 end if
              end do
-! determine the efolding height
-             var_temp = MIN(varflt(i,j),150.0) + &
-                        MAX(0.,0.2*(varflt(i,j)-150.0))
-             var_temp = MIN(var_temp, 250.)
-            ! (IH*kflt**n1)**-1 = (0.00102*0.00035**-1.9)**-1 = 0.00026615161
-             a1=0.00026615161*var_temp**2
-            ! k1**(n1-n2) = 0.003**(-1.9 - -2.8) = 0.003**0.9 = 0.005363
-             a2(i,j)=a1*0.005363 * &
-                     MAX(0.0,MIN(1.0,dxmax_ss*(1.-dxmin_ss/SQRT(gridstruct%area_64(i,j))/(dxmax_ss-dxmin_ss))))
            ! Revise e-folding height based on PBL height and topographic std. dev.
              zm = 0.5*(ze(i,j,ikpbl+1)+ze(i,j,ikpbl))
-             Hefold(i,j) = MIN(MAX(2*varflt(i,j),zm),1500.)
+             Hefold(i,j) = MIN(MAX(2*SQRT(varflt(i,j)),zm),1500.)
        end do
     end do
-    call prt_mxm('A2', a2, is, ie, js, je, 0, 1, 1., gridstruct%area_64, domain)
-    call prt_mxm('Hefold', Hefold, is, ie, js, je, 0, 1, 1., gridstruct%area_64, domain)
+   !call prt_mxm('A2', a2, is, ie, js, je, 0, 1, 1., gridstruct%area_64, domain)
+   !call prt_mxm('Hefold', Hefold, is, ie, js, je, 0, 1, 1., gridstruct%area_64, domain)
     do l=1,npz
        do j=js,je
           do i=is,ie
                zm = 0.5*(ze(i,j,l+1)+ze(i,j,l))
-               wsp=min(10.0,SQRT(ua(i,j,l)**2 + va(i,j,l)**2))
-               ! alpha*beta*Cmd*Ccorr*2.109 = 12.*1.*0.005*0.6*2.109 = 0.0759
-               var_temp = 0.0759*EXP(-(zm/Hefold(i,j))**1.5)*a2(i,j)*zm**(-1.2) ! this is greater than zero
-               !  Note:  This is a semi-implicit treatment of the time differencing
-               !  per Beljaars et al. (2004, QJRMS)
-               dudt_tofd(i,j,l) = - var_temp*wsp*ua(i,j,l)/(1. + var_temp*dt*wsp)
-               dvdt_tofd(i,j,l) = - var_temp*wsp*va(i,j,l)/(1. + var_temp*dt*wsp)
+               wsp= SQRT(ua(i,j,l)**2 + va(i,j,l)**2)
+               a2 = 1.08371722e-7 * varflt(i,j) * &
+                    MAX(0.0,MIN(1.0,dxmax_ss*(1.-dxmin_ss/SQRT(gridstruct%area_64(i,j))/(dxmax_ss-dxmin_ss))))
+               if (a2 > 0.0 .AND. zm < 4.0*Hefold(i,j) ) then
+                  var_temp = zm/Hefold(i,j)
+                  var_temp = exp(-var_temp*sqrt(var_temp))*(var_temp**(-1.2))
+                  var_temp = a2*(var_temp/Hefold(i,j))*wsp
+             ! !  Note:  This is a semi-implicit treatment of the time differencing
+             ! !  per Beljaars et al. (2004, QJRMS)
+                  dudt_tofd(i,j,l) = - var_temp*ua(i,j,l)/(1. + var_temp*dt)
+                  dvdt_tofd(i,j,l) = - var_temp*va(i,j,l)/(1. + var_temp*dt)
+               end if
           end do
        end do
    end do
 
-   call prt_mxm('DUTFD', dudt_tofd, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-   call prt_mxm('DVTFD', dvdt_tofd, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+  !call prt_mxm('DUTFD', dudt_tofd, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+  !call prt_mxm('DVTFD', dvdt_tofd, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
 
 ! regrid tendencies update d-grid winds
     call mpp_update_domains(dudt_tofd, dvdt_tofd, domain, gridtype=AGRID)
@@ -2426,6 +2425,7 @@ do 1000 j=jfirst,jlast
                             u, v, gridstruct, npx, npy, npz, domain)
 
  end subroutine Beljaars
+#endif
 
 !>@brief The subroutine 'Ray_fast' computes a simple "inline" version of the Rayleigh friction.
  subroutine Ray_fast(dt, npx, npy, npz, pfull, tau, u, v, w,  &

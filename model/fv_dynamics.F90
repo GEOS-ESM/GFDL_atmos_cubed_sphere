@@ -271,8 +271,8 @@ contains
       integer :: rainwat = -999, snowwat = -999, graupel = -999, cld_amt = -999
       integer :: theta_d = -999
       logical used, last_step, do_omega
-      integer, parameter :: max_packs=12
-      type(group_halo_update_type), save :: i_pack(max_packs)
+      type(group_halo_update_type), save :: i_pack(12)
+      type(group_halo_update_type), save :: z_pack(181)
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
       real :: dt2
@@ -679,7 +679,7 @@ contains
        else
          if ( flagstruct%z_tracer ) then
          call tracer_2d_1L(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
-                        flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), &
+                        flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), z_pack, &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac)
          else
          call tracer_2d(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
