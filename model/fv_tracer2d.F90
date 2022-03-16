@@ -1004,6 +1004,7 @@ subroutine offline_tracer_advection(q, ple0, ple1, mfx, mfy, cx, cy, &
           ! Return tracers
           !---------------
           q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+          if (flagstruct%fill) q(is:ie,js:je,1:npz,iq) = max(q(is:ie,js:je,1:npz,iq),0.0) 
        enddo
 
 end subroutine offline_tracer_advection
@@ -1039,8 +1040,8 @@ end subroutine offline_tracer_advection
             partialSums(2,k) = sum(q1(:,:,k)*(ple1(:,:,k+1)-ple1(:,:,k))*gridstruct%area(bd%is:bd%ie,bd%js:bd%je))
          end do
 
-         globalSums(1) = sum(partialSums(1,:))
-         globalSums(2) = sum(partialSums(2,:))
+         globalSums(1) = max(sum(partialSums(1,:)),0.0)
+         globalSums(2) = max(sum(partialSums(2,:)),0.0)
 
          call mpp_sum(globalSums, 2)
 
