@@ -301,7 +301,7 @@ contains
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, adiabatic, &
-!$OMP                                  hs,w,ws,kord_wz,rrg,kord_mt)    &
+!$OMP                                  hs,w,ws,kord_wz,rrg,kord_mt,consv)    &
 !$OMP                          private(gz,cvm,bkh,dp2,   &
 !$OMP                                  pe0,pe1,pe2,pe3,pk1,pk2,pn2,phis,q2,dpln,dlnp)
   do 1000 j=js,je+1
@@ -464,6 +464,12 @@ contains
 
    if (remap_t) then
 !----------------------------------
+! map TE in log P using GMAO cubic
+!----------------------------------
+!        call map1_cubic (km,   pe1,  pt,       &
+!                         km,   pe2,  pt,       &
+!                         is, ie, j, isd, ied, jsd, jed, akap, T_VAR=2, conserv=.true.)
+!----------------------------------
 ! Map t using logp 
 !----------------------------------
          call map_scalar(km,  peln(is,1,j),  pt, gz,   &
@@ -480,16 +486,18 @@ contains
 !----------------------------------
 ! map TE in log P using GMAO cubic
 !----------------------------------
-!        call map1_cubic (km,   pe1,  te,       &
-!                         km,   pe2,  te,       &
-!                         is, ie, j, isd, ied, jsd, jed, akap, T_VAR=1, conserv=.true.)
+      if ( consv == 0.0 ) then
+         call map1_cubic (km,   pe1,  te,       &
+                          km,   pe2,  te,       &
+                          is, ie, j, isd, ied, jsd, jed, akap, T_VAR=1, conserv=.true.)
 !----------------------------------
 ! Map TE using logp 
 !----------------------------------
+      else
          call map_scalar(km,  peln(is,1,j),  te, gz,   &
                          km,  pn2,           te,              &
                          is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), te_min)
-
+      endif
    endif
 
 !----------------
