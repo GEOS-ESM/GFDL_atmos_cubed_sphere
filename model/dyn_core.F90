@@ -265,6 +265,7 @@ contains
     logical :: last_step, remap_step
     logical used
     real :: split_timestep_bc
+    real :: kfac
 
     integer :: is,  ie,  js,  je
     integer :: isd, ied, jsd, jed
@@ -659,7 +660,7 @@ contains
 !$OMP                                  ng,zh,vt,ptc,pt,u,v,w,uc,vc,ua,va,divgd,mfx,mfy,cx,cy,     &
 !$OMP                                  crx,cry,xfx,yfx,q_con,zvir,sphum,nq,q,dt,bd,rdt,iep1,jep1, &
 !$OMP                                  heat_source,diss_est,dpx)                                      &
-!$OMP                          private(nord_k, nord_w, nord_t, damp_w, damp_t, d2_divg,   &
+!$OMP                          private(nord_k, nord_w, nord_t, damp_w, damp_t, d2_divg, kfac, &
 !$OMP                          d_con_k,kgb, hord_m, hord_v, hord_t, hord_p, wk, heat_s,diss_e, z_rat)
     do k=1,npz
        hord_m = flagstruct%hord_mt
@@ -695,32 +696,17 @@ contains
        else
 ! Sponge layers with del-2 damping on divergence, vorticity, w, z, and air mass (delp).
 ! no special damping of potential temperature in sponge layers
-              if ( k<=MAX(1,flagstruct%n_sponge-2) ) then
+              if ( k<=MAX(3,flagstruct%n_sponge) ) then
+                   kfac = 1.0 - FLOAT(k-1)/FLOAT(MAX(2,flagstruct%n_sponge-1)) 
 ! Divergence damping:
-                   nord_k=0; d2_divg = max(0.01, flagstruct%d2_bg, flagstruct%d2_bg_k1)
+                   nord_k=0; d2_divg = max(flagstruct%d2_bg, flagstruct%d2_bg_k1)
+                             d2_divg = min(max(kfac*d2_divg,0.01),0.20)
 ! Vertical velocity:
                    nord_w=0; damp_w = d2_divg
                    if ( flagstruct%do_vort_damp ) then
 ! damping on delp and vorticity:
                         nord_v(k)=0;
-#ifndef HIWPP
-                        damp_vt(k) = 0.5*d2_divg
-#endif
                    endif
-                   d_con_k = 0.
-              elseif ( k==MAX(2,flagstruct%n_sponge-1) .and. flagstruct%d2_bg_k2>0.01 ) then
-                   nord_k=0; d2_divg = max(flagstruct%d2_bg, flagstruct%d2_bg_k2)
-                   nord_w=0; damp_w = d2_divg
-                   if ( flagstruct%do_vort_damp ) then
-                        nord_v(k)=0;
-#ifndef HIWPP
-                        damp_vt(k) = 0.5*d2_divg
-#endif
-                   endif
-                   d_con_k = 0.
-              elseif ( k==MAX(3,flagstruct%n_sponge) .and. flagstruct%d2_bg_k2>0.05 ) then
-                   nord_k=0;  d2_divg = max(flagstruct%d2_bg, 0.2*flagstruct%d2_bg_k2)
-                   nord_w=0;  damp_w = d2_divg
                    d_con_k = 0.
               endif
        endif
