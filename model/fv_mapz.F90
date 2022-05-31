@@ -86,7 +86,7 @@ module fv_mapz_mod
   use field_manager_mod, only: MODEL_ATMOS
   use fv_grid_utils_mod, only: g_sum, ptop_min
   use fv_fill_mod,       only: fillz
-  use mpp_domains_mod,   only: mpp_update_domains, domain2d
+  use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum, BITWISE_EFP_SUM, BITWISE_EXACT_SUM
   use mpp_mod,           only: NOTE, mpp_error, get_unit, mpp_root_pe, mpp_pe
   use fv_arrays_mod,     only: fv_grid_type, fv_flags_type
   use fv_timing_mod,     only: timing_on, timing_off
@@ -150,7 +150,7 @@ contains
   real, intent(in):: cp
   real, intent(in):: akap
   real, intent(in):: hs(isd:ied,jsd:jed)  !< surface geopotential
-  real, intent(inout):: te0_2d(is:ie,js:je)
+  real(kind=8), intent(inout):: te0_2d(is:ie,js:je)
   real, intent(in):: ws(is:ie,js:je)
 
   logical, intent(in):: do_sat_adj
@@ -207,12 +207,14 @@ contains
 ! SJL 03.11.04: Initial version for partial remapping
 !
 !-----------------------------------------------------------------------
-  real, dimension(is:ie,js:je):: te_2d, zsum0, zsum1, dpln
+  real(kind=8), dimension(is:ie,js:je):: te_2d, zsum0, zsum1
+  real, dimension(is:ie,js:je):: dpln
   real, dimension(is:ie,km)  :: q2, dp2
   real, dimension(is:ie,km+1):: pe1, pe2, pk1, pk2, pn2, phis
   real, dimension(is:ie+1,km+1):: pe0, pe3
   real, dimension(is:ie):: gz, cvm
-  real rcp, rg, tmp, tpe, rrg, bkh, dtmp, k1k, dlnp
+  real(kind=8):: tesum, zsum
+  real   :: rcp, rg, tmp, tpe, rrg, bkh, dtmp, k1k, dlnp
   logical:: fast_mp_consv
   integer:: i,j,k 
   integer:: nt, liq_wat, ice_wat, rainwat, snowwat, cld_amt, graupel, iq, n, kmp, kp, k_next
@@ -838,7 +840,7 @@ contains
 !$OMP                               ng,gridstruct,E_Flux,pdt,dtmp,reproduce_sum,q,      &
 !$OMP                               mdt,cld_amt,cappa,dtdt,out_dt,rrg,akap,do_sat_adj,  &
 !$OMP                               fast_mp_consv,kord_tm) &
-!$OMP                       private(pe0,pe1,pe2,pe3,cvm,gz,phis,tpe,dpln,dlnp,tmp)
+!$OMP                       private(pe0,pe1,pe2,pe3,cvm,gz,phis,tesum,zsum,dpln,dlnp,tmp)
 
 dtmp = 0.
 if( last_step .and. (.not.do_adiabatic_init)  ) then
@@ -915,13 +917,18 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
     enddo   ! j-loop
 
 !$OMP single
-         tpe = consv*g_sum(domain, te_2d, is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=.true.)
-      E_Flux = tpe / (grav*pdt*4.*pi*radius**2)    ! unit: W/m**2
-                                                   ! Note pdt is "phys" time step
+      tesum = mpp_global_sum(domain, te_2d*gridstruct%area_64(is:ie,js:je), &
+                             flags=BITWISE_EFP_SUM)
+      E_Flux = consv*tesum / (grav*pdt*4.*pi*radius**2)    ! unit: W/m**2
+                                                           ! Note pdt is "phys" time step
       if ( hydrostatic ) then
-           dtmp = tpe / (cp*g_sum(domain, zsum0,  is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=.true.))
+           zsum  = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
+                                  flags=BITWISE_EFP_SUM)
+           tesum = tesum / (cp*zsum)
       else
-           dtmp = tpe / (cv_air*g_sum(domain, zsum1, is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=.true.))
+           zsum  = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
+                                  flags=BITWISE_EFP_SUM)
+           tesum = tesum / (cv_air*zsum)
       endif
 !$OMP end single
 
@@ -947,11 +954,13 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
       E_Flux = consv
 !$OMP single
       if ( hydrostatic ) then
-           dtmp = E_flux*(grav*pdt*4.*pi*radius**2) /    &
-                 (cp*g_sum(domain, zsum0,  is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=.true.))
+           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
+                                  flags=BITWISE_EFP_SUM)
+           dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cp*zsum)
       else
-           dtmp = E_flux*(grav*pdt*4.*pi*radius**2) /    &
-                 (cv_air*g_sum(domain, zsum1,  is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=.true.))
+           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
+                                  flags=BITWISE_EFP_SUM)
+           dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cv_air*zsum)
       endif
 !$OMP end single
   endif        ! end consv check
@@ -972,7 +981,7 @@ endif        ! end last_step check
                              q(isd,jsd,k,ice_wat), q(isd,jsd,k,rainwat),    &
                              q(isd,jsd,k,snowwat), q(isd,jsd,k,graupel),    &
                              hs ,dpln, delz(isd:,jsd:,k), pt(isd,jsd,k), delp(isd,jsd,k), &
-              cappa(isd:,jsd:,k), gridstruct%area_64, dtdt(is:,js:,k), out_dt, last_step, cld_amt>0, q(isd,jsd,k,cld_amt))
+              cappa(isd:,jsd:,k), gridstruct%area_64, dtdt(is:,js:,k), out_dt, last_step, q(isd,jsd,k,cld_amt))
               if ( .not. hydrostatic  ) then
                  do j=js,je
                     do i=is,ie
@@ -1093,7 +1102,7 @@ endif        ! end last_step check
    real, intent(in) :: cosa_s_l(isd:ied, jsd:jed)
    logical, intent(in):: moist_phys, hydrostatic
 !! Output:
-   real, intent(out):: te_2d(is:ie,js:je)   !< vertically integrated TE
+   real(kind=8), intent(out):: te_2d(is:ie,js:je)   !< vertically integrated TE
    real, intent(out)::   teq(is:ie,js:je)   !< Moist TE
 !! Local
    real, dimension(is:ie,km):: tv

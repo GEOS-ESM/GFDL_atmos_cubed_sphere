@@ -254,7 +254,8 @@ contains
       real         ::  cyL(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
 ! More Local arrays 
       real:: ws(bd%is:bd%ie,bd%js:bd%je)
-      real:: te_2d(bd%is:bd%ie,bd%js:bd%je)
+      real(kind=8):: te_2d(bd%is:bd%ie,bd%js:bd%je)
+      real::   aam(bd%is:bd%ie,bd%js:bd%je)
       real::   teq(bd%is:bd%ie,bd%js:bd%je)
       real:: ps2(bd%isd:bd%ied,bd%jsd:bd%jed)
       real:: m_fac(bd%is:bd%ie,bd%js:bd%je)
@@ -832,29 +833,29 @@ contains
 
   if( (flagstruct%consv_am.or.idiag%id_amdt>0.or.idiag%id_aam>0) .and. (.not.do_adiabatic_init)  ) then
       call compute_aam(npz, is, ie, js, je, isd, ied, jsd, jed, gridstruct, bd,   &
-                       ptop, ua, va, u, v, delp, te_2d, ps, m_fac)
+                       ptop, ua, va, u, v, delp, aam, ps, m_fac)
       if( idiag%id_aam>0 ) then
-          used = send_data(idiag%id_aam, te_2d, fv_time)
+          used = send_data(idiag%id_aam, aam, fv_time)
           if ( prt_minmax ) then
-             gam = g_sum( domain, te_2d, is, ie, js, je, ng, gridstruct%area_64, 0) 
+             gam = g_sum( domain, aam, is, ie, js, je, ng, gridstruct%area_64, 0) 
              if( is_master() ) write(6,*) 'Total AAM =', gam
           endif
       endif
   endif
 
   if( (flagstruct%consv_am.or.idiag%id_amdt>0) .and. (.not.do_adiabatic_init)  ) then
-!$OMP parallel do default(none) shared(is,ie,js,je,te_2d,teq,dt2,ps2,ps,idiag) 
+!$OMP parallel do default(none) shared(is,ie,js,je,aam,teq,dt2,ps2,ps,idiag) 
       do j=js,je
          do i=is,ie
 ! Note: the mountain torque computation contains also numerical error
 ! The numerical error is mostly from the zonal gradient of the terrain (zxg)
-            te_2d(i,j) = te_2d(i,j)-teq(i,j) + dt2*(ps2(i,j)+ps(i,j))*idiag%zxg(i,j)
+            aam(i,j) = aam(i,j)-teq(i,j) + dt2*(ps2(i,j)+ps(i,j))*idiag%zxg(i,j)
          enddo
       enddo
-      if( idiag%id_amdt>0 ) used = send_data(idiag%id_amdt, te_2d/bdt, fv_time)
+      if( idiag%id_amdt>0 ) used = send_data(idiag%id_amdt, aam/bdt, fv_time)
 
       if ( flagstruct%consv_am .or. prt_minmax ) then
-         amdt = g_sum( domain, te_2d, is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=.true.) 
+         amdt = g_sum( domain, aam, is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=.true.) 
          u0 = -radius*amdt/g_sum( domain, m_fac, is, ie, js, je, ng, gridstruct%area_64, 0,reproduce=.true.)
          if(is_master() .and. prt_minmax)         &
          write(6,*) 'Dynamic AM tendency (Hadleys)=', amdt/(bdt*1.e18), 'del-u (per day)=', u0*86400./bdt
