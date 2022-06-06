@@ -151,9 +151,7 @@ module gfdl_lin_cloud_microphys_mod
     logical :: do_sedi_heat = .true. !< transport of heat in sedimentation
     logical :: prog_ccn = .false. !< do prognostic ccn (yi ming's method)
     logical :: do_qa = .true. !< do inline cloud fraction (WMP: in FV3 dynamics)
-    logical :: rad_snow = .true. !< consider snow in cloud fraciton calculation
-    logical :: rad_graupel = .true. !< consider graupel in cloud fraction calculation
-    logical :: rad_rain = .true. !< consider rain in cloud fraction calculation
+    logical :: preciprad = .false. !< consider precipitates in cloud fraciton calculation
     logical :: fix_negative = .false. !< fix negative water species
     logical :: do_setup = .true. !< setup constants and parameters
     logical :: p_nonhydro = .false. !< perform hydrosatic adjustment on air density
@@ -213,6 +211,7 @@ module gfdl_lin_cloud_microphys_mod
     real :: tau_l2r = 900. !< cloud water to rain auto - conversion
     real :: tau_v2l = 150. !< water vapor to cloud water (condensation)
     real :: tau_l2v = 300. !< cloud water to water vapor (evaporation)
+    real :: tau_i2v = 300. !< cloud ice to water vapor (sublimation)
     real :: tau_g2v = 900. !< graupel sublimation
     real :: tau_v2g = 21600. !< graupel deposition -- make it a slow process
     real :: tau_revp = 600. !< rain re-evaporation
@@ -318,10 +317,10 @@ module gfdl_lin_cloud_microphys_mod
         const_vs, const_vg, const_vr, use_ccn, rthresh, ccn_l, ccn_o, qc_crt, &
         tau_g2v, tau_v2g, &
         tau_revp, tau_frz, &
-        sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v,      &
+        sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v, tau_i2v, &
         tau_i2s, tau_l2r, qi_lim, ql_gen, c_paut, c_psaci, c_pgacs, c_pgaci,  &
         z_slope_liq, z_slope_ice, prog_ccn, c_cracw, alin, clin, tice,        &
-        rad_snow, rad_graupel, rad_rain, cld_min, use_ppm, mono_prof,         &
+        preciprad, cld_min, use_ppm, mono_prof,         &
         do_sedi_heat, sedi_transport, do_sedi_w, de_ice, icloud_f, irain_f, mp_print
     
     public                                                                    &
@@ -332,10 +331,10 @@ module gfdl_lin_cloud_microphys_mod
         const_vs, const_vg, const_vr, use_ccn, rthresh, ccn_l, ccn_o, qc_crt, &
         tau_g2v, tau_v2g, &
         tau_revp, tau_frz, &
-        sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v,      &
+        sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v, tau_i2v, &
         tau_i2s, tau_l2r, qi_lim, ql_gen, c_paut, c_psaci, c_pgacs, c_pgaci,  &
         z_slope_liq, z_slope_ice, prog_ccn, c_cracw, alin, clin, tice,        &
-        rad_snow, rad_graupel, rad_rain, cld_min, use_ppm, mono_prof,         &
+        preciprad, cld_min, use_ppm, mono_prof,         &
         do_sedi_heat, sedi_transport, do_sedi_w, de_ice, icloud_f, irain_f, mp_print
     
 contains
@@ -817,7 +816,7 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
         t_land = dw_land * s_leng
         t_ocean = dw_ocean * s_leng
         h_var = t_land * land (i) + t_ocean * (1. - land (i))
-        h_var = min (0.20, max (0.01, h_var))
+        h_var = min (0.30, max (0.01, h_var))
         ! if (id_var > 0) w_var (i, j) = h_var
         
         ! -----------------------------------------------------------------------
@@ -1997,7 +1996,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
     real, dimension (ktop:kbot) :: lcpk, icpk, tcpk, tcp3, lhl, lhi
     real, dimension (ktop:kbot) :: cvm, q_liq, q_sol, q_cond
     
-    real :: fac_v2l, fac_l2v
+    real :: fac_v2l, fac_l2v, fac_i2v
     
     real :: pidep, qi_crt
     
@@ -2029,7 +2028,9 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
     
     fac_v2l = 1. - exp (- dt_evap / tau_v2l)
     fac_l2v = 1. - exp (- dt_evap / tau_l2v)
-    
+   
+    fac_i2v = 1. - exp (- dt_evap / tau_i2v)
+ 
     fac_g2v = 1. - exp (- dts / tau_g2v)
     fac_v2g = 1. - exp (- dts / tau_v2g)
   
@@ -2183,7 +2184,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         if (tz (k) < tice) then
             qsi = iqs2 (tz (k), den (k), dqsdt)
             dq = qv (k) - qsi
-            sink = dq / (1. + tcpk (k) * dqsdt)
+            sink = fac_i2v * dq / (1. + tcpk (k) * dqsdt)
             if (qi (k) > qrmin) then
                 ! eq 9, hong et al. 2004, mwr
                 ! for a and b, see dudhia 1989: page 3103 eq (b7) and (b8)
@@ -2327,14 +2328,11 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         
         if (.not. do_qa) cycle
         
-        if (rad_snow) then
-            q_sol (k) = qi (k) + qs (k)
-        else
-            q_sol (k) = qi (k)
-        endif
-        if (rad_rain) then
+        if (preciprad) then
+            q_sol (k) = qi (k) + qs (k) + qg (k)
             q_liq (k) = ql (k) + qr (k)
         else
+            q_sol (k) = qi (k)
             q_liq (k) = ql (k)
         endif
         q_cond (k) = q_liq (k) + q_sol (k)
