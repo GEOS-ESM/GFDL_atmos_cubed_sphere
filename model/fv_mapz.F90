@@ -466,7 +466,7 @@ contains
 
    if (remap_t) then
 !----------------------------------
-! map TE in log P using GMAO cubic
+! map T in log P using GMAO cubic
 !----------------------------------
 !        call map1_cubic (km,   pe1,  pt,       &
 !                         km,   pe2,  pt,       &
