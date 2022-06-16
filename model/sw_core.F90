@@ -1276,15 +1276,14 @@
              enddo
           enddo
         endif
-
-     endif
 #ifdef USE_COND
-     do j=js,je
-        do i=is,ie
-           q_con(i,j) = q_con(i,j)/delp(i,j)
+        do j=js,je
+           do i=is,ie
+              q_con(i,j) = q_con(i,j)/delp(i,j)
+           enddo
         enddo
-     enddo
 #endif
+     endif
 
 !-----------------------------
 ! Compute divergence damping

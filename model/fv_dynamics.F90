@@ -420,10 +420,6 @@ contains
 !$OMP      rainwat,ice_wat,snowwat,graupel) private(cvm)
       do k=1,npz
          do j=js,je
-#ifdef USE_COND
-             call moist_cp(is,ie,isd,ied,jsd,jed, npz, j, k, nwat, sphum, liq_wat, rainwat,    &
-                           ice_wat, snowwat, graupel, q, q_con(is:ie,j,k), cvm)
-#endif
             do i=is,ie
                dp1(i,j,k) = zvir*q(i,j,k,sphum)
             enddo
@@ -468,9 +464,6 @@ contains
     endif
 
       if ( flagstruct%fv_debug ) then
-#ifdef MOIST_CAPPA
-         call prt_mxm('cappa', cappa, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-#endif
          call prt_mxm('PS',        ps, is, ie, js, je, ng,   1, 0.01, gridstruct%area_64, domain)
          call prt_mxm('T_dyn_b',   pt, is, ie, js, je, ng, npz, 1.,   gridstruct%area_64, domain)
          if ( .not. hydrostatic) call prt_mxm('delz',    delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
@@ -538,18 +531,29 @@ contains
           endif
        enddo
   else
+    if (hydrostatic) then
+!$OMP parallel do default(none) shared(is,ie,js,je,npz,pt,dp1,pkz)
+       do k=1,npz
+          do j=js,je
+             do i=is,ie
+                pt(i,j,k) = pt(i,j,k)*(1.+dp1(i,j,k))/pkz(i,j,k)
+             enddo
+          enddo
+       enddo
+    else
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,pt,dp1,pkz,q_con)
-  do k=1,npz
-     do j=js,je
-        do i=is,ie
+       do k=1,npz
+          do j=js,je
+             do i=is,ie
 #ifdef USE_COND
-           pt(i,j,k) = pt(i,j,k)*(1.+dp1(i,j,k))*(1.-q_con(i,j,k))/pkz(i,j,k)
+                pt(i,j,k) = pt(i,j,k)*(1.+dp1(i,j,k))*(1.-q_con(i,j,k))/pkz(i,j,k)
 #else
-           pt(i,j,k) = pt(i,j,k)*(1.+dp1(i,j,k))/pkz(i,j,k)
+                pt(i,j,k) = pt(i,j,k)*(1.+dp1(i,j,k))/pkz(i,j,k)
 #endif
-        enddo
-     enddo
-  enddo
+             enddo
+          enddo
+       enddo
+    endif
   endif
 #endif
 
@@ -580,29 +584,33 @@ contains
                                                   call timing_on('FV_DYN_LOOP')
   do n_map=1, k_split   ! first level of time-split
                                            call timing_on('COMM_TOTAL')
+    if (.not. hydrostatic) then
 #ifdef USE_COND
       call start_group_halo_update(i_pack(11), q_con, domain)
 #ifdef MOIST_CAPPA
       call start_group_halo_update(i_pack(12), cappa, domain)
 #endif
 #endif
-      call start_group_halo_update(i_pack(1), delp, domain, complete=.false.)
-      call start_group_halo_update(i_pack(1), pt,   domain, complete=.true.)
+    endif
+
+    call start_group_halo_update(i_pack(1), delp, domain, complete=.false.)
+    call start_group_halo_update(i_pack(1), pt,   domain, complete=.true.)
 #ifndef ROT3
-      call start_group_halo_update(i_pack(8), u, v, domain, gridtype=DGRID_NE)
+    call start_group_halo_update(i_pack(8), u, v, domain, gridtype=DGRID_NE)
 #endif
                                            call timing_off('COMM_TOTAL')
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,npz,dp1,delp)
-      do k=1,npz
-         do j=jsd,jed
-            do i=isd,ied
-               dp1(i,j,k) = delp(i,j,k)
-            enddo
-         enddo
-      enddo
+    do k=1,npz
+       do j=jsd,jed
+          do i=isd,ied
+             dp1(i,j,k) = delp(i,j,k)
+          enddo
+       enddo
+    enddo
 
-      if ( n_map==k_split ) last_step = .true.
+    if ( n_map==k_split ) last_step = .true.
 
+    if (.not. hydrostatic) then
 #ifdef USE_COND
                                            call timing_on('COMM_TOTAL')
      call complete_group_halo_update(i_pack(11), domain)
@@ -611,6 +619,7 @@ contains
 #endif
                                            call timing_off('COMM_TOTAL')
 #endif
+    endif
 
                                            call timing_on('DYN_CORE')
       call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &

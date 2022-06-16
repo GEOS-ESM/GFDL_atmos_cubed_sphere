@@ -1028,6 +1028,22 @@ endif        ! end last_step check
 #endif
            enddo   ! j-loop
         enddo  ! k-loop
+#ifdef USE_COND
+! Fill condensate output
+!$OMP do  
+        do k=1,km
+           do j=js,je
+              do i=is,ie
+                                  q_con(i,j,k) = 0.0
+                 if (liq_wat > 0) q_con(i,j,k) = q_con(i,j,k) + q(i,j,k,liq_wat)
+                 if (ice_wat > 0) q_con(i,j,k) = q_con(i,j,k) + q(i,j,k,ice_wat)
+                 if (rainwat > 0) q_con(i,j,k) = q_con(i,j,k) + q(i,j,k,rainwat)
+                 if (snowwat > 0) q_con(i,j,k) = q_con(i,j,k) + q(i,j,k,snowwat)
+                 if (graupel > 0) q_con(i,j,k) = q_con(i,j,k) + q(i,j,k,graupel)
+              enddo
+           enddo   ! j-loop
+        enddo  ! k-loop
+#endif
        else
 !$OMP do
         do k=1,km
@@ -1038,23 +1054,6 @@ endif        ! end last_step check
            enddo   ! j-loop
         enddo  ! k-loop
        endif
-
-#ifdef USE_COND
-! Fill condensate output
-!$OMP do  
-        do k=1,km
-           do j=js,je
-              do i=is,ie
-                                  q_con(i,j,k) = 0.0
-                 if (liq_wat > 0) q_con(i,j,k) = q_con(i,j,k) + q(i,j,k,liq_wat) 
-                 if (ice_wat > 0) q_con(i,j,k) = q_con(i,j,k) + q(i,j,k,ice_wat)
-                 if (rainwat > 0) q_con(i,j,k) = q_con(i,j,k) + q(i,j,k,rainwat)
-                 if (snowwat > 0) q_con(i,j,k) = q_con(i,j,k) + q(i,j,k,snowwat)
-                 if (graupel > 0) q_con(i,j,k) = q_con(i,j,k) + q(i,j,k,graupel)
-              enddo
-           enddo   ! j-loop
-        enddo  ! k-loop
-#endif
 
     else  ! not last_step .or. (.not. adiabatic)
 
