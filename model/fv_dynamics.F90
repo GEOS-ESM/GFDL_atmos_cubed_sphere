@@ -750,7 +750,7 @@ contains
                      idiag%id_mdt>0, dtdt_m, ptop, ak, bk, pfull, flagstruct, gridstruct, domain,   &
                      flagstruct%do_sat_adj, hydrostatic, hybrid_z, do_omega,     &
                      flagstruct%adiabatic, do_adiabatic_init, &
-                     mfxL, mfyL, cxL, cyL, flagstruct%remap_option)
+                     mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap)
 
 #ifdef AVEC_TIMERS
                                                   call avec_timer_stop(6)

@@ -872,6 +872,12 @@ module fv_arrays_mod
                                  !< kord_tm no longer needs to be negative.
                                  !< WMP-NASA-GMAO UPDATE
 
+   integer :: gmao_remap = 0    !< Whether the vertical remapping uses GFDl or GMAO remap schemes
+                                !<     0: GFDL schemes
+                                !<     1: GMAO linear
+                                !<     2: GMAO quadratic
+                                !<     3: GMAO cubic
+
    logical :: z_tracer = .false.   !< Whether to transport sub-cycled tracers layer-by-layer,
                                    !< each with its own computed sub-cycling time step (if q_split = 0).
                                    !< This may improve efficiency for very large numbers of tracers. 

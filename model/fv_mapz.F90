@@ -129,7 +129,7 @@ contains
                       ng, ua, va, omga, te, ws, fill, reproduce_sum, out_dt, dtdt,      &
                       ptop, ak, bk, pfull, flagstruct, gridstruct, domain, do_sat_adj, &
                       hydrostatic, hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
-                      mfx, mfy, cx, cy, remap_option)
+                      mfx, mfy, cx, cy, remap_option, gmao_remap)
   logical, intent(in):: last_step
   real,    intent(in):: mdt                    !< remap time step
   real,    intent(in):: pdt                    !< phys time step
@@ -197,9 +197,7 @@ contains
   real, optional, intent(inout)::  cx(is:ie+1, jsd:jed,km)
   real, optional, intent(inout)::  cy(isd:ied ,js:je+1,km)
 
-  integer, intent(in):: remap_option  ! 0: remap  T in logP
-                                      ! 1: remap PT in P
-                                      ! 2: remap TE in logP 
+  integer, intent(in):: remap_option, gmao_remap
 
 ! !DESCRIPTION:
 !
@@ -231,7 +229,21 @@ contains
   case(2)
     remap_te = .true.
   case default
-    print*, ' INVALID REMAPPING OPTION '
+    print*, ' INVALID REMAP_OPTION '
+    stop
+  end select
+
+  select case (gmao_remap)
+  case(0)
+    ! use GFDL schemes
+  case(1)
+    ! GMAO linear remap
+  case(2)
+    ! GMAO quadratic remap
+  case(3)
+    ! GMAO cubic remap
+  case default 
+    print*, ' INVALID GMAO_REMAP'
     stop
   end select
 
@@ -239,12 +251,27 @@ contains
      print*, ''
      select case (remap_option)
      case(0)
-     print*, ' REMAPPING  T in logP '
+     print*, ' REMAPPING  T in logP'
      case(1)
      print*, ' REMAPPING PT in P'
      case(2)
      print*, ' REMAPPING TE in logP'
      end select
+
+     print*, ''
+     select case (gmao_remap)
+     case(0)
+     print*, ' Using GFDL schemes'
+     case(1)
+     print*, ' Using GMAO linear scheme'
+     case(2)
+     print*, ' Using GMAO quadratic scheme'
+     case(3)
+     print*, ' Using GMAO cubic scheme'
+     end select
+
+   ! Total eergy conservation
+     print*, ''
      print*, ' REMAPPING CONSV:     ', consv
      print*, ' REMAPPING CONSV_MIN: ', consv_min
      print*, ''
@@ -303,7 +330,7 @@ contains
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, adiabatic, &
-!$OMP                                  hs,w,ws,kord_wz,rrg,kord_mt,consv)    &
+!$OMP                                  hs,w,ws,kord_wz,rrg,kord_mt,consv,remap_option,gmao_remap)    &
 !$OMP                          private(gz,cvm,bkh,dp2,   &
 !$OMP                                  pe0,pe1,pe2,pe3,pk1,pk2,pn2,phis,q2,dpln,dlnp)
   do 1000 j=js,je+1
@@ -466,35 +493,38 @@ contains
 
    if (remap_t) then
 !----------------------------------
-! map T in log P using GMAO cubic
+! map T in log P 
 !----------------------------------
-!        call map1_cubic (km,   pe1,  pt,       &
-!                         km,   pe2,  pt,       &
-!                         is, ie, j, isd, ied, jsd, jed, akap, T_VAR=2, conserv=.true.)
-!----------------------------------
-! Map t using logp 
-!----------------------------------
+      if ( gmao_remap > 0 ) then
+         call map1_gmao (km,   pe1,  pt,       &
+                         km,   pe2,  pt,       &
+                         is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, T_VAR=3, conserv=.false.)
+      else
          call map_scalar(km,  peln(is,1,j),  pt, gz,   &
                          km,  pn2,           pt,              &
                          is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), t_min)
+      endif
    elseif (remap_pt) then
-!----------------------------------
-! Map pt using pe
-!----------------------------------
+!------------------------------------
+! map PT in P^KAPPA 
+!------------------------------------
+      if ( gmao_remap > 0 ) then
+         call map1_gmao (km,   pe1,  pt,       &
+                         km,   pe2,  pt,       &
+                         is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, T_VAR=2, conserv=.false.)
+      else
          call map1_ppm (km,  pe1,  pt,  gz,       &
                         km,  pe2,  pt,                  &
                         is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm))
+      endif
    elseif (remap_te) then
 !----------------------------------
-! map TE in log P using GMAO cubic
+! map TE in log P
 !----------------------------------
-      if ( consv == 0.0 ) then
-         call map1_cubic (km,   pe1,  te,       &
-                          km,   pe2,  te,       &
-                          is, ie, j, isd, ied, jsd, jed, akap, T_VAR=1, conserv=.true.)
-!----------------------------------
-! Map TE using logp 
-!----------------------------------
+      if ( gmao_remap > 0 ) then
+         call map1_gmao (km,   pe1,  te,       &
+                         km,   pe2,  te,       &
+                         is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, T_VAR=1, conserv=.true.)
       else
          call map_scalar(km,  peln(is,1,j),  te, gz,   &
                          km,  pn2,           te,              &
@@ -3686,12 +3716,12 @@ endif        ! end last_step check
 
 !----------------------------------------------------------------------- 
 !BOP
-! !ROUTINE:  map1_cubic --- Cubic Interpolation for vertical re-mapping
+! !ROUTINE:  map1_gmao --- GMAO Interpolation for vertical re-mapping
 !
 ! !INTERFACE:
-  subroutine map1_cubic( km,   pe1,    q1,                 &
-                         kn,   pe2,    q2,   i1, i2,       &
-                         j,    ibeg, iend, jbeg, jend, akap, T_VAR, conserv)
+  subroutine map1_gmao( km,   pe1,    q1,                 &
+                        kn,   pe2,    q2,   i1, i2,       &
+                        j,    ibeg, iend, jbeg, jend, akap, gmao_remap, T_VAR, conserv)
       implicit none
 
 ! !INPUT PARAMETERS:
@@ -3699,7 +3729,8 @@ endif        ! end last_step check
       integer, intent(in) :: i2                ! Finishing longitude
       real, intent(in) :: akap
       integer, intent(in) :: T_VAR             ! Thermodynamic variable to remap
-                                               !     1:TE  2:T  3:PT 
+                                               ! 1:TE  2:T  3:PT 
+      integer, intent(in) :: gmao_remap        ! 3:cubic  2:quadratic  1:linear
       logical, intent(in) :: conserv
       integer, intent(in) :: j                 ! Current latitude
       integer, intent(in) :: ibeg, iend, jbeg, jend
@@ -3852,12 +3883,31 @@ endif        ! end last_step check
              DLM1 = dlogp1(i,LM1)
              DLM2 = dlogp1(i,LM2)
 
-              ap1 = (P-PLP0)*(P-PLM1)*(P-PLM2)/( DLP0*(DLP0+DLM1)*(DLP0+DLM1+DLM2) )
-              ap0 = (PLP1-P)*(P-PLM1)*(P-PLM2)/( DLP0*      DLM1 *(     DLM1+DLM2) )
-              am1 = (PLP1-P)*(PLP0-P)*(P-PLM2)/( DLM1*      DLM2 *(DLP0+DLM1     ) )
-              am2 = (PLP1-P)*(PLP0-P)*(PLM1-P)/( DLM2*(DLM1+DLM2)*(DLP0+DLM1+DLM2) )
+           ! Cubic Coefficients
+           ! ------------------
+             if( gmao_remap .eq. 3 ) then
+                 ap1 = (P-PLP0)*(P-PLM1)*(P-PLM2)/( DLP0*(DLP0+DLM1)*(DLP0+DLM1+DLM2) )
+                 ap0 = (PLP1-P)*(P-PLM1)*(P-PLM2)/( DLP0*      DLM1 *(     DLM1+DLM2) )
+                 am1 = (PLP1-P)*(PLP0-P)*(P-PLM2)/( DLM1*      DLM2 *(DLP0+DLM1     ) )
+                 am2 = (PLP1-P)*(PLP0-P)*(PLM1-P)/( DLM2*(DLM1+DLM2)*(DLP0+DLM1+DLM2) )
+                 q2(i,j,k) = ap1*qx(i,LP1) + ap0*qx(i,LP0) + am1*qx(i,LM1) + am2*qx(i,LM2)
+             endif
 
-             q2(i,j,k) = ap1*qx(i,LP1) + ap0*qx(i,LP0) + am1*qx(i,LM1) + am2*qx(i,LM2)
+           ! Quadratic Coefficients
+           ! ----------------------
+             if( gmao_remap .eq. 2 ) then
+                 ap1 = (P-PLP0)*(P-PLM1)/( (PLP1-PLP0)*(PLP1-PLM1) )
+                 ap0 = (PLP1-P)*(P-PLM1)/( (PLP1-PLP0)*(PLP0-PLM1) )
+                 am1 = (PLP1-P)*(PLP0-P)/( (PLP1-PLM1)*(PLP0-PLM1) )
+                 q2(i,j,k) = ap1*qx(i,LP1) + ap0*qx(i,LP0) + am1*qx(i,LM1)
+             endif
+
+           ! Linear Coefficients
+           ! -------------------
+             if( gmao_remap .eq. 1 ) then
+                 q2(i,j,k) = qx(i,LP0) + ( qx(i,LM1)-qx(i,LP0) )*( logpl2(i,k  )-logpl1(i,LP0) ) &
+                                                                /( logpl1(i,LM1)-logpl1(i,LP0) )
+             endif
 
          endif
 
@@ -3888,7 +3938,7 @@ endif        ! end last_step check
 
       return
 !EOC
- end subroutine map1_cubic
+ end subroutine map1_gmao
 !-----------------------------------------------------------------------
 
 
