@@ -151,7 +151,7 @@ module gfdl_lin_cloud_microphys_mod
     logical :: do_sedi_heat = .true. !< transport of heat in sedimentation
     logical :: prog_ccn = .false. !< do prognostic ccn (yi ming's method)
     logical :: do_qa = .true. !< do inline cloud fraction (WMP: in FV3 dynamics)
-    logical :: preciprad = .false. !< consider precipitates in cloud fraciton calculation
+    logical :: preciprad = .true. !< consider precipitates in cloud fraciton calculation
     logical :: fix_negative = .false. !< fix negative water species
     logical :: do_setup = .true. !< setup constants and parameters
     logical :: p_nonhydro = .false. !< perform hydrosatic adjustment on air density
@@ -215,7 +215,7 @@ module gfdl_lin_cloud_microphys_mod
     real :: tau_g2v = 900. !< graupel sublimation
     real :: tau_v2g = 21600. !< graupel deposition -- make it a slow process
     real :: tau_revp = 600. !< rain re-evaporation
-    real :: tau_frz = 450. !, timescale for liquid-ice freezing
+    real :: tau_frz = 150. !, timescale for liquid-ice freezing
     ! horizontal subgrid variability
     
     real :: dw_land = 0.20 !< base value for subgrid deviation / variability over land
@@ -1553,7 +1553,7 @@ subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
 
         if (tzk (k) > tice) then
 
-            newql = new_liq_condensate(dt5, tzk (k), qlk (k), qik (k))
+            newql = new_liq_condensate(tzk (k), qlk (k), qik (k))
             
             ! -----------------------------------------------------------------------
             ! pimlt: instant melting of cloud ice
@@ -4835,9 +4835,9 @@ real function new_ice_condensate(tk, qlk, qik)
  
 end function new_ice_condensate
 
-real function new_liq_condensate(dt, tk, qlk, qik)
+real function new_liq_condensate(tk, qlk, qik)
 
-     real, intent(in) :: dt, tk, qlk, qik
+     real, intent(in) :: tk, qlk, qik
      real :: lfrac
 
      lfrac = 1.0 - calipso_ice_polynomial(tk)
