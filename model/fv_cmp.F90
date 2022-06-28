@@ -98,7 +98,9 @@ module fv_cmp_mod
     real, parameter :: tice = 273.16 !< freezing temperature
     real, parameter :: t_wfr = tice - 40. !< homogeneous freezing temperature
     real, parameter :: dt_fr = 8. !< homogeneous freezing of all cloud water at t_wfr - dt_fr
-  
+
+    real, parameter :: t_evap = 273.16 + 10.0
+ 
     real, parameter :: lv0 = hlv - dc_vap * tice !< 3.13905782e6, evaporation latent heat coefficient at 0 deg k
     real, parameter :: li00 = hlf - dc_ice * tice !< - 2.7105966e5, fusion latent heat coefficient at 0 deg k
     
@@ -156,7 +158,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real :: qsw, rh
     real :: tc, qsi, dqsdt, dq, dq0, pidep, qi_crt, tmp, dtmp
     real :: tin, rqi, q_plus, q_minus, dqh
-    real :: sdt, dt_bigg, adj_fac
+    real :: sdt, dt_bigg
     real :: fac_smlt, fac_r2g, fac_i2s, fac_imlt, fac_l2r, fac_v2l, fac_l2v, fac_i2v, fac_frz
     real :: factor, qim, tice0, c_air, c_vap, dw
     real :: a1, newqi, newql
@@ -172,21 +174,21 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     ! define conversion scalar / factor
     ! -----------------------------------------------------------------------
     
-    fac_i2s = 1. - exp (- mdt / tau_i2s)
-    fac_v2l = 1. - exp (- sdt / tau_v2l)
-    fac_r2g = 1. - exp (- mdt / tau_r2g)
-    fac_l2r = 1. - exp (- mdt / tau_l2r)
+    fac_i2s = sat_adj0 * (1. - exp (- mdt / tau_i2s))
+    fac_v2l = sat_adj0 * (1. - exp (- sdt / tau_v2l))
+    fac_r2g = sat_adj0 * (1. - exp (- mdt / tau_r2g))
+    fac_l2r = sat_adj0 * (1. - exp (- mdt / tau_l2r))
     
-!   fac_l2v = 1. - exp (- sdt / tau_l2v)
-!   fac_i2v = 1. - exp (- sdt / tau_i2v)
+    fac_l2v = sat_adj0 * (1. - exp (- sdt / tau_l2v))
+    fac_i2v = sat_adj0 * (1. - exp (- sdt / tau_i2v))
 ! Skip evap/subl by forcing a long timescale
-    fac_l2v = 1. - exp (- sdt / 86400.)
-    fac_i2v = 1. - exp (- sdt / 86400.)
+!   fac_l2v = sat_adj0 * (1. - exp (- sdt / 86400.))
+!   fac_i2v = sat_adj0 * (1. - exp (- sdt / 86400.))
 
-    fac_imlt = 1. - exp (- sdt / tau_imlt)
-    fac_smlt = 1. - exp (- mdt / tau_smlt)
+    fac_imlt = sat_adj0 * (1. - exp (- sdt / tau_imlt))
+    fac_smlt = sat_adj0 * (1. - exp (- mdt / tau_smlt))
     
-    fac_frz = 1. - exp (- mdt / tau_frz)
+    fac_frz = sat_adj0 * (1. - exp (- mdt / tau_frz))
     ! -----------------------------------------------------------------------
     ! define heat capacity of dry air and water vapor based on hydrostatical property
     ! -----------------------------------------------------------------------
@@ -350,7 +352,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            dtmp = (t_wfr - dt_fr) - pt1 (i)
+            dtmp = tice - 48. - pt1 (i)
             if (ql (i, j) > 0. .and. dtmp > 0.) then
                 sink (i) = min (ql (i, j), dtmp / icp2 (i))
                 ql (i, j) = ql (i, j) - sink (i)
@@ -380,15 +382,11 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
 
         call wqs2_vect (is, ie, pt1, den, wqsat, dq2dt)
         
-        adj_fac = sat_adj0
         do i = is, ie
 
-          ! dqh = max (ql (i,j), hvar (i) * max (qpz (i), qcmin))
-          ! dqh = min (dqh, 0.2 * qpz (i)) ! new limiter
-          ! q_minus = qpz (i) - dqh
             dq0 = wqsat(i) - qv(i,j)
-            if (dq0 > qvmin) then
-              factor = min (1., adj_fac * fac_l2v * (10. * dq0 / wqsat(i)))
+            if ( (pt1 (i) < t_evap) .and. (dq0 > qvmin) ) then
+              factor = min (1., fac_l2v * (10. * dq0 / wqsat(i)))
               evap (i) = min (ql (i,j), factor * ql(i,j) / (1. + tcp3 (i) * dq2dt (i)))
             else ! evaporation of ql
               evap (i) = 0.0
@@ -412,51 +410,12 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
             tcp3 (i) = lcp2 (i) + icp2 (i) * min (1., dim (tice, pt1 (i)) / 48.)
         enddo
         
-        if (last_step) then
-            
-            ! -----------------------------------------------------------------------
-            ! condensation / evaporation between water vapor and cloud water, last time step
-            ! enforce upper (no super_sat) & lower (critical rh) bounds
-            ! final iteration:
-            ! -----------------------------------------------------------------------
-            
-            call wqs2_vect (is, ie, pt1, den, wqsat, dq2dt)
-           
-            adj_fac = sat_adj0
-            do i = is, ie
-                dq0 = wqsat(i) - qv(i,j)
-                if (dq0 > 0.) then ! whole grid - box saturated
-                  factor = min (1., adj_fac * fac_l2v * (10. * dq0 / wqsat(i)))
-                  evap (i) = min (ql (i,j), factor * ql(i,j) / (1. + tcp3 (i) * dq2dt (i)))
-                else ! evaporation of ql
-                  evap (i) = 0.0
-                endif
-                qv (i, j) = qv (i, j) + evap (i)
-                ql (i, j) = ql (i, j) - evap (i)
-                q_liq (i) = q_liq (i) - evap (i)
-                cvm (i) = mc_air (i) + qv (i, j) * c_vap + q_liq (i) * c_liq + q_sol (i) * c_ice
-                pt1 (i) = pt1 (i) - evap (i) * lhl (i) / cvm (i)
-            enddo
- 
-            ! -----------------------------------------------------------------------
-            ! update latend heat coefficient
-            ! -----------------------------------------------------------------------
-            
-            do i = is, ie
-                lhl (i) = lv00 + d0_vap * pt1 (i)
-                lhi (i) = li00 + dc_ice * pt1 (i)
-                lcp2 (i) = lhl (i) / cvm (i)
-                icp2 (i) = lhi (i) / cvm (i)
-            enddo
-            
-        endif
-        
         ! -----------------------------------------------------------------------
         ! homogeneous freezing of cloud water to cloud ice
         ! -----------------------------------------------------------------------
         
         do i = is, ie
-            dtmp = tice - pt1 (i) ! [ - 40, - 48]
+            dtmp = (t_wfr - dt_fr) - pt1 (i) ! [ - 40, - 48]
             if (ql (i, j) > 0. .and. dtmp > 0.) then
                 newqi = new_ice_condensate(pt1 (i), ql (i,j), qi (i,j))
                 sink (i) = max(0.0,min (newqi, fac_frz * dtmp / icp2 (i)))
@@ -588,8 +547,8 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 src (i) = dim (qv (i, j), qvmin)
             elseif (pt1 (i) < tice0) then
                 qsi = iqs2 (pt1 (i), den (i), dqsdt)
-                dq = fac_i2v * (qv (i, j) - qsi)
-                sink (i) = adj_fac * dq / (1. + tcp2 (i) * dqsdt)
+                dq = (qv (i, j) - qsi)
+                sink (i) = fac_i2v * dq / (1. + tcp2 (i) * dqsdt)
                 if (qi (i, j) > qcmin) then
                     pidep = sdt * dq * 349138.78 * exp (0.875 * log (qi (i, j) * den (i))) &
                          / (qsi * den (i) * lat2 / (0.0243 * rvgas * pt1 (i) ** 2) + 4.42478e4)

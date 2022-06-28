@@ -315,7 +315,7 @@ contains
        cld_amt = get_tracer_index (MODEL_ATMOS, 'cld_amt')
 #endif
 
-       if ( do_sat_adj ) then
+       if ( do_sat_adj .and. nwat>=6 ) then
             fast_mp_consv = (.not.do_adiabatic_init) .and. consv>consv_min
             do k=1,km
                kmp = k
@@ -956,7 +956,7 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
                                   flags=BITWISE_EFP_SUM)
            tesum = tesum / (cp*zsum)
       else
-           zsum  = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
+           zsum  = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
                                   flags=BITWISE_EFP_SUM)
            tesum = tesum / (cv_air*zsum)
       endif
@@ -997,7 +997,7 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
 endif        ! end last_step check
 
 ! Note: pt at this stage is T_v
-  if ( do_sat_adj ) then
+  if ( do_sat_adj .and. nwat>=6 ) then
                                            call timing_on('sat_adj2')
 !$OMP do
            do k=kmp,km
