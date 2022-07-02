@@ -59,7 +59,7 @@ module fv_cmp_mod
     use gfdl_lin_cloud_microphys_mod, only: ql_gen, qi_gen, qi0_crt, qi0_max, ql_mlt, ql0_max, qi_lim, qs_mlt
     use gfdl_lin_cloud_microphys_mod, only: icloud_f, sat_adj0, t_sub, cld_min
     use gfdl_lin_cloud_microphys_mod, only: tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_i2v, tau_imlt, tau_l2r, tau_frz
-    use gfdl_lin_cloud_microphys_mod, only: preciprad, dw_ocean, dw_land
+    use gfdl_lin_cloud_microphys_mod, only: preciprad, dw_ocean, dw_land, do_qa
     
     implicit none
     
@@ -127,7 +127,7 @@ contains
 !! It handles the heat release due to in situ phase changes.
 subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         te0, qv, ql, qi, qr, qs, qg, hs, dpln, delz, pt, dp, cappa, &
-        area, dtdt, out_dt, last_step, do_qa, qa)
+        area, dtdt, out_dt, last_step, qa)
  
     implicit none
     
@@ -140,8 +140,6 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real, intent (in), dimension (is - ng:ie + ng, js - ng:je + ng) :: dp, delz, hs
     real, intent (in), dimension (is:ie, js:je) :: dpln
    
-    logical, intent(in) :: do_qa
- 
     real, intent (inout), dimension (is - ng:ie + ng, js - ng:je + ng) :: pt, qv, ql, qi, qr, qs, qg
     real, intent (inout), dimension (is - ng:, js - ng:) :: cappa
     real, intent (inout), dimension (is:ie, js:je) :: dtdt
@@ -181,9 +179,6 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     
     fac_l2v = sat_adj0 * (1. - exp (- sdt / tau_l2v))
     fac_i2v = sat_adj0 * (1. - exp (- sdt / tau_i2v))
-! Skip evap/subl by forcing a long timescale
-!   fac_l2v = sat_adj0 * (1. - exp (- sdt / 86400.))
-!   fac_i2v = sat_adj0 * (1. - exp (- sdt / 86400.))
 
     fac_imlt = sat_adj0 * (1. - exp (- sdt / tau_imlt))
     fac_smlt = sat_adj0 * (1. - exp (- mdt / tau_smlt))
@@ -379,37 +374,30 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         ! condensation / evaporation between water vapor and cloud water
         ! -----------------------------------------------------------------------
-
-        call wqs2_vect (is, ie, pt1, den, wqsat, dq2dt)
-        
-        do i = is, ie
-
+        if (do_qa) then 
+          call wqs2_vect (is, ie, pt1, den, wqsat, dq2dt)
+          do i = is, ie
             dq0 = wqsat(i) - qv(i,j)
-            if ( (pt1 (i) < t_evap) .and. (dq0 > qvmin) ) then
-              factor = min (1., fac_l2v * (10. * dq0 / wqsat(i)))
-              evap (i) = min (ql (i,j), factor * ql(i,j) / (1. + tcp3 (i) * dq2dt (i)))
-            else ! evaporation of ql
-              evap (i) = 0.0
-            endif
+            factor = min (1., fac_l2v * (10. * dq0 / wqsat(i)))
+            evap (i) = min (ql (i,j), factor * ql(i,j) / (1. + tcp3 (i) * dq2dt (i)))
             qv (i, j) = qv (i, j) + evap (i)
             ql (i, j) = ql (i, j) - evap (i)
             q_liq (i) = q_liq (i) - evap (i)
             cvm (i) = mc_air (i) + qv (i, j) * c_vap + q_liq (i) * c_liq + q_sol (i) * c_ice
             pt1 (i) = pt1 (i) - evap (i) * lhl (i) / cvm (i)
-        enddo
-        
-        ! -----------------------------------------------------------------------
-        ! update latend heat coefficient
-        ! -----------------------------------------------------------------------
-        
-        do i = is, ie
+          enddo
+          ! -----------------------------------------------------------------------
+          ! update latend heat coefficient
+          ! -----------------------------------------------------------------------
+          do i = is, ie
             lhl (i) = lv00 + d0_vap * pt1 (i)
             lhi (i) = li00 + dc_ice * pt1 (i)
             lcp2 (i) = lhl (i) / cvm (i)
             icp2 (i) = lhi (i) / cvm (i)
             tcp3 (i) = lcp2 (i) + icp2 (i) * min (1., dim (tice, pt1 (i)) / 48.)
-        enddo
-        
+          enddo
+        endif
+
         ! -----------------------------------------------------------------------
         ! homogeneous freezing of cloud water to cloud ice
         ! -----------------------------------------------------------------------
@@ -540,8 +528,8 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         ! sublimation / deposition between water vapor and cloud ice
         ! -----------------------------------------------------------------------
-        
-        do i = is, ie
+        if (do_qa) then
+          do i = is, ie
             src (i) = 0.
             if (pt1 (i) < t_sub) then ! too cold to be accurate; freeze qv as a fix
                 src (i) = dim (qv (i, j), qvmin)
@@ -572,7 +560,8 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
             q_sol (i) = q_sol (i) + src (i)
             cvm (i) = mc_air (i) + qv (i, j) * c_vap + q_liq (i) * c_liq + q_sol (i) * c_ice
             pt1 (i) = pt1 (i) + src (i) * (lhl (i) + lhi (i)) / cvm (i)
-        enddo
+          enddo
+        endif
         
         ! -----------------------------------------------------------------------
         ! virtual temp updated
