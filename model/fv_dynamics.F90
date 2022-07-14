@@ -464,9 +464,10 @@ contains
     endif
 
       if ( flagstruct%fv_debug ) then
-         call prt_mxm('PS',        ps, is, ie, js, je, ng,   1, 0.01, gridstruct%area_64, domain)
+         call prt_mxm('PS_b',      ps, is, ie, js, je, ng,   1, 0.01, gridstruct%area_64, domain)
          call prt_mxm('T_dyn_b',   pt, is, ie, js, je, ng, npz, 1.,   gridstruct%area_64, domain)
-         if ( .not. hydrostatic) call prt_mxm('delz',    delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if ( .not. hydrostatic) call prt_mxm('delz_b', delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if ( .not. hydrostatic) call prt_mxm('W_b',    w,    is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
          call prt_mxm('delp_b ', delp, is, ie, js, je, ng, npz, 0.01, gridstruct%area_64, domain)
          call prt_mxm('pk_b',    pk, is, ie, js, je, 0, npz+1, 1.,gridstruct%area_64, domain)
          call prt_mxm('pkz_b',   pkz,is, ie, js, je, 0, npz,   1.,gridstruct%area_64, domain)
@@ -830,7 +831,6 @@ contains
                                 q(isd,jsd,1,graupel), check_negative=flagstruct%check_negative)
      endif
      if ( flagstruct%fv_debug ) then
-       call prt_mxm('T_dyn_a3',    pt, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
        call prt_mxm('SPHUM_dyn',   q(isd,jsd,1,sphum  ), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
        call prt_mxm('liq_wat_dyn', q(isd,jsd,1,liq_wat), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
        call prt_mxm('rainwat_dyn', q(isd,jsd,1,rainwat), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
@@ -914,9 +914,10 @@ contains
                          -280., 280., bad_range)
        call range_check('TA_dyn', pt, is, ie, js, je, ng, npz, gridstruct%agrid,   &
                          150., 335., bad_range)
-       if ( .not. hydrostatic ) &
+       if ( .not. hydrostatic ) then
             call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         -50., 100., bad_range)
+                         -100., 100., bad_range)
+       endif
   endif
 
   end subroutine fv_dynamics

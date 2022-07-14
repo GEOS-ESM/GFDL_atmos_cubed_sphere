@@ -398,15 +398,6 @@ contains
           remap_step = .false.
      endif
 
-     if ( flagstruct%fv_debug ) then
-          if(is_master()) write(*,*) 'n_split loop, it=', it
-          if ( .not. flagstruct%hydrostatic )    &
-          call prt_mxm('delz',  delz, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
-          call prt_mxm('PT',      pt, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
-          call prt_mxm('U',        u, is, ie  , js, je+1, ng, npz, 1., gridstruct%area_64, domain)
-          call prt_mxm('V',        v, is, ie+1, js, je  , ng, npz, 1., gridstruct%area_64, domain)
-     endif
-
      if (gridstruct%nested) then
         !First split timestep has split_timestep_BC = n_split*k_split
         !   to do time-extrapolation on BCs.
@@ -493,9 +484,9 @@ contains
             enddo
          enddo
        endif
-          last_step = .true.
+       last_step = .true.
      else
-          last_step = .false.
+       last_step = .false.
      endif
        
                                                      call timing_on('COMM_TOTAL')
@@ -784,6 +775,8 @@ contains
             enddo
        endif
     enddo           ! end openMP k-loop
+    if ( flagstruct%fv_debug ) &
+    call prt_mxm('W_dsw ', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
 
                                                      call timing_off('d_sw')
 
@@ -825,54 +818,37 @@ contains
      call complete_group_halo_update(i_pack(11), domain)
 #endif
                                        call timing_off('COMM_TOTAL')
-    if ( flagstruct%fv_debug ) then
-         if ( .not. flagstruct%hydrostatic )    &
-         call prt_mxm('delz',  delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-    endif
 
-    !Want to move this block into the hydro/nonhydro branch above and merge the two if structures
-    if (gridstruct%nested) then
+     !Want to move this block into the hydro/nonhydro branch above and merge the two if structures
+     if (gridstruct%nested) then
        call nested_grid_BC_apply_intT(delp, &
             0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*flagstruct%k_split), &
             neststruct%delp_BC, bctype=neststruct%nestbctype )
-
 #ifndef SW_DYNAMICS
-
        call nested_grid_BC_apply_intT(pt, &
             0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*flagstruct%k_split), &
             neststruct%pt_BC, bctype=neststruct%nestbctype  )
-
 #ifdef USE_COND
        call nested_grid_BC_apply_intT(q_con, &
             0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*flagstruct%k_split), &
             neststruct%q_con_BC, bctype=neststruct%nestbctype  )       
 #endif
-
 #endif
+     end if
 
-    end if
      if ( hydrostatic ) then
-          call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
-                     gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd)
-       else
+        call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
+                   gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd)
+     else
 #ifndef SW_DYNAMICS
                                             call timing_on('UPDATE_DZ')
         call update_dz_d(nord_v, damp_vt, flagstruct%hord_tm, is, ie, js, je, npz, ng, npx, npy, gridstruct%area,  &
                          gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, gridstruct, bd, flagstruct%lim_fac)
                                             call timing_off('UPDATE_DZ')
-    if ( flagstruct%fv_debug ) then
-         if ( .not. flagstruct%hydrostatic )    &
-         call prt_mxm('delz updated',  delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-    endif
 
         if (idiag%id_ws>0 .and. last_step) then
-!           call prt_maxmin('WS', ws, is, ie, js, je, 0, 1, 1., master)
             used=send_data(idiag%id_ws, ws, fv_time)
         endif
-
-
-
-                             
 
                                                          call timing_on('Riem_Solver')
         call Riem_Solver3(flagstruct%m_split, dt,  is,  ie,   js,   je, npz, ng,     &
@@ -882,6 +858,9 @@ contains
                          flagstruct%scale_z, flagstruct%p_fac, flagstruct%a_imp, &
                          flagstruct%use_logp, remap_step, beta<-0.1)
                                                          call timing_off('Riem_Solver')
+        if ( flagstruct%fv_debug ) &
+        call prt_mxm('W_riem', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
+
                                        call timing_on('COMM_TOTAL')
         if ( gridstruct%square_domain ) then
           call start_group_halo_update(i_pack(4), zh ,  domain)
@@ -891,6 +870,7 @@ contains
           call start_group_halo_update(i_pack(4), pkc,  domain, complete=.true.)
         endif
                                        call timing_off('COMM_TOTAL')
+
         if ( remap_step )  &
         call pe_halo(is, ie, js, je, isd, ied, jsd, jed, npz, ptop, pe, delp)
 
@@ -899,7 +879,8 @@ contains
         else
              call pk3_halo(is, ie, js, je, isd, ied, jsd, jed, npz, ptop, akap, pk3, delp)
         endif
-       if (gridstruct%nested) then
+
+        if (gridstruct%nested) then
           call nested_grid_BC_apply_intT(delz, &
                0, 0, npx, npy, npz, bd, split_timestep_BC+1., real(n_split*flagstruct%k_split), &
                neststruct%delz_BC, bctype=neststruct%nestbctype  )
@@ -914,7 +895,7 @@ contains
 #endif
                pkc, gz, pk3, npx, npy, npz, gridstruct%nested, .true., .true., .true., bd)
 
-       endif
+        endif
         call timing_on('COMM_TOTAL')
         call complete_group_halo_update(i_pack(4), domain)
         call timing_off('COMM_TOTAL')
@@ -959,10 +940,7 @@ contains
        else
           call one_grad_p(u, v, pkc, gz, divg2, delp, dt, ng, gridstruct, bd, npx, npy, npz, ptop, hydrostatic, flagstruct%a2b_ord, flagstruct%d_ext)
        endif
-
     else
-
-
        if ( beta > 0. ) then
           call split_p_grad( u, v, pkc, gz, delp, pk3, beta_d, dt, ng, gridstruct, bd, npx, npy, npz, flagstruct%use_logp)
        elseif ( beta < -0.1 ) then
@@ -970,7 +948,6 @@ contains
        else
           call nh_p_grad(u, v, pkc, gz, delp, pk3, dt, ng, gridstruct, bd, npx, npy, npz, flagstruct%use_logp)
        endif
-
 #ifdef ROT3
        if ( flagstruct%do_f3d ) then
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,ua,gridstruct,w,va,isd,ied,jsd,jed)
@@ -1064,8 +1041,7 @@ contains
          neststruct%nest_timestep = neststruct%nest_timestep + 1
       endif
 
-#ifdef SW_DYNAMICS
-#else
+#ifndef SW_DYNAMICS
     if ( hydrostatic .and. last_step ) then
       if ( flagstruct%use_old_omega ) then
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,omga,pe,pem,rdt)
@@ -1113,9 +1089,6 @@ contains
 #endif
 
     if (gridstruct%nested) then
-
-
-
 #ifndef SW_DYNAMICS
          if (.not. hydrostatic) then
                call nested_grid_BC_apply_intT(w, &
@@ -1130,7 +1103,18 @@ contains
             1, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*flagstruct%k_split), &
             neststruct%v_BC, bctype=neststruct%nestbctype )
 
-      end if
+    end if
+
+    if ( flagstruct%fv_debug ) then
+          if(is_master()) write(*,*) 'n_split loop, it=', it
+          call prt_mxm('PT',      pt, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
+          if ( .not. flagstruct%hydrostatic ) then
+            call prt_mxm('delz',  delz, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
+            call prt_mxm('W',        w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
+          endif
+          call prt_mxm('U',        u, is, ie  , js, je+1, ng, npz, 1., gridstruct%area_64, domain)
+          call prt_mxm('V',        v, is, ie+1, js, je  , ng, npz, 1., gridstruct%area_64, domain)
+    endif
 
 !-----------------------------------------------------
   enddo   ! time split loop
@@ -1142,6 +1126,7 @@ contains
        call timing_off('COMM_TRACER')
        call timing_off('COMM_TOTAL')
      endif
+
 
   if ( flagstruct%fv_debug ) then
        if(is_master()) write(*,*) 'End of n_split loop'
@@ -1184,7 +1169,7 @@ contains
             if ( k == 1 ) delt = 0.1*delt
             if ( k == 2 ) delt = 0.5*delt
           else
-            delt = delt*MIN(1.0,FLOAT(k-1)/FLOAT(flagstruct%n_sponge))
+            delt = delt*MIN(1.0,FLOAT(k)/FLOAT(flagstruct%n_sponge))
           endif
           do j=js,je
              do i=is,ie

@@ -108,7 +108,7 @@ module fv_mapz_mod
   real, parameter:: cp_vap = cp_vapor        !< 1846.
   real, parameter:: tice = 273.16
 
-  real(kind=4) :: E_Flux = 0.
+  real(kind=8) :: E_Flux = 0.
   private
 
   public compute_total_energy, Lagrangian_to_Eulerian, moist_cv, moist_cp,   &
@@ -211,8 +211,8 @@ contains
   real, dimension(is:ie,km+1):: pe1, pe2, pk1, pk2, pn2, phis
   real, dimension(is:ie+1,km+1):: pe0, pe3
   real, dimension(is:ie):: gz, cvm
-  real(kind=8):: tesum, zsum
-  real   :: rcp, rg, tmp, tpe, rrg, bkh, dtmp, k1k, dlnp
+  real(kind=8):: tesum, zsum, dtmp
+  real   :: rcp, rg, tmp, tpe, rrg, bkh, k1k, dlnp
   logical:: fast_mp_consv
   integer:: i,j,k 
   integer:: nt, liq_wat, ice_wat, rainwat, snowwat, cld_amt, graupel, iq, n, kmp, kp, k_next
@@ -949,16 +949,16 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
 !$OMP single
       tesum = mpp_global_sum(domain, te_2d*gridstruct%area_64(is:ie,js:je), &
                              flags=BITWISE_EFP_SUM)
-      E_Flux = consv*tesum / (grav*pdt*4.*pi*radius**2)    ! unit: W/m**2
+      E_Flux = DBLE(consv)*tesum / DBLE(grav*pdt*4.*pi*radius**2)    ! unit: W/m**2
                                                            ! Note pdt is "phys" time step
       if ( hydrostatic ) then
-           zsum  = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
+           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
                                   flags=BITWISE_EFP_SUM)
-           tesum = tesum / (cp*zsum)
+           dtmp = tesum / DBLE(cp*zsum)
       else
-           zsum  = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
+           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
                                   flags=BITWISE_EFP_SUM)
-           tesum = tesum / (cv_air*zsum)
+           dtmp = tesum / DBLE(cv_air*zsum)
       endif
 !$OMP end single
 
@@ -3567,7 +3567,7 @@ endif        ! end last_step check
 
    case(1)
      do i=is,ie
-        qv(i) = q(i,j,k,sphum)
+        qv(i) = max(q(i,j,k,sphum)  ,0.0)
         cvm(i) = (1.-qv(i))*cv_air + qv(i)*cv_vap
      enddo
    case(2)
@@ -3587,39 +3587,39 @@ endif        ! end last_step check
         enddo
      else
         do i=is,ie
-           qv(i) = max(0.,q(i,j,k,sphum))
-           qs(i) = max(0.,q(i,j,k,liq_wat))
+           qv(i) = max(q(i,j,k,sphum)  ,0.0)
+           qs(i) = max(q(i,j,k,liq_wat),0.0)
            qd(i) = qs(i)
            cvm(i) = (1.-qv(i))*cv_air + qv(i)*cv_vap
         enddo
      endif
   case (3)
      do i=is,ie
-        qv(i) = q(i,j,k,sphum)
-        ql(i) = q(i,j,k,liq_wat) 
-        qs(i) = q(i,j,k,ice_wat)
+        qv(i) = max(q(i,j,k,sphum)  ,0.0)
+        ql(i) = max(q(i,j,k,liq_wat),0.0)
+        qs(i) = max(q(i,j,k,ice_wat),0.0)
         qd(i) = ql(i) + qs(i)
         cvm(i) = (1.-(qv(i)+qd(i)))*cv_air + qv(i)*cv_vap + ql(i)*c_liq + qs(i)*c_ice
      enddo
   case(4)              ! K_warm_rain with fake ice
      do i=is,ie 
-        qv(i) = q(i,j,k,sphum)
-        qd(i) = q(i,j,k,liq_wat) + q(i,j,k,rainwat)
+        qv(i) = max(q(i,j,k,sphum)  ,0.0)
+        ql(i) = max(q(i,j,k,liq_wat),0.0) + max(q(i,j,k,rainwat),0.0)
         cvm(i) = (1.-(qv(i)+qd(i)))*cv_air + qv(i)*cv_vap + qd(i)*c_liq
      enddo
   case(5)
      do i=is,ie 
-        qv(i) = q(i,j,k,sphum)
-        ql(i) = q(i,j,k,liq_wat) + q(i,j,k,rainwat) 
-        qs(i) = q(i,j,k,ice_wat) + q(i,j,k,snowwat)
+        qv(i) = max(q(i,j,k,sphum)  ,0.0)
+        ql(i) = max(q(i,j,k,liq_wat),0.0) + max(q(i,j,k,rainwat),0.0)
+        qs(i) = max(q(i,j,k,ice_wat),0.0) + max(q(i,j,k,snowwat),0.0)
         qd(i) = ql(i) + qs(i)
         cvm(i) = (1.-(qv(i)+qd(i)))*cv_air + qv(i)*cv_vap + ql(i)*c_liq + qs(i)*c_ice
      enddo
   case(6:7)
      do i=is,ie 
-        qv(i) = q(i,j,k,sphum)
-        ql(i) = q(i,j,k,liq_wat) + q(i,j,k,rainwat) 
-        qs(i) = q(i,j,k,ice_wat) + q(i,j,k,snowwat) + q(i,j,k,graupel)
+        qv(i) = max(q(i,j,k,sphum)  ,0.0)
+        ql(i) = max(q(i,j,k,liq_wat),0.0) + max(q(i,j,k,rainwat),0.0) 
+        qs(i) = max(q(i,j,k,ice_wat),0.0) + max(q(i,j,k,snowwat),0.0) + max(q(i,j,k,graupel),0.0)
         qd(i) = ql(i) + qs(i)
         cvm(i) = (1.-(qv(i)+qd(i)))*cv_air + qv(i)*cv_vap + ql(i)*c_liq + qs(i)*c_ice
      enddo
