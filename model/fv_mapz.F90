@@ -639,16 +639,16 @@ contains
       call map1_ppm( km, pe0(is:ie,:),   u,   gz,   &
                      km, pe3(is:ie,:),   u,               &
                      is, ie, j, isd, ied, jsd, jed+1, -1, kord_mt)
-      if (present(mfy)) then
-         call map1_ppm( km, pe0(is:ie,:), mfy,  gz,  &
-                        km, pe3(is:ie,:), mfy,       &
-                        is, ie, j, is, ie, js, je+1, -1, kord_mt)
-      endif
-      if (present(cy)) then
-         call map1_ppm( km, pe0(is:ie,:), cy,  gz,  &
-                        km, pe3(is:ie,:), cy,       &
-                        is, ie, j, isd, ied, js, je+1, -1, kord_mt)
-      endif
+      ! if (present(mfy)) then
+      !    call map1_ppm( km, pe0(is:ie,:), mfy,  gz,  &
+      !                   km, pe3(is:ie,:), mfy,       &
+      !                   is, ie, j, is, ie, js, je+1, -1, kord_mt)
+      ! endif
+      ! if (present(cy)) then
+      !    call map1_ppm( km, pe0(is:ie,:), cy,  gz,  &
+      !                   km, pe3(is:ie,:), cy,       &
+      !                   is, ie, j, isd, ied, js, je+1, -1, kord_mt)
+      ! endif
 
    if (j < je+1) then
 !------
@@ -669,16 +669,16 @@ contains
        call map1_ppm (km, pe0,  v, gz,    &
                       km, pe3,  v, is, ie+1,    &
                       j, isd, ied+1, jsd, jed, -1, kord_mt)
-       if (present(mfx)) then
-          call map1_ppm (km, pe0, mfx,  gz,         &
-                         km, pe3, mfx, is, ie+1,    &
-                         j, is, ie+1, js, je, -1, kord_mt)
-       endif
-       if (present(cx)) then
-          call map1_ppm (km, pe0, cx,  gz,         &
-                         km, pe3, cx, is, ie+1,    &
-                         j, is, ie+1, jsd, jed, -1, kord_mt)
-       endif
+       ! if (present(mfx)) then
+       !    call map1_ppm (km, pe0, mfx,  gz,         &
+       !                   km, pe3, mfx, is, ie+1,    &
+       !                   j, is, ie+1, js, je, -1, kord_mt)
+       ! endif
+       ! if (present(cx)) then
+       !    call map1_ppm (km, pe0, cx,  gz,         &
+       !                   km, pe3, cx, is, ie+1,    &
+       !                   j, is, ie+1, jsd, jed, -1, kord_mt)
+       ! endif
    endif ! (j < je+1)
 
      do k=1,km
