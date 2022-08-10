@@ -67,6 +67,7 @@ program Main
        npes, nx, ny/nregions)
 
   ! This is what we are testing
+#ifdef RUN_REMAP
   call cpu_time(start)
   call Lagrangian_to_Eulerian( &
        scalars%last_step, scalars%consv, &
@@ -100,6 +101,9 @@ program Main
        arrays%mfx, arrays%mfy, arrays%cx, arrays%cy, &
        scalars%remap_option)
   call cpu_time(finish)
+#else
+  ASSERT_(1==2)
+#endif
 
   ! Compare output
   call get_output(output_file, output)
