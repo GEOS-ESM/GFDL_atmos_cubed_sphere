@@ -165,7 +165,9 @@ contains
                         ps, pe, pk, peln, pkz, phis, varflt, q_con, omga, ua, va, uc, vc,          &
                         ak, bk, mfx, mfy, cx, cy, ze0, hybrid_z, &
                         gridstruct, flagstruct, neststruct, idiag, bd, &
-                        parent_grid, domain, diss_est, time_total)
+                        parent_grid, domain, diss_est, &
+                        dudt_rf, dvdt_rf, dwdt_rf, dtdt_rf, &
+                        time_total)
 
     real, intent(IN) :: bdt  !< Large time-step
     real, intent(IN) :: consv_te
@@ -196,8 +198,12 @@ contains
     real, intent(inout) :: q(   bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz, ncnst) !< specific humidity and constituents
     real, intent(inout) :: delz(bd%isd:,bd%jsd:,1:)   !< delta-height (m); non-hydrostatic only
     real, intent(inout) ::  ze0(bd%is:, bd%js: ,1:) !< height at edges (m); non-hydrostatic
-    real, intent(inout), dimension(bd%isd:bd%ied  ,bd%jsd:bd%jed,npz) :: diss_est! diffusion estimate for SKEB
+    real, intent(inout), dimension(bd%isd:bd%ied  ,bd%jsd:bd%jed,  npz) :: diss_est! diffusion estimate for SKEB
 ! ze0 no longer used
+    real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dudt_rf ! U-wind tendency from Rayleigh friction
+    real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dvdt_rf ! V-wind tendency from Rayleigh friction
+    real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dwdt_rf ! W      tendency from Rayleigh friction
+    real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dtdt_rf ! Temp   tendency from Rayleigh friction
 
 !-----------------------------------------------------------------------
 ! Auxilliary pressure arrays:    
@@ -495,21 +501,24 @@ contains
                            ptop, ua, va, u, v, delp, teq, ps2, m_fac)
       endif
 
+      dudt_rf =  u(is:ie,js:je,:)
+      dvdt_rf =  v(is:ie,js:je,:)
+      dwdt_rf =  w(is:ie,js:je,:)
+      dtdt_rf = pt(is:ie,js:je,:) ! at this time PT is dry T (K)
       if( .not.flagstruct%RF_fast .and. flagstruct%tau > 0. ) then
         if ( gridstruct%grid_type<4 ) then
-!         if ( flagstruct%RF_fast ) then
-!            call Ray_fast(abs(dt), npx, npy, npz, pfull, flagstruct%tau, u, v, w,  &
-!                          dp_ref, ptop, hydrostatic, flagstruct%rf_cutoff, bd)
-!         else
              call Rayleigh_Super(abs(bdt), npx, npy, npz, ks, pfull, phis, flagstruct%tau, u, v, w, pt,  &
                   ua, va, delz, gridstruct%agrid, cp_air, rdgas, ptop, hydrostatic,    &
                  (.not. neststruct%nested), flagstruct%rf_cutoff, gridstruct, domain, bd)
-!         endif
         else
              call Rayleigh_Friction(abs(bdt), npx, npy, npz, ks, pfull, flagstruct%tau, u, v, w, pt,  &
                   ua, va, delz, cp_air, rdgas, ptop, hydrostatic, .true., flagstruct%rf_cutoff, gridstruct, domain, bd)
         endif
       endif
+      dudt_rf = ( u(is:ie,js:je,:) - dudt_rf)/bdt
+      dvdt_rf = ( v(is:ie,js:je,:) - dvdt_rf)/bdt
+      dwdt_rf = ( w(is:ie,js:je,:) - dwdt_rf)/bdt
+      dtdt_rf = (pt(is:ie,js:je,:) - dtdt_rf)/bdt
 
 #endif
 
