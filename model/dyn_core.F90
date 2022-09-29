@@ -775,7 +775,7 @@ contains
             enddo
        endif
     enddo           ! end openMP k-loop
-    if ( flagstruct%fv_debug ) &
+    if ( (.not. hydrostatic) .and.  flagstruct%fv_debug ) &
     call prt_mxm('W_dsw ', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
 
                                                      call timing_off('d_sw')
