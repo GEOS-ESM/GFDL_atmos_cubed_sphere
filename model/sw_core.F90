@@ -969,9 +969,9 @@
 
         if ( .not. hydrostatic ) then
             if ( damp_w>1.E-5 ) then
-                 dd8 = kgb*abs(dt)
-                 damp4 = (damp_w*gridstruct%da_min_c)**(nord_w+1)
-                 call del6_vt_flux(nord_w, npx, npy, damp4, w, wk, fx2, fy2, gridstruct, bd)
+                dd8 = kgb*abs(dt)
+                damp4 = (damp_w*gridstruct%da_min_c)**(nord_w+1)
+                call del6_vt_flux(nord_w, npx, npy, damp4, w, wk, fx2, fy2, gridstruct, bd)
                 do j=js,je
                    do i=is,ie
                       dw(i,j) = ((fx2(i,j)-fx2(i+1,j))+(fy2(i,j)-fy2(i,j+1)))*rarea(i,j)
@@ -992,26 +992,18 @@
         endif
 
 #ifdef USE_COND
-           call fv_tp_2d(q_con, crx_adv,cry_adv, npx, npy, hord_dp, gx, gy,  &
+        call fv_tp_2d(q_con, crx_adv,cry_adv, npx, npy, hord_dp, gx, gy,  &
                 xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
-            do j=js,je
-               do i=is,ie
-                  q_con(i,j) = delp(i,j)*q_con(i,j) + ((gx(i,j)-gx(i+1,j))+(gy(i,j)-gy(i,j+1)))*rarea(i,j)
-               enddo
-            enddo
+        do j=js,je
+           do i=is,ie
+              q_con(i,j) = delp(i,j)*q_con(i,j) + ((gx(i,j)-gx(i+1,j))+(gy(i,j)-gy(i,j+1)))*rarea(i,j)
+           enddo
+        enddo
 #endif
 
-!    if ( inline_q .and. zvir>0.01 ) then
-!       do j=jsd,jed
-!          do i=isd,ied
-!             pt(i,j) = pt(i,j)/(1.+zvir*q(i,j,k,sphum))
-!          enddo
-!       enddo
-!    endif
         call fv_tp_2d(pt, crx_adv,cry_adv, npx, npy, hord_tm, gx, gy,  &
                       xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
                       mfx=fx, mfy=fy, mass=delp, nord=nord_v, damp_c=damp_v)
-!                     mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
 #endif
 
      if ( inline_q ) then
@@ -1038,14 +1030,6 @@
               enddo
            enddo
         enddo
-!     if ( zvir>0.01 ) then
-!       do j=js,je
-!          do i=is,ie
-!             pt(i,j) = pt(i,j)*(1.+zvir*q(i,j,k,sphum))
-!          enddo
-!       enddo
-!     endif
-
      else
         do j=js,je
            do i=is,ie
@@ -2198,6 +2182,19 @@ end subroutine divergence_corner_nest
            do i=is-1, ie+1
               smt5(i) = 3.*abs(b0(i)) < abs(bl(i)-br(i))
            enddo
+!WMP
+! fix edge issues
+   if ( (.not.nested) .and. grid_type < 3) then
+     if( is==1 ) then
+       smt5(0) = bl(0)*br(0) < 0.
+       smt5(1) = bl(1)*br(1) < 0.
+     endif
+     if( (ie+1)==npx ) then
+        smt5(npx-1) = bl(npx-1)*br(npx-1) < 0.
+        smt5(npx  ) = bl(npx  )*br(npx  ) < 0.
+     endif
+   endif
+!WMP
         endif
 
 !DEC$ VECTOR ALWAYS
@@ -2607,6 +2604,23 @@ end subroutine divergence_corner_nest
               smt6(i,j) = 3.*abs(b0(i,j)) < abs(bl(i,j)-br(i,j))
            enddo
         enddo
+!WMP
+! fix edge issues
+   if ( (.not.nested) .and. grid_type < 3) then
+     if( js==1 ) then
+       do i=is,ie+1
+          smt6(i,0) = bl(i,0)*br(i,0) < 0.
+          smt6(i,1) = bl(i,1)*br(i,1) < 0.
+       enddo
+     endif
+     if( (je+1)==npy ) then
+       do i=is,ie+1
+          smt6(i,npy-1) = bl(i,npy-1)*br(i,npy-1) < 0.
+          smt6(i,npy  ) = bl(i,npy  )*br(i,npy  ) < 0.
+       enddo
+     endif
+   endif
+!WMP
         do j=js,je+1
 !DEC$ VECTOR ALWAYS
         do i=is,ie+1

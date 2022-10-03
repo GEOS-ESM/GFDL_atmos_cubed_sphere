@@ -41,7 +41,7 @@
 !     <td>mp_reduce_min, is_master</td>
 !   </tr>
 !   <tr>
-!     <td>gfdl_cloud_microphys_mod</td>
+!     <td>gfdl_lin_cloud_microphys_mod</td>
 !     <td>wqs1, wqs2, wqsat2_moist</td>
 !   </tr>
 !   <tr>
@@ -58,7 +58,7 @@ module fv_sg_mod
   use constants_mod,      only: rdgas, rvgas, cp_air, cp_vapor, hlv, hlf, kappa, grav
   use tracer_manager_mod, only: get_tracer_index
   use field_manager_mod,  only: MODEL_ATMOS
-  use gfdl_cloud_microphys_mod, only: wqs2, wqsat2_moist
+  use gfdl_lin_cloud_microphys_mod, only: wqs2, wqsat2_moist
   use fv_mp_mod,          only: mp_reduce_min, is_master
 
 implicit none
@@ -107,7 +107,7 @@ contains
 !!-one for the GFDL physics
  subroutine fv_subgrid_z( isd, ied, jsd, jed, is, ie, js, je, km, nq, dt,    &
                          tau, nwat, delp, pe, peln, pkz, ta, qa, ua, va,  &
-                         hydrostatic, w, delz, u_dt, v_dt, t_dt, k_bot )
+                         hydrostatic, w, delz, u_dt, v_dt, t_dt, w_dt, k_bot )
 ! Dry convective adjustment-mixing
 !-------------------------------------------
       integer, intent(in):: is, ie, js, je, km, nq, nwat
@@ -127,9 +127,10 @@ contains
       real, intent(inout)::  w(isd:,jsd:,1:)
       real, intent(inout):: ta(isd:ied,jsd:jed,km)      !< Temperature
       real, intent(inout):: qa(isd:ied,jsd:jed,km,nq)   !< Specific humidity & tracers
-      real, intent(inout):: u_dt(isd:ied,jsd:jed,km) 
-      real, intent(inout):: v_dt(isd:ied,jsd:jed,km) 
-      real, intent(inout):: t_dt(is:ie,js:je,km) 
+      real, intent(inout):: u_dt(is:ie,js:je,km) 
+      real, intent(inout):: v_dt(is:ie,js:je,km) 
+      real, intent(inout):: t_dt(is:ie,js:je,km)
+      real, intent(inout):: w_dt(is:ie,js:je,km)
 !---------------------------Local variables-----------------------------
       real, dimension(is:ie,km):: u0, v0, w0, t0, hd, te, gz, tvm, pm, den
       real q0(is:ie,km,nq), qcon(is:ie,km) 
@@ -194,7 +195,7 @@ contains
           snowwat = -1
           graupel = -1
           cld_amt = -1
-         case(6)
+         case(6:7)
           sphum = 1
           liq_wat = 2
           ice_wat = 3
@@ -231,7 +232,7 @@ contains
 !$OMP parallel do default(none) shared(im,is,ie,js,je,nq,kbot,qa,ta,sphum,ua,va,delp,peln,   &
 !$OMP                                  hydrostatic,pe,delz,g2,w,liq_wat,rainwat,ice_wat,     &
 !$OMP                                  snowwat,cv_air,m,graupel,pkz,rk,rz,fra, t_max, t_min, &
-!$OMP                                  u_dt,rdt,v_dt,xvir,nwat)                              &
+!$OMP                                  rdt,u_dt,v_dt,t_dt,w_dt,xvir,nwat)                    &
 !$OMP                          private(kk,lcp2,icp2,tcp3,dh,dq,den,qs,qsw,dqsdt,qcon,q0,     &
 !$OMP                                  t0,u0,v0,w0,h0,pm,gzh,tvm,tmp,cpm,cvm,q_liq,q_sol,    &
 !$OMP                                  tv,gz,hd,te,ratio,pt1,pt2,tv1,tv2,ri_ref, ri,mc,km1)
@@ -533,10 +534,10 @@ contains
          enddo
        endif
       enddo   ! k-loop
-   enddo       ! n-loop
+   enddo      ! n-loop
 
 !--------------------
-   if ( fra < 1. ) then
+   if ( fra <= 1. ) then
       do k=1, kbot
          do i=is,ie
             t0(i,k) = ta(i,j,k) + (t0(i,k) - ta(i,j,k))*fra
@@ -544,7 +545,6 @@ contains
             v0(i,k) = va(i,j,k) + (v0(i,k) - va(i,j,k))*fra
          enddo
       enddo
-
       if ( .not. hydrostatic ) then
          do k=1,kbot
             do i=is,ie
@@ -552,7 +552,6 @@ contains
             enddo
          enddo
       endif
-
       do iq=1,nq
          do k=1,kbot
             do i=is,ie
@@ -566,11 +565,10 @@ contains
       do i=is,ie
          u_dt(i,j,k) = rdt*(u0(i,k) - ua(i,j,k))
          v_dt(i,j,k) = rdt*(v0(i,k) - va(i,j,k))
-           ta(i,j,k) = t0(i,k)   ! *** temperature updated ***
-#if defined(GFS_PHYS) || defined(MAPL_MODE)
+         t_dt(i,j,k) = rdt*(t0(i,k) - ta(i,j,k))
+           ta(i,j,k) = t0(i,k)
            ua(i,j,k) = u0(i,k)
            va(i,j,k) = v0(i,k)
-#endif
       enddo
       do iq=1,nq
          do i=is,ie
@@ -582,7 +580,8 @@ contains
    if ( .not. hydrostatic ) then
       do k=1,kbot
          do i=is,ie
-            w(i,j,k) = w0(i,k)   ! w updated
+            w_dt(i,j,k) = rdt*(w0(i,k) - w(i,j,k))
+               w(i,j,k) = w0(i,k)
          enddo
       enddo
    endif
@@ -970,7 +969,7 @@ contains
    enddo       ! n-loop
 
 !--------------------
-   if ( fra < 1. ) then
+   if ( fra <= 1. ) then
       do k=1, kbot
          do i=is,ie
             t0(i,k) = ta(i,j,k) + (t0(i,k) - ta(i,j,k))*fra
@@ -1056,10 +1055,6 @@ contains
          u_dt(i,j,k) = rdt*(u0(i,k) - ua(i,j,k))
          v_dt(i,j,k) = rdt*(v0(i,k) - va(i,j,k))
            ta(i,j,k) = t0(i,k)   ! *** temperature updated ***
-#if defined(GFS_PHYS) || defined(MAPL_MODE)
-           ua(i,j,k) = u0(i,k)
-           va(i,j,k) = v0(i,k)
-#endif
       enddo
       do iq=1,nq
          if (iq .ne. cld_amt ) then
