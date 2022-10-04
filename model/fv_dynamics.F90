@@ -503,9 +503,9 @@ contains
 
       dudt_rf =  u(is:ie,js:je,:)
       dvdt_rf =  v(is:ie,js:je,:)
-      dwdt_rf =  w(is:ie,js:je,:)
       dtdt_rf = pt(is:ie,js:je,:) ! at this time PT is dry T (K)
-      if( .not.flagstruct%RF_fast .and. flagstruct%tau > 0. ) then
+      if (.not. hydrostatic) dwdt_rf =  w(is:ie,js:je,:)
+      if (.not.flagstruct%RF_fast .and. flagstruct%tau > 0. ) then
         if ( gridstruct%grid_type<4 ) then
              call Rayleigh_Super(abs(bdt), npx, npy, npz, ks, pfull, phis, flagstruct%tau, u, v, w, pt,  &
                   ua, va, delz, gridstruct%agrid, cp_air, rdgas, ptop, hydrostatic,    &
@@ -517,8 +517,8 @@ contains
       endif
       dudt_rf = ( u(is:ie,js:je,:) - dudt_rf)/bdt
       dvdt_rf = ( v(is:ie,js:je,:) - dvdt_rf)/bdt
-      dwdt_rf = ( w(is:ie,js:je,:) - dwdt_rf)/bdt
       dtdt_rf = (pt(is:ie,js:je,:) - dtdt_rf)/bdt
+      if (.not. hydrostatic) dwdt_rf = ( w(is:ie,js:je,:) - dwdt_rf)/bdt
 
 #endif
 
