@@ -72,7 +72,7 @@ elseif (FV_PRECISION STREQUAL R8)
    endforeach()
 endif ()
 
-set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT}")
+#set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT}")
 
 if (CRAY_POINTER)
   set_target_properties (${this} PROPERTIES COMPILE_FLAGS ${CRAY_POINTER})
@@ -83,14 +83,9 @@ target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING)
 # Enable OpenMP
 target_link_libraries(${this} PRIVATE OpenMP::OpenMP_Fortran)
 
-option(HYDROSTATIC "Build FV dynamics as hydrostatic" ON)
-if (HYDROSTATIC)
-   ecbuild_info("Building FV dynamics as hydrostatic")
-else()
-   ecbuild_info("Building FV dynamics as non-hydrostatic")
-   ecbuild_info("This sets MOIST_CAPPA and USE_COND preprocessor variables")
-   target_compile_definitions (${this} PRIVATE MOIST_CAPPA USE_COND)
-endif ()
+ecbuild_info("Building FV dynamics dual hydrostatic/non-hydrostatic")
+ecbuild_info("This sets MOIST_CAPPA and USE_COND preprocessor variables")
+target_compile_definitions (${this} PRIVATE MOIST_CAPPA USE_COND)
 
 esma_add_subdirectories(
   model/mapz-driver
