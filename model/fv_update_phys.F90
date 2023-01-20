@@ -253,7 +253,7 @@ module fv_update_phys_mod
        snowwat = -1
        graupel = -1
        cld_amt = -1
-    case(6)
+    case(6:7)
        sphum = 1
        liq_wat = 2
        ice_wat = 3
