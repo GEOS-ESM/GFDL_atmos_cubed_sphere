@@ -136,6 +136,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
 
+      integer :: cmax_max_all_ranks
+
       is  = bd%is
       ie  = bd%ie
       js  = bd%js
@@ -194,22 +196,23 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 
   call mp_reduce_max(cmax,npz)
 
-!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
-!$OMP                                  cy,yfx,mfx,mfy,cmax,mfx2,mfy2,cx2,cy2)   &
+  cmax_max_all_ranks = 2
+
+!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,xfx, &
+!$OMP                                  yfx,mfx,mfy,cmax,cmax_max_all_ranks,cx,cy)   &
 !$OMP                          private(nsplt, frac)
 
   ! pchakrab: Trying to match gtFV3's tracer_2d_1l.py routine
   ! cmax_max_all_ranks = 2.0
   ! n_split = math.floor(1.0 + cmax_max_all_ranks)
-  nsplt = 1
 
   do k=1,npz
 
-     mfx2(:,:,k)=mfx(:,:,k)
-     mfy2(:,:,k)=mfy(:,:,k)
-     cx2(:,:,k)=cx(:,:,k)
-     cy2(:,:,k)=cy(:,:,k)
-     ! nsplt = int(1. + cmax(k))
+     ! mfx2(:,:,k)=mfx(:,:,k)
+     ! mfy2(:,:,k)=mfy(:,:,k)
+     ! cx2(:,:,k)=cx(:,:,k)
+     ! cy2(:,:,k)=cy(:,:,k)
+     nsplt = int(1. + cmax_max_all_ranks)
      if ( nsplt > 1 ) then
         frac  = 1. / real(nsplt)
         do j=jsd,jed
@@ -261,22 +264,21 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      ! pchakrab: Trying to match gtFV3's tracer_2d_1l.py routine
      ! cmax_max_all_ranks = 2.0
      ! n_split = math.floor(1.0 + cmax_max_all_ranks)
-     nsplt = 1
-     ! nsplt = int(1. + cmax(k))
+     nsplt = int(1. + cmax_max_all_ranks)
 
      ! if ( is_master() )  write(*,*) 'Tracer_2d_split=', k, cmax(k), nsplt
 
      do it=1,nsplt
 
-!$OMP parallel do default(none) shared(k,is,ie,js,je,rarea,mfx2,mfy2,dp1,dp2)
+!$OMP parallel do default(none) shared(k,is,ie,js,je,rarea,mfx,mfy,dp1,dp2)
         do j=js,je
            do i=is,ie
               dp2(i,j) = dp1(i,j,k) + (mfx(i,j,k)-mfx(i+1,j,k)+mfy(i,j,k)-mfy(i,j+1,k))*rarea(i,j)
            enddo
         enddo
 
-!$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx2,xfx,hord,trdm, &
-!$OMP                                  nord_tr,nq,gridstruct,bd,cy2,yfx,mfx2,mfy2,qn2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) & 
+!$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx,xfx,hord,trdm, &
+!$OMP                                  nord_tr,nq,gridstruct,bd,cy,yfx,mfx,mfy,qn2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) &
 !$OMP                          private(fx,fy)
         do iq=1,nq
         if ( nsplt /= 1 ) then
