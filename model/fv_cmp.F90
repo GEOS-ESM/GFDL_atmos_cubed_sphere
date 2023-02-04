@@ -59,7 +59,7 @@ module fv_cmp_mod
     use gfdl_lin_cloud_microphys_mod, only: ql_gen, qi_gen, qi0_crt, qi0_max, ql_mlt, ql0_max, qi_lim, qs_mlt
     use gfdl_lin_cloud_microphys_mod, only: icloud_f, sat_adj0, t_sub, cld_min, dt_fr
     use gfdl_lin_cloud_microphys_mod, only: tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_i2v, tau_imlt, tau_l2r, tau_frz
-    use gfdl_lin_cloud_microphys_mod, only: preciprad, dw_ocean, dw_land, do_qa
+    use gfdl_lin_cloud_microphys_mod, only: preciprad, dw_ocean, dw_land, do_qa, do_bigg, do_evap, do_subl
     
     implicit none
     
@@ -373,7 +373,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         ! condensation / evaporation between water vapor and cloud water
         ! -----------------------------------------------------------------------
-        if (do_qa) then 
+        if (do_evap) then 
           call wqs2_vect (is, ie, pt1, den, wqsat, dq2dt)
           do i = is, ie
             dq0 = wqsat(i) - qv(i,j)
@@ -427,7 +427,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         ! bigg mechanism (heterogeneous freezing of cloud water to cloud ice)
         ! -----------------------------------------------------------------------
-        
+        if (do_bigg) then 
         do i = is, ie
             dtmp = tice0 - pt1 (i)
             if (ql (i, j) > qcmin .and. dtmp > 0.) then
@@ -442,7 +442,8 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
                 pt1 (i) = pt1 (i) + sink (i) * lhi (i) / cvm (i)
             endif
         enddo
-        
+        endif
+
         ! -----------------------------------------------------------------------
         ! update latend heat coefficient
         ! -----------------------------------------------------------------------
@@ -527,7 +528,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! -----------------------------------------------------------------------
         ! sublimation / deposition between water vapor and cloud ice
         ! -----------------------------------------------------------------------
-        if (do_qa) then
+        if (do_subl) then
           do i = is, ie
             src (i) = 0.
             if (pt1 (i) < t_sub) then ! too cold to be accurate; freeze qv as a fix
