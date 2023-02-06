@@ -150,7 +150,10 @@ module gfdl_lin_cloud_microphys_mod
     logical :: do_sedi_w = .false. !< transport of vertical motion in sedimentation
     logical :: do_sedi_heat = .true. !< transport of heat in sedimentation
     logical :: prog_ccn = .false. !< do prognostic ccn (yi ming's method)
-    logical :: do_qa = .true. !< do inline cloud fraction (WMP: in FV3 dynamics)
+    logical :: do_bigg = .false. !< do bigg
+    logical :: do_evap = .false. !< do evaporation
+    logical :: do_subl = .false. !< do sublimation
+    logical :: do_qa = .false. !< do inline cloud fraction (WMP: in FV3 dynamics)
     logical :: preciprad = .true. !< consider precipitates in cloud fraciton calculation
     logical :: fix_negative = .false. !< fix negative water species
     logical :: do_setup = .true. !< setup constants and parameters
@@ -316,7 +319,7 @@ module gfdl_lin_cloud_microphys_mod
         qi0_crt, qr0_crt, fast_sat_adj, rh_inc, rh_ins, rh_inr, const_vi,     &
         const_vs, const_vg, const_vr, use_ccn, rthresh, ccn_l, ccn_o, qc_crt, &
         tau_g2v, tau_v2g, &
-        tau_revp, tau_frz, &
+        tau_revp, tau_frz, do_bigg, do_evap, do_subl, &
         sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v, tau_i2v, &
         tau_i2s, tau_l2r, qi_lim, ql_gen, c_paut, c_psaci, c_pgacs, c_pgaci,  &
         z_slope_liq, z_slope_ice, prog_ccn, c_cracw, alin, clin, tice,        &
@@ -330,7 +333,7 @@ module gfdl_lin_cloud_microphys_mod
         qi0_crt, qr0_crt, fast_sat_adj, rh_inc, rh_ins, rh_inr, const_vi,     &
         const_vs, const_vg, const_vr, use_ccn, rthresh, ccn_l, ccn_o, qc_crt, &
         tau_g2v, tau_v2g, &
-        tau_revp, tau_frz, &
+        tau_revp, tau_frz, do_bigg, do_evap, do_subl, &
         sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v, tau_i2v, &
         tau_i2s, tau_l2r, qi_lim, ql_gen, c_paut, c_psaci, c_pgacs, c_pgaci,  &
         z_slope_liq, z_slope_ice, prog_ccn, c_cracw, alin, clin, tice,        &
