@@ -86,7 +86,3 @@ target_link_libraries(${this} PRIVATE OpenMP::OpenMP_Fortran)
 ecbuild_info("Building FV dynamics dual hydrostatic/non-hydrostatic")
 ecbuild_info("This sets MOIST_CAPPA and USE_COND preprocessor variables")
 target_compile_definitions (${this} PRIVATE MOIST_CAPPA USE_COND)
-
-esma_add_subdirectories(
-  model/mapz-driver
-  model/tp-core-driver)
