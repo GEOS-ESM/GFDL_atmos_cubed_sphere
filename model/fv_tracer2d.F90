@@ -293,11 +293,11 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                        call timing_off('COMM_TOTAL')
         endif
 
-!$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx2,xfx,hord,trdm, &
-!$OMP                                  nord_tr,nq,gridstruct,bd,cy2,yfx,mfx2,mfy2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) & 
+!$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx,xfx,hord,trdm, &
+!$OMP                                  nord_tr,nq,gridstruct,bd,cy,yfx,mfx,mfy,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) &
 !$OMP                          private(fx,fy)
         do iq=1,nq
-           call fv_tp_2d(q(isd,jsd,k,iq), cx2(is,jsd,k), cy2(isd,js,k), &
+           call fv_tp_2d(q(isd,jsd,k,iq), cx(is,jsd,k), cy(isd,js,k), &
                          npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx(is,js,k), mfy=mfy(is,js,k))
            do j=js,je
