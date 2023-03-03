@@ -135,6 +135,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
 
+      integer :: cmax_max_all_ranks
+
       is  = bd%is
       ie  = bd%ie
       js  = bd%js
@@ -193,38 +195,45 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 
   call mp_reduce_max(cmax,npz)
 
+  cmax_max_all_ranks = 2
+
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
-!$OMP                                  cy,yfx,mfx,mfy,cmax,mfx2,mfy2,cx2,cy2)   &
+!$OMP                                  cy,yfx,mfx,mfy,cmax,cmax_max_all_ranks)   &
 !$OMP                          private(nsplt, frac)
+
+  ! pchakrab: Trying to match gtFV3's tracer_2d_1l.py routine
+  ! cmax_max_all_ranks = 2.0
+  ! n_split = math.floor(1.0 + cmax_max_all_ranks)
+
   do k=1,npz
 
-     mfx2(:,:,k)=mfx(:,:,k)
-     mfy2(:,:,k)=mfy(:,:,k)
-     cx2(:,:,k)=cx(:,:,k)
-     cy2(:,:,k)=cy(:,:,k)
-     nsplt = int(1. + cmax(k))
+     ! mfx2(:,:,k)=mfx(:,:,k)
+     ! mfy2(:,:,k)=mfy(:,:,k)
+     ! cx2(:,:,k)=cx(:,:,k)
+     ! cy2(:,:,k)=cy(:,:,k)
+     nsplt = int(1. + cmax_max_all_ranks)
      if ( nsplt > 1 ) then
         frac  = 1. / real(nsplt)
         do j=jsd,jed
            do i=is,ie+1
-               cx2(i,j,k) =  cx(i,j,k) * frac
+               cx(i,j,k) =  cx(i,j,k) * frac
               xfx(i,j,k) = xfx(i,j,k) * frac
            enddo
         enddo
         do j=js,je
            do i=is,ie+1
-              mfx2(i,j,k) = mfx(i,j,k) * frac
+              mfx(i,j,k) = mfx(i,j,k) * frac
            enddo
         enddo
         do j=js,je+1
            do i=isd,ied
-              cy2(i,j,k) =  cy(i,j,k) * frac
+              cy(i,j,k) =  cy(i,j,k) * frac
              yfx(i,j,k) = yfx(i,j,k) * frac
            enddo
         enddo
         do j=js,je+1
            do i=is,ie
-              mfy2(i,j,k) = mfy(i,j,k) * frac
+              mfy(i,j,k) = mfy(i,j,k) * frac
            enddo
         enddo
      endif
@@ -253,23 +262,26 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 !$OMP parallel do default(none) shared(k,is,ie,js,je,isd,ied,jsd,jed,xfx,area,yfx,ra_x,ra_y)
      do j=jsd,jed
         do i=is,ie
-           ra_x(i,j) = area(i,j) + (xfx(i,j,k) - xfx(i+1,j,k))
+           ra_x(i,j) = area(i,j) + xfx(i,j,k) - xfx(i+1,j,k)
         enddo
         if ( j>=js .and. j<=je ) then
            do i=isd,ied
-              ra_y(i,j) = area(i,j) + (yfx(i,j,k) - yfx(i,j+1,k))
+              ra_y(i,j) = area(i,j) + yfx(i,j,k) - yfx(i,j+1,k)
            enddo
         endif
      enddo
 
-     nsplt = int(1. + cmax(k))
+     ! pchakrab: Trying to match gtFV3's tracer_2d_1l.py routine
+     ! cmax_max_all_ranks = 2.0
+     ! n_split = math.floor(1.0 + cmax_max_all_ranks)
+     nsplt = int(1. + cmax_max_all_ranks)
 
      if (it <= nsplt) then
 
-!$OMP parallel do default(none) shared(k,is,ie,js,je,rarea,mfx2,mfy2,dp1,dp2)
+!$OMP parallel do default(none) shared(k,is,ie,js,je,rarea,mfx,mfy,dp1,dp2)
         do j=js,je
            do i=is,ie
-              dp2(i,j) = dp1(i,j,k) + ((mfx2(i,j,k)-mfx2(i+1,j,k))+(mfy2(i,j,k)-mfy2(i,j+1,k)))*rarea(i,j)
+              dp2(i,j) = dp1(i,j,k) + (mfx(i,j,k)-mfx(i+1,j,k)+mfy(i,j,k)-mfy(i,j+1,k))*rarea(i,j)
            enddo
         enddo
 
@@ -287,10 +299,10 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
         do iq=1,nq
            call fv_tp_2d(q(isd,jsd,k,iq), cx2(is,jsd,k), cy2(isd,js,k), &
                          npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
-                         gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx2(is,js,k), mfy=mfy2(is,js,k))
+                         gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx(is,js,k), mfy=mfy(is,js,k))
            do j=js,je
               do i=is,ie
-                 q(i,j,k,iq) = (q(i,j,k,iq)*dp1(i,j,k)+((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j))/dp2(i,j)
+                 q(i,j,k,iq) = (q(i,j,k,iq)*dp1(i,j,k)+(fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j))/dp2(i,j)
               enddo
            enddo
         enddo   !  tracer-loop

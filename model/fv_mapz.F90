@@ -599,16 +599,16 @@ contains
       call map1_ppm( km, pe0(is:ie,:),   u,   gz,   &
                      km, pe3(is:ie,:),   u,               &
                      is, ie, j, isd, ied, jsd, jed+1, -1, kord_mt)
-      if (present(mfy)) then
-         call map1_ppm( km, pe0(is:ie,:), mfy,  gz,  &
-                        km, pe3(is:ie,:), mfy,       &
-                        is, ie, j, is, ie, js, je+1, -1, kord_mt)
-      endif
-      if (present(cy)) then
-         call map1_ppm( km, pe0(is:ie,:), cy,  gz,  &
-                        km, pe3(is:ie,:), cy,       &
-                        is, ie, j, isd, ied, js, je+1, -1, kord_mt)
-      endif
+      ! if (present(mfy)) then
+      !    call map1_ppm( km, pe0(is:ie,:), mfy,  gz,  &
+      !                   km, pe3(is:ie,:), mfy,       &
+      !                   is, ie, j, is, ie, js, je+1, -1, kord_mt)
+      ! endif
+      ! if (present(cy)) then
+      !    call map1_ppm( km, pe0(is:ie,:), cy,  gz,  &
+      !                   km, pe3(is:ie,:), cy,       &
+      !                   is, ie, j, isd, ied, js, je+1, -1, kord_mt)
+      ! endif
 
 !------
 ! map v
