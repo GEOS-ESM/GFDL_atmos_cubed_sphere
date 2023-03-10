@@ -197,6 +197,7 @@ module fv_control_mod
    logical , pointer :: full_zs_filter
 
    logical , pointer :: RF_fast
+   logical , pointer :: Beljaars_TOFD
    logical , pointer :: consv_am
    logical , pointer :: do_sat_adj
    logical , pointer :: do_f3d
@@ -277,6 +278,7 @@ module fv_control_mod
    logical , pointer :: srf_init  
    logical , pointer :: mountain  
    integer , pointer :: remap_option  
+   integer , pointer :: gmao_remap
    logical , pointer :: z_tracer 
 
    logical , pointer :: old_divg_damp 
@@ -662,11 +664,11 @@ module fv_control_mod
                          dddmp, d2_bg, d4_bg, vtdm4, trdm2, d_ext, delt_max, beta, non_ortho, n_sponge, n_zfilter, &
                          warm_start, adjust_dry_mass, mountain, d_con, ke_bg, nord, nord_tr, convert_ke, use_old_omega, &
                          dry_mass, grid_type, do_Held_Suarez, do_reed_physics, reed_cond_only, &
-                         consv_te, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, &
+                         consv_te, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, Beljaars_TOFD, &
                          range_warn, dwind_2d, inline_q, z_tracer, reproduce_sum, adiabatic, do_vort_damp, no_dycore,   &
                          tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, fv_sg_adj, breed_vortex_inline,  &
                          na_init, nudge_dz, hybrid_z, Make_NH, n_zs_filter, nord_zs_filter, full_zs_filter, reset_eta,         &
-                         pnats, dnats, a2b_ord, remap_option, p_ref, d2_bg_k1, d2_bg_k2,  &
+                         pnats, dnats, a2b_ord, remap_option, gmao_remap, p_ref, d2_bg_k1, d2_bg_k2,  &
                          c2l_ord, dx_const, dy_const, umax, deglat,      &
                          deglon_start, deglon_stop, deglat_start, deglat_stop, &
                          phys_hydrostatic, use_hydro_pressure, make_hybrid_z, old_divg_damp, add_noise, &
@@ -764,14 +766,16 @@ module fv_control_mod
 
       ! Define n_split if not in namelist
       if (ntiles==6) then
-         dimx = 4.0*(npx-1)
 #ifdef MAPL_MODE
-  ! WMP  if ( hydrostatic ) then
-             ns0 = 5
-  ! WMP  else
-  ! WMP      ns0 = 6
-  ! WMP  endif
+         dimx = ceiling(stretch_fac)*4.0*(npx-1)
+         if (.not. hydrostatic ) then
+                                ns0 = 6
+            if ( dimx >=  360 ) ns0 = 7
+            if ( dimx >= 1440 ) ns0 = 8
+            if ( stretch_fac > 1.0 ) ns0=ns0+1
+        endif
 #else
+         dimx = 4.0*(npx-1)
          if ( hydrostatic ) then
             if ( npx >= 120 ) ns0 = 6
          else
@@ -807,7 +811,11 @@ module fv_control_mod
       n0split = max ( 1, n0split )
 
       if ( n_split == 0 ) then
+#ifdef MAPL_MODE
+           n_split = ceiling( real(n0split)/real(k_split*abs(p_split)) + 0.5 )
+#else
            n_split = nint( real(n0split)/real(k_split*abs(p_split)) * stretch_fac + 0.5 )
+#endif
            if(is_master()) write(*,*) 'For k_split (remapping)=', k_split
            if(is_master()) write(*,198) 'n_split is set to ', n_split, ' for resolution-dt=',npx,npy,ntiles,dt_atmos
       else
@@ -1188,6 +1196,7 @@ module fv_control_mod
      nord_zs_filter                => Atm%flagstruct%nord_zs_filter
      full_zs_filter                => Atm%flagstruct%full_zs_filter
      RF_fast                       => Atm%flagstruct%RF_fast
+     Beljaars_TOFD                 => Atm%flagstruct%Beljaars_TOFD
      consv_am                      => Atm%flagstruct%consv_am
      do_sat_adj                    => Atm%flagstruct%do_sat_adj
      do_f3d                        => Atm%flagstruct%do_f3d
@@ -1261,6 +1270,7 @@ module fv_control_mod
      srf_init                      => Atm%flagstruct%srf_init
      mountain                      => Atm%flagstruct%mountain
      remap_option                  => Atm%flagstruct%remap_option
+     gmao_remap                    => Atm%flagstruct%gmao_remap
      z_tracer                      => Atm%flagstruct%z_tracer
      old_divg_damp                 => Atm%flagstruct%old_divg_damp
      fv_land                       => Atm%flagstruct%fv_land
