@@ -88,7 +88,7 @@ contains
 !! of split tracer timesteps. This potentially accelerates tracer advection when there
 !! is a large difference in layer-maximum wind speeds (cf. polar night jet).
 subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy, npz,   &
-                        nq,  hord, q_split, dt, id_divg, q_pack, nord_tr, trdm, lim_fac, dpA)
+                        nq,  hord, q_split, dt, id_divg, q_pack, z_pack, nord_tr, trdm, lim_fac, dpA)
 
       type(fv_grid_bounds_type), intent(IN) :: bd
       integer, intent(IN) :: npx
@@ -100,7 +100,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       integer, intent(IN) :: id_divg
       real   , intent(IN) :: dt, trdm
       real   , intent(IN) :: lim_fac
-      type(group_halo_update_type), intent(inout) :: q_pack
+      type(group_halo_update_type), intent(inout) :: q_pack, z_pack(:)
       real   , intent(INOUT) :: q(bd%isd:bd%ied,bd%jsd:bd%jed,npz,nq)   !< Tracers
       real   , intent(INOUT) :: dp1(bd%isd:bd%ied,bd%jsd:bd%jed,npz)    !< DELP before dyn_core
       real   , intent(INOUT) :: mfx(bd%is:bd%ie+1,bd%js:bd%je,  npz)    !< Mass Flux X-Dir
@@ -112,7 +112,6 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       type(domain2d), intent(INOUT) :: domain
 
 ! Local Arrays
-      real :: qn2(bd%isd:bd%ied,bd%jsd:bd%jed,nq)   !< 3D tracers
       real :: dp2(bd%is:bd%ie,bd%js:bd%je)
       real :: fx(bd%is:bd%ie+1,bd%js:bd%je )
       real :: fy(bd%is:bd%ie , bd%js:bd%je+1)
@@ -126,7 +125,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
       real :: cmax(npz)
       real :: frac
-      integer :: nsplt
+      integer :: nsplt, c_gmax
       integer :: i,j,k,it,iq
 
       real, pointer, dimension(:,:) :: area, rarea
@@ -231,11 +230,22 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      endif
 
   enddo
+
                                call timing_on('COMM_TOTAL')
                          call timing_on('COMM_TRACER')
   call complete_group_halo_update(q_pack, domain)
                         call timing_off('COMM_TRACER')
                               call timing_off('COMM_TOTAL')
+
+
+  c_gmax   = int(1. + cmax(1))
+  if ( npz /= 1 ) then                ! if NOT shallow water test case
+     do k=2,npz
+        c_gmax   = max(int(1. + cmax(k)), c_gmax  )
+     enddo
+  endif
+
+  do it=1,c_gmax
 
 ! Begin k-independent tracer transport; can not be OpenMPed because the mpp_update call.
   do k=1,npz
@@ -254,9 +264,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 
      nsplt = int(1. + cmax(k))
 
- !   if ( is_master() )  write(*,*) 'Tracer_2d_split=', k, cmax(k), nsplt
-
-     do it=1,nsplt
+     if (it <= nsplt) then
 
 !$OMP parallel do default(none) shared(k,is,ie,js,je,rarea,mfx2,mfy2,dp1,dp2)
         do j=js,je
@@ -265,35 +273,18 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
            enddo
         enddo
 
+        if ( (it>1) ) then
+                        call timing_on('COMM_TOTAL')
+                            call timing_on('COMM_TRACER')
+              call complete_group_halo_update(z_pack(k), domain)
+                           call timing_off('COMM_TRACER')
+                       call timing_off('COMM_TOTAL')
+        endif
+
 !$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx2,xfx,hord,trdm, &
-!$OMP                                  nord_tr,nq,gridstruct,bd,cy2,yfx,mfx2,mfy2,qn2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) & 
+!$OMP                                  nord_tr,nq,gridstruct,bd,cy2,yfx,mfx2,mfy2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) & 
 !$OMP                          private(fx,fy)
         do iq=1,nq
-        if ( nsplt /= 1 ) then
-           if ( it==1 ) then
-              do j=jsd,jed
-                 do i=isd,ied
-                    qn2(i,j,iq) = q(i,j,k,iq)
-                 enddo
-              enddo
-           endif
-           call fv_tp_2d(qn2(isd,jsd,iq), cx2(is,jsd,k), cy2(isd,js,k), &
-                         npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
-                         gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx2(is,js,k), mfy=mfy2(is,js,k))
-           if ( it < nsplt ) then   ! not last call
-              do j=js,je
-              do i=is,ie
-                 qn2(i,j,iq) = (qn2(i,j,iq)*dp1(i,j,k)+((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j))/dp2(i,j)
-              enddo
-              enddo
-           else
-              do j=js,je
-              do i=is,ie
-                 q(i,j,k,iq) = (qn2(i,j,iq)*dp1(i,j,k)+((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j))/dp2(i,j)
-              enddo
-              enddo
-           endif
-        else
            call fv_tp_2d(q(isd,jsd,k,iq), cx2(is,jsd,k), cy2(isd,js,k), &
                          npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx2(is,js,k), mfy=mfy2(is,js,k))
@@ -302,28 +293,30 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                  q(i,j,k,iq) = (q(i,j,k,iq)*dp1(i,j,k)+((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j))/dp2(i,j)
               enddo
            enddo
-        endif
         enddo   !  tracer-loop
 
-        if ( it < nsplt ) then   ! not last call
+        if ( it /= nsplt ) then   ! not last call
              do j=js,je
                 do i=is,ie
                    dp1(i,j,k) = dp2(i,j)
                 enddo
              enddo
-                               call timing_on('COMM_TOTAL')
-                         call timing_on('COMM_TRACER')
-             call mpp_update_domains(qn2, domain)
-                        call timing_off('COMM_TRACER')
-                              call timing_off('COMM_TOTAL')
+                      call timing_on('COMM_TOTAL')
+                          call timing_on('COMM_TRACER')
+           call start_group_halo_update(z_pack(k), q(:,:,k,:), domain)
+                          call timing_off('COMM_TRACER')
+                      call timing_off('COMM_TOTAL')
         endif
-     enddo  ! time-split loop
 
-     if (present(dpA)) then
+     endif  ! time-split check
+
+     if (present(dpA) .and. (it == nsplt)) then
         dpA(:,:,k)=dp2
      endif
 
   enddo    ! k-loop
+
+  enddo    ! it-loop
 
 end subroutine tracer_2d_1L
 
@@ -361,7 +354,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
       real :: xfx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)
       real :: yfx(bd%isd:bd%ied,bd%js: bd%je+1, npz)
       real :: cmax(npz)
-      real :: c_global
+      real :: c_gmax, c_gmin
       real :: frac, rdt
       integer :: ksplt(npz)
       integer :: nsplt
@@ -430,7 +423,6 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
             enddo
          endif
        endif
-       ksplt(k) = 1
 
     enddo
 
@@ -440,16 +432,23 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
   if ( q_split == 0 ) then
       call mp_reduce_max(cmax,npz)
 ! find global max courant number and define nsplt to scale cx,cy,mfx,mfy
-      c_global = cmax(1)
+      c_gmax   = cmax(1)
+      c_gmin   = cmax(1)
       if ( npz /= 1 ) then                ! if NOT shallow water test case
          do k=2,npz
-            c_global = max(cmax(k), c_global)
+            c_gmax   = max(cmax(k), c_gmax  )
+            c_gmin   = min(cmax(k), c_gmin  )
          enddo
       endif
-      nsplt = int(1. + c_global)
-      if ( is_master() .and. nsplt > 4 )  write(*,*) 'Tracer_2d_split=', nsplt, c_global
+      nsplt = int(1. + c_gmax)
+      if ( is_master()                 )  write(*,*) 'Tracer_2d_split: min,max =', int(1. + c_gmin), int(1. + c_gmax)
+     !if ( is_master() .and. nsplt > 4 )  write(*,*) 'Tracer_2d_split=', nsplt, c_gmax
+      do k=1,npz
+         ksplt(k) = int(1. + cmax(k))
+      enddo
    else
-      nsplt = q_split
+      nsplt    = q_split
+      ksplt(:) = q_split
    endif
 
 !--------------------------------------------------------------------------------
@@ -459,11 +458,6 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
 !$OMP                          private( frac )
         do k=1,npz
 
-#ifdef GLOBAL_CFL
-           ksplt(k) = nsplt
-#else
-           ksplt(k) = int(1. + cmax(k))
-#endif
            frac  = 1. / real(ksplt(k))
 
            do j=jsd,jed
@@ -895,6 +889,7 @@ subroutine offline_tracer_advection(q, ple0, ple1, mfx, mfy, cx, cy, &
       real :: scalingFactor
 
       type(group_halo_update_type), save :: i_pack
+      type(group_halo_update_type), save :: z_pack(181)
 
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
@@ -942,7 +937,7 @@ subroutine offline_tracer_advection(q, ple0, ple1, mfx, mfy, cx, cy, &
     if ( flagstruct%z_tracer ) then
          call tracer_2d_1L(q3, dpL, mfxL, mfyL, cxL, cyL, &
                          gridstruct, bd, domain, npx, npy, npz, nq,    &
-                         flagstruct%hord_tr, flagstruct%q_split, dt, 0, i_pack, &
+                         flagstruct%hord_tr, flagstruct%q_split, dt, 0, i_pack, z_pack, &
                          flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
     else
          call tracer_2d(q3, dpL, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
@@ -1009,6 +1004,7 @@ subroutine offline_tracer_advection(q, ple0, ple1, mfx, mfy, cx, cy, &
           ! Return tracers
           !---------------
           q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+          if (flagstruct%fill) q(is:ie,js:je,1:npz,iq) = max(q(is:ie,js:je,1:npz,iq),0.0) 
        enddo
 
 end subroutine offline_tracer_advection
@@ -1044,8 +1040,8 @@ end subroutine offline_tracer_advection
             partialSums(2,k) = sum(q1(:,:,k)*(ple1(:,:,k+1)-ple1(:,:,k))*gridstruct%area(bd%is:bd%ie,bd%js:bd%je))
          end do
 
-         globalSums(1) = sum(partialSums(1,:))
-         globalSums(2) = sum(partialSums(2,:))
+         globalSums(1) = max(sum(partialSums(1,:)),0.0)
+         globalSums(2) = max(sum(partialSums(2,:)),0.0)
 
          call mpp_sum(globalSums, 2)
 

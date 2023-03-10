@@ -91,7 +91,7 @@ module fv_diagnostics_mod
 !     <td>timing_on, timing_off</td>
 !   </tr>
 !   <tr>
-!     <td>gfdl_cloud_microphys_mod</td>
+!     <td>gfdl_lin_cloud_microphys_mod</td>
 !     <td>wqs1, qsmith_init</td>
 !   </tr>
 !   <tr>
@@ -141,7 +141,7 @@ module fv_diagnostics_mod
  use sat_vapor_pres_mod, only: compute_qs, lookup_es
 
  use fv_arrays_mod, only: max_step 
- use gfdl_cloud_microphys_mod, only: wqs1, qsmith_init
+ use gfdl_lin_cloud_microphys_mod, only: wqs1, qsmith_init
 
  implicit none
  private
@@ -3172,15 +3172,17 @@ contains
             do j=js,je
                do i=is,ie
                   if( q(i,j,k)<q_low .or. q(i,j,k)>q_hi ) then
-                      write(*,*) 'Warn_K=',k,'(i,j)=',i,j, pos(i,j,1)*rad2deg, pos(i,j,2)*rad2deg, q(i,j,k)
-                      if ( k/= 1 ) write(*,*) k-1, q(i,j,k-1)
-                      if ( k/=km ) write(*,*) k+1, q(i,j,k+1)
+                      write(6,106) qname, i, j, k, q(i,j,k), pos(i,j,1)*rad2deg, pos(i,j,2)*rad2deg
+                    ! write(*,*) 'Warn_K=',k,'(i,j)=',i,j, pos(i,j,1)*rad2deg, pos(i,j,2)*rad2deg, q(i,j,k)
+                    ! if ( k/= 1 ) write(*,*) k-1, q(i,j,k-1)
+                    ! if ( k/=km ) write(*,*) k+1, q(i,j,k+1)
                   endif
                enddo
             enddo
          enddo
          call mpp_error(NOTE,'==> Error from range_check: data out of bound')
       endif
+106   format('Range_Warn: ',A,'(',i4,',',i4,',',i3,')=',f8.4,' at LON:',f8.4,' LAT:',f8.4)
 
  end subroutine range_check
 
