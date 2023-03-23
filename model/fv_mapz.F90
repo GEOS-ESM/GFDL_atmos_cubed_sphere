@@ -108,6 +108,10 @@ module fv_mapz_mod
   real, parameter:: cp_vap = cp_vapor        !< 1846.
   real, parameter:: tice = 273.16
 
+  logical, parameter :: w_limiter = .true.
+  real, parameter :: w_max = 90.
+  real, parameter :: w_min = -60.
+
   real(kind=8) :: E_Flux = 0.
   private
 
@@ -207,7 +211,7 @@ contains
 !-----------------------------------------------------------------------
   real(kind=8), dimension(is:ie,js:je):: te_2d, zsum0, zsum1
   real, dimension(is:ie,js:je):: dpln
-  real, dimension(is:ie,km)  :: q2, dp2
+  real, dimension(is:ie,km)  :: q2, dp2, w2
   real, dimension(is:ie,km+1):: pe1, pe2, pk1, pk2, pn2, phis
   real, dimension(is:ie+1,km+1):: pe0, pe3
   real, dimension(is:ie):: gz, cvm
@@ -332,7 +336,7 @@ contains
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, adiabatic, &
 !$OMP                                  hs,w,ws,kord_wz,rrg,kord_mt,consv,remap_option,gmao_remap)    &
 !$OMP                          private(gz,cvm,bkh,dp2,   &
-!$OMP                                  pe0,pe1,pe2,pe3,pk1,pk2,pn2,phis,q2,dpln,dlnp)
+!$OMP                                  pe0,pe1,pe2,pe3,pk1,pk2,pn2,phis,q2,w2,dpln,dlnp)
   do 1000 j=js,je+1
 
      do k=1,km+1
@@ -572,7 +576,62 @@ contains
               delz(i,j,k) = -delz(i,j,k)*dp2(i,k)
            enddo
         enddo
-   endif
+
+         !Fix excessive w - momentum conserving --- sjl
+         ! gz(:) used here as a temporary array
+         if ( w_limiter ) then
+            do k=1,km
+               do i=is,ie
+                  w2(i,k) = w(i,j,k)
+               enddo
+            enddo
+            do k=1, km-1
+               do i=is,ie
+                  if ( w2(i,k) > w_max ) then
+                     gz(i) = (w2(i,k)-w_max) * dp2(i,k)
+                     w2(i,k  ) = w_max
+                     w2(i,k+1) = w2(i,k+1) + gz(i)/dp2(i,k+1)
+                     !print*, ' W_LIMITER down: ', i,j,k, w2(i,k:k+1), w(i,j,k:k+1)
+                  elseif ( w2(i,k) < w_min ) then
+                     gz(i) = (w2(i,k)-w_min) * dp2(i,k)
+                     w2(i,k  ) = w_min
+                     w2(i,k+1) = w2(i,k+1) + gz(i)/dp2(i,k+1)
+                     !print*, ' W_LIMITER down: ', i,j,k, w2(i,k:k+1), w(i,j,k:k+1)
+                  endif
+               enddo
+            enddo
+            do k=km, 2, -1
+               do i=is,ie
+                  if ( w2(i,k) > w_max ) then
+                     gz(i) = (w2(i,k)-w_max) * dp2(i,k)
+                     w2(i,k  ) = w_max
+                     w2(i,k-1) = w2(i,k-1) + gz(i)/dp2(i,k-1)
+                     !print*, ' W_LIMITER up: ', i,j,k, w2(i,k-1:k), w(i,j,k-1:k)
+                  elseif ( w2(i,k) < w_min ) then
+                     gz(i) = (w2(i,k)-w_min) * dp2(i,k)
+                     w2(i,k  ) = w_min
+                     w2(i,k-1) = w2(i,k-1) + gz(i)/dp2(i,k-1)
+                     !print*, ' W_LIMITER up: ', i,j,k, w2(i,k-1:k), w(i,j,k-1:k)
+                  endif
+               enddo
+            enddo
+            do i=is,ie
+               if (w2(i,1) > w_max*2. ) then
+                  w2(i,1) = w_max*2 ! sink out of the top of the domain
+                  !print*, ' W_LIMITER top limited: ', i,j,1, w2(i,1), w(i,j,1)
+               elseif (w2(i,1) < w_min*2. ) then
+                  w2(i,1) = w_min*2.
+                  !print*, ' W_LIMITER top limited: ', i,j,1, w2(i,1), w(i,j,1)
+               endif
+            enddo
+            do k=1,km
+               do i=is,ie
+                  w(i,j,k) = w2(i,k)
+               enddo
+            enddo
+         endif
+ 
+    endif
 
   endif !(j < je+1)
 
