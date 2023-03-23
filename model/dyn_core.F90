@@ -297,15 +297,15 @@ contains
     iep1 = ie + 1
     jep1 = je + 1
 
+!$OMP parallel do default(none) shared(npz,dp_ref,ak,bk)
+       do k=1,npz
+          dp_ref(k) = (ak(k+1)-ak(k)) + (bk(k+1)-bk(k))*1.E5
+       enddo
+
     if ( .not.hydrostatic ) then
 
          rgrav = 1.0/grav
            k1k =  akap / (1.-akap)    ! rg/Cv=0.4
-
-!$OMP parallel do default(none) shared(npz,dp_ref,ak,bk)
-       do k=1,npz
-          dp_ref(k) = (ak(k+1)-ak(k)) + (bk(k+1)-bk(k))*1.E5  
-       enddo
 
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,zs,phis,rgrav)
        do j=jsd,jed
