@@ -180,7 +180,7 @@ module fv_diagnostics_mod
  public :: prt_height, prt_gb_nh_sh, interpolate_vertical, rh_calc, get_height_field
 
 #ifdef MAPL_MODE
- public :: updraft_helicity, get_vorticity
+ public :: updraft_helicity, get_vorticity, bunkers_vector, helicity_relative_CAPS
 #endif
 
  integer, parameter :: nplev = 31
