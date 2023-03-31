@@ -697,7 +697,7 @@ contains
                         nord_v(k)=0; 
                    endif
                    d_con_k = 0.
-              elseif ( (k==2) .and. flagstruct%d2_bg_k2>0.01 ) then
+              elseif ( (k<=MAX(2,flagstruct%n_sponge-1)).and. flagstruct%d2_bg_k2>0.01 ) then
                    nord_k=0; d2_divg = max(flagstruct%d2_bg, flagstruct%d2_bg_k2)
                    nord_w=0; damp_w = d2_divg
                    if ( flagstruct%do_vort_damp ) then
