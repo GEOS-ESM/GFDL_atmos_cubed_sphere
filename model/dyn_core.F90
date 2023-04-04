@@ -1165,12 +1165,14 @@ contains
        do k=1,n_con
           delt = abs(bdt*flagstruct%delt_max)
 ! Sponge layers:
-          if ( flagstruct%n_sponge == 0) then 
-            if ( k == 1 ) delt = 0.1*delt
-            if ( k == 2 ) delt = 0.5*delt
-          else
-            delt = delt*MIN(1.0,FLOAT(k)/FLOAT(flagstruct%n_sponge))
-          endif
+          ! if ( flagstruct%n_sponge == 0) then
+          !   if ( k == 1 ) delt = 0.1*delt
+          !   if ( k == 2 ) delt = 0.5*delt
+          ! else
+          !   delt = delt*MIN(1.0,FLOAT(k)/FLOAT(flagstruct%n_sponge))
+          ! endif
+          if ( k == 1 ) delt = 0.1*delt
+          if ( k == 2 ) delt = 0.5*delt
           do j=js,je
              do i=is,ie
 #ifdef MOIST_CAPPA

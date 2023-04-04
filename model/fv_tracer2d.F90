@@ -135,8 +135,6 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
 
-      integer :: cmax_max_all_ranks
-
       is  = bd%is
       ie  = bd%ie
       js  = bd%js
@@ -195,23 +193,19 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 
   call mp_reduce_max(cmax,npz)
 
-  cmax_max_all_ranks = 2
+  ! pchakrab: Trying to match gtFV3's tracer_2d_1l.py routine
+  cmax(:) = 2
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
-!$OMP                                  cy,yfx,mfx,mfy,cmax,cmax_max_all_ranks)   &
+!$OMP                                  cy,yfx,mfx,mfy,cmax)   &
 !$OMP                          private(nsplt, frac)
-
-  ! pchakrab: Trying to match gtFV3's tracer_2d_1l.py routine
-  ! cmax_max_all_ranks = 2.0
-  ! n_split = math.floor(1.0 + cmax_max_all_ranks)
-
   do k=1,npz
 
      ! mfx2(:,:,k)=mfx(:,:,k)
      ! mfy2(:,:,k)=mfy(:,:,k)
      ! cx2(:,:,k)=cx(:,:,k)
      ! cy2(:,:,k)=cy(:,:,k)
-     nsplt = int(1. + cmax_max_all_ranks)
+     nsplt = int(1. + cmax(k))
      if ( nsplt > 1 ) then
         frac  = 1. / real(nsplt)
         do j=jsd,jed
@@ -247,14 +241,14 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                               call timing_off('COMM_TOTAL')
 
 
-  c_gmax   = int(1. + cmax(1))
-  if ( npz /= 1 ) then                ! if NOT shallow water test case
-     do k=2,npz
-        c_gmax   = max(int(1. + cmax(k)), c_gmax  )
-     enddo
-  endif
+  ! c_gmax   = int(1. + cmax(1))
+  ! if ( npz /= 1 ) then                ! if NOT shallow water test case
+  !    do k=2,npz
+  !       c_gmax   = max(int(1. + cmax(k)), c_gmax  )
+  !    enddo
+  ! endif
 
-  do it=1,c_gmax
+  ! do it=1,c_gmax
 
 ! Begin k-independent tracer transport; can not be OpenMPed because the mpp_update call.
   do k=1,npz
@@ -271,12 +265,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
         endif
      enddo
 
-     ! pchakrab: Trying to match gtFV3's tracer_2d_1l.py routine
-     ! cmax_max_all_ranks = 2.0
-     ! n_split = math.floor(1.0 + cmax_max_all_ranks)
-     nsplt = int(1. + cmax_max_all_ranks)
-
-     if (it <= nsplt) then
+     nsplt = int(1. + cmax(k))
+     do it=1,nsplt
 
 !$OMP parallel do default(none) shared(k,is,ie,js,je,rarea,mfx,mfy,dp1,dp2)
         do j=js,je
@@ -285,13 +275,13 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
            enddo
         enddo
 
-        if ( (it>1) ) then
-                        call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER')
-              call complete_group_halo_update(z_pack(k), domain)
-                           call timing_off('COMM_TRACER')
-                       call timing_off('COMM_TOTAL')
-        endif
+        ! if ( (it>1) ) then
+        !                 call timing_on('COMM_TOTAL')
+        !                     call timing_on('COMM_TRACER')
+        !       call complete_group_halo_update(z_pack(k), domain)
+        !                    call timing_off('COMM_TRACER')
+        !                call timing_off('COMM_TOTAL')
+        ! endif
 
 !$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx,xfx,hord,trdm, &
 !$OMP                                  nord_tr,nq,gridstruct,bd,cy,yfx,mfx,mfy,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) &
@@ -307,7 +297,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
            enddo
         enddo   !  tracer-loop
 
-        if ( it /= nsplt ) then   ! not last call
+        if ( it < nsplt ) then   ! not last call
              do j=js,je
                 do i=is,ie
                    dp1(i,j,k) = dp2(i,j)
@@ -320,7 +310,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                       call timing_off('COMM_TOTAL')
         endif
 
-     endif  ! time-split check
+     enddo  ! time-split loop
 
      if (present(dpA) .and. (it == nsplt)) then
         dpA(:,:,k)=dp2
@@ -328,7 +318,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 
   enddo    ! k-loop
 
-  enddo    ! it-loop
+  ! enddo    ! it-loop
 
 end subroutine tracer_2d_1L
 
