@@ -3180,7 +3180,7 @@ contains
                enddo
             enddo
          enddo
-         call mpp_error(NOTE,'==> Error from range_check: data out of bound')
+        !call mpp_error(NOTE,'==> Error from range_check: data out of bound')
       endif
 106   format('Range_Warn: ',A,'(',i4,',',i4,',',i3,')=',f8.4,' at LON:',f8.4,' LAT:',f8.4)
 
@@ -3936,8 +3936,9 @@ contains
          srh(i,j) = 0.
          below(i) = .true.
          zh0(i) = 0.
+         k0 = -1
+         k1 = -1
 
-!        if ( phis(i,j)/grav < 1.E3 ) then
          do k=km,1,-1
             if ( hydrostatic ) then
                  dz(i) = rdg*pt(i,j,k)*(1.+zvir*q(i,j,k,sphum))*(peln(i,k+1,j)-peln(i,k,j))
@@ -3966,6 +3967,7 @@ contains
 123      continue
 
 ! Lowest layer wind shear computed betw top edge and mid-layer
+         if ( (k0 .ne. -1) .and. (k1 .ne. -1) ) then
          k = k1
          srh(i,j) = 0.5*(va(i,j,k1)-vc(i))*(ua(i,j,k1-1)-ua(i,j,k1))  -  &
                     0.5*(ua(i,j,k1)-uc(i))*(va(i,j,k1-1)-va(i,j,k1))
@@ -3973,7 +3975,7 @@ contains
             srh(i,j) = srh(i,j) + 0.5*(va(i,j,k)-vc(i))*(ua(i,j,k-1)-ua(i,j,k+1)) -  &
                                   0.5*(ua(i,j,k)-uc(i))*(va(i,j,k-1)-va(i,j,k+1))
          enddo
-!        endif
+         endif
       enddo  ! i-loop
    enddo   ! j-loop
 
@@ -4017,6 +4019,8 @@ contains
          zh(i) = 0.
          zh0 = 0.
          below = .true.
+         k0 = -1
+         k1 = -1
 
          do k=km,1,-1
             if ( hydrostatic ) then
@@ -4042,6 +4046,7 @@ contains
 123      continue
 
 ! Lowest layer wind shear computed betw top edge and mid-layer
+         if ( (k0 .ne. -1) .and. (k1 .ne. -1) ) then
          k = k1
          srh(i,j) = 0.5*(va(i,j,k1)-vc(i,j))*(ua(i,j,k1-1)-ua(i,j,k1))  -  &
                     0.5*(ua(i,j,k1)-uc(i,j))*(va(i,j,k1-1)-va(i,j,k1))
@@ -4049,6 +4054,7 @@ contains
             srh(i,j) = srh(i,j) + 0.5*(va(i,j,k)-vc(i,j))*(ua(i,j,k-1)-ua(i,j,k+1)) -  &
                                   0.5*(ua(i,j,k)-uc(i,j))*(va(i,j,k-1)-va(i,j,k+1))
          enddo
+         endif
       enddo  ! i-loop
    enddo   ! j-loop
 
