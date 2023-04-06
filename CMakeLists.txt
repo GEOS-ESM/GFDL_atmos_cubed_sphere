@@ -45,21 +45,13 @@ set (srcs
   model/fv_nesting.F90
   )
 
-if (ESMA_USE_GFE_NAMESPACE)
-   esma_add_library (${this}
-      SRCS ${srcs}
-      DEPENDENCIES MAPL GFTL_SHARED::gftl-shared
-      INCLUDES ${INC_ESMF})
-else ()
-   esma_add_library (${this}
-      SRCS ${srcs}
-      DEPENDENCIES MAPL gftl-shared
-      INCLUDES ${INC_ESMF})
-endif ()
+esma_add_library (${this}
+  SRCS ${srcs}
+  DEPENDENCIES MAPL GFTL_SHARED::gftl-shared esmf)
 
 if (FV_PRECISION STREQUAL R4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
-   get_target_property (extra_incs fms_r4 INCLUDE_DIRECTORIES)
+   get_target_property (extra_incs fms_r4 INTERFACE_INCLUDE_DIRECTORIES)
    target_include_directories(${this} PRIVATE
    $<BUILD_INTERFACE:${extra_incs}>
    )
@@ -80,7 +72,7 @@ elseif (FV_PRECISION STREQUAL R8)
    endforeach()
 endif ()
 
-set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT}")
+#set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT}")
 
 if (CRAY_POINTER)
   set_target_properties (${this} PROPERTIES COMPILE_FLAGS ${CRAY_POINTER})
@@ -91,14 +83,9 @@ target_compile_definitions (${this} PRIVATE MAPL_MODE SPMD TIMING)
 # Enable OpenMP
 target_link_libraries(${this} PRIVATE OpenMP::OpenMP_Fortran)
 
-option(HYDROSTATIC "Build FV dynamics as hydrostatic" ON)
-if (HYDROSTATIC)
-   ecbuild_info("Building FV dynamics as hydrostatic")
-else()
-   ecbuild_info("Building FV dynamics as non-hydrostatic")
-   ecbuild_info("This sets MOIST_CAPPA and USE_COND preprocessor variables")
-   target_compile_definitions (${this} PRIVATE MOIST_CAPPA USE_COND)
-endif ()
+ecbuild_info("Building FV dynamics dual hydrostatic/non-hydrostatic")
+ecbuild_info("This sets MOIST_CAPPA and USE_COND preprocessor variables")
+target_compile_definitions (${this} PRIVATE MOIST_CAPPA USE_COND)
 
 esma_add_subdirectories(
   model/mapz-driver
