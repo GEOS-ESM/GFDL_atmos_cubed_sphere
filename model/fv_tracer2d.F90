@@ -112,6 +112,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       type(domain2d), intent(INOUT) :: domain
 
 ! Local Arrays
+      real :: qn2(bd%isd:bd%ied,bd%jsd:bd%jed,nq)   !< 3D tracers
       real :: dp2(bd%is:bd%ie,bd%js:bd%je)
       real :: fx(bd%is:bd%ie+1,bd%js:bd%je )
       real :: fy(bd%is:bd%ie , bd%js:bd%je+1)
@@ -151,7 +152,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       dxa    => gridstruct%dxa 
       dya    => gridstruct%dya 
       dx     => gridstruct%dx  
-      dy     => gridstruct%dy  
+      dy     => gridstruct%dy
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &
 !$OMP                                  sin_sg,cy,yfx,dya,dx,cmax)
@@ -284,9 +285,34 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
         ! endif
 
 !$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx,xfx,hord,trdm, &
-!$OMP                                  nord_tr,nq,gridstruct,bd,cy,yfx,mfx,mfy,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) &
+!$OMP                                  nord_tr,nq,gridstruct,bd,cy,yfx,mfx,mfy,qn2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) &
 !$OMP                          private(fx,fy)
         do iq=1,nq
+        if ( nsplt /= 1 ) then
+           if ( it==1 ) then
+              do j=jsd,jed
+                 do i=isd,ied
+                    qn2(i,j,iq) = q(i,j,k,iq)
+                 enddo
+              enddo
+           endif
+           call fv_tp_2d(qn2(isd,jsd,iq), cx(is,jsd,k), cy(isd,js,k), &
+                         npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
+                         gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx(is,js,k), mfy=mfy(is,js,k))
+           if ( it < nsplt ) then   ! not last call
+              do j=js,je
+              do i=is,ie
+                 qn2(i,j,iq) = (qn2(i,j,iq)*dp1(i,j,k)+(fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j))/dp2(i,j)
+              enddo
+              enddo
+           else
+              do j=js,je
+              do i=is,ie
+                 q(i,j,k,iq) = (qn2(i,j,iq)*dp1(i,j,k)+(fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j))/dp2(i,j)
+              enddo
+              enddo
+           endif
+        else
            call fv_tp_2d(q(isd,jsd,k,iq), cx(is,jsd,k), cy(isd,js,k), &
                          npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx(is,js,k), mfy=mfy(is,js,k))
@@ -295,6 +321,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                  q(i,j,k,iq) = (q(i,j,k,iq)*dp1(i,j,k)+(fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j))/dp2(i,j)
               enddo
            enddo
+        endif
         enddo   !  tracer-loop
 
         if ( it < nsplt ) then   ! not last call
@@ -303,11 +330,11 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                    dp1(i,j,k) = dp2(i,j)
                 enddo
              enddo
-                      call timing_on('COMM_TOTAL')
-                          call timing_on('COMM_TRACER')
-           call start_group_halo_update(z_pack(k), q(:,:,k,:), domain)
-                          call timing_off('COMM_TRACER')
-                      call timing_off('COMM_TOTAL')
+                               call timing_on('COMM_TOTAL')
+                         call timing_on('COMM_TRACER')
+             call mpp_update_domains(qn2, domain)
+                        call timing_off('COMM_TRACER')
+                              call timing_off('COMM_TOTAL')
         endif
 
      enddo  ! time-split loop
