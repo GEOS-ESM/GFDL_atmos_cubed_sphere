@@ -773,7 +773,7 @@ module fv_control_mod
             if ( dimx >=  360 ) ns0 = 7
             if ( dimx >= 1440 ) ns0 = 8
          endif
-         if (stretch_fac > 1.0) ns0 = 7
+         if (stretch_fac > 1.0) ns0 = 6
 #else
          dimx = 4.0*(npx-1)
          if ( hydrostatic ) then
