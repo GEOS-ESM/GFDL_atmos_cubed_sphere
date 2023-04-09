@@ -3182,7 +3182,7 @@ contains
          enddo
         !call mpp_error(NOTE,'==> Error from range_check: data out of bound')
       endif
-106   format('Range_Warn: ',A,'(',i4,',',i4,',',i3,')=',f8.4,' at LON:',f8.4,' LAT:',f8.4)
+106   format('Range_Warn: ',A,'(',i4,',',i4,',',i3,')=',f10.4,' at LON:',f8.4,' LAT:',f8.4)
 
  end subroutine range_check
 

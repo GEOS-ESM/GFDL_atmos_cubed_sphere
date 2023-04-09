@@ -234,7 +234,6 @@ contains
     real, allocatable, dimension(:,:,:):: pem, heat_source
 ! Auto 1D & 2D arrays:
     real, dimension(bd%isd:bd%ied,bd%jsd:bd%jed):: ws3, z_rat
-    real:: d_ext(npz)
     real:: dp_ref(npz)
     real:: zs(bd%isd:bd%ied,bd%jsd:bd%jed)        !< surface height (m)
     real:: p1d(bd%is:bd%ie)
@@ -558,7 +557,7 @@ contains
            enddo
         endif
                                             call timing_on('UPDATE_DZ_C')
-         call update_dz_c(is, ie, js, je, npz, ng, dt2, dp_ref, zs, gridstruct%area, ut, vt, gz, ws3, &
+         call update_dz_c(is, ie, js, je, npz, ng, dt2, flagstruct%dz_min, dp_ref, zs, gridstruct%area, ut, vt, gz, ws3, &
              npx, npy, gridstruct%sw_corner, gridstruct%se_corner, &
              gridstruct%ne_corner, gridstruct%nw_corner, bd, gridstruct%grid_type)
                                             call timing_off('UPDATE_DZ_C')
@@ -651,7 +650,7 @@ contains
 !$OMP                                  is,ie,js,je,isd,ied,jsd,jed,omga,delp,gridstruct,npx,npy,  &
 !$OMP                                  ng,zh,vt,ptc,pt,u,v,w,uc,vc,ua,va,divgd,mfx,mfy,cx,cy,     &
 !$OMP                                  crx,cry,xfx,yfx,q_con,zvir,sphum,nq,q,dt,bd,rdt,iep1,jep1, &
-!$OMP                                  heat_source,diss_est,dpx,d_ext)                            &
+!$OMP                                  heat_source,diss_est,dpx)                                      &
 !$OMP                          private(nord_k, nord_w, nord_t, damp_w, damp_t, d2_divg, kfac, &
 !$OMP                          d_con_k,kgb, hord_m, hord_v, hord_t, hord_p, wk, heat_s,diss_e, z_rat)
     do k=1,npz
@@ -685,7 +684,6 @@ contains
 
        if ( npz==1 .or. flagstruct%n_sponge<0 ) then
            d2_divg = flagstruct%d2_bg
-           d_ext(k) = flagstruct%d_ext
        else
 ! Sponge layers with del-2 damping on divergence, vorticity, w, z, and air mass (delp).
 ! no special damping of potential temperature in sponge layers
@@ -697,22 +695,21 @@ contains
                    if ( flagstruct%do_vort_damp ) then
 ! damping on delp and vorticity:
                         nord_v(k)=0; 
+                        damp_vt(k) = 0.5*d2_divg
                    endif
                    d_con_k = 0.
-                   d_ext(k) = 0.02
-              elseif ( (k<=MAX(2,flagstruct%n_sponge-1)).and. flagstruct%d2_bg_k2>0.01 ) then
+              elseif ( k<=MAX(2,flagstruct%n_sponge-1) .and. flagstruct%d2_bg_k2>0.01 ) then
                    nord_k=0; d2_divg = max(flagstruct%d2_bg, flagstruct%d2_bg_k2)
                    nord_w=0; damp_w = d2_divg
                    if ( flagstruct%do_vort_damp ) then
                         nord_v(k)=0; 
+                        damp_vt(k) = 0.5*d2_divg
                    endif
                    d_con_k = 0.
-                   d_ext(k) = 0.01
-              elseif ( (k<=MAX(3,flagstruct%n_sponge))  .and. flagstruct%d2_bg_k2>0.05 ) then
+              elseif ( k<=MAX(3,flagstruct%n_sponge) .and. flagstruct%d2_bg_k2>0.05 ) then
                    nord_k=0;  d2_divg = max(flagstruct%d2_bg, 0.2*flagstruct%d2_bg_k2)
                    nord_w=0;  damp_w = d2_divg
                    d_con_k = 0.
-                   d_ext(k) = 0.01
               endif
        endif
 
@@ -726,12 +723,9 @@ contains
        endif
 
 !--- external mode divergence damping ---
-       if ( d_ext(k) > 0. ) then
+       if ( flagstruct%d_ext > 0. )  &
             call a2b_ord2(delp(isd,jsd,k), wk, gridstruct, npx, npy, is,    &
                           ie, js, je, ng, .false.)
-       else
-            wk(:,:) = 0.0
-       endif
 
        if ( .not.hydrostatic .and. flagstruct%do_f3d ) then
 ! Correction factor for 3D Coriolis force
@@ -765,12 +759,13 @@ contains
             enddo
        endif
 
-       do j=js,jep1
-          do i=is,iep1
-             ptc(i,j,k) = wk(i,j)    ! delp at cell corners
-          enddo
-       enddo
-
+       if ( flagstruct%d_ext > 0. ) then
+            do j=js,jep1
+               do i=is,iep1
+                  ptc(i,j,k) = wk(i,j)    ! delp at cell corners
+               enddo
+            enddo
+       endif
        if ( flagstruct%d_con > 1.0E-5 .OR. flagstruct%do_skeb ) then
 !       if ( flagstruct%d_con > 1.0E-5 ) then
 ! Average horizontal "convergence" to cell center
@@ -797,23 +792,27 @@ contains
 #endif
                                                              call timing_off('COMM_TOTAL')
 
-!$OMP parallel do default(none) shared(is,iep1,js,jep1,npz,wk,ptc,divg2,vt,d_ext)
-     do j=js,jep1
-         do i=is,iep1
-                wk(i,j) = ptc(i,j,1)
-             divg2(i,j) = wk(i,j)*vt(i,j,1)*d_ext(1)
-         enddo
-         do k=2,npz
-             do i=is,iep1
-                   wk(i,j) =    wk(i,j) + ptc(i,j,k)
-                divg2(i,j) = divg2(i,j) + ptc(i,j,k)*vt(i,j,k)*d_ext(k)
-             enddo
-         enddo
-         do i=is,iep1
-             divg2(i,j) = divg2(i,j)/wk(i,j)
-         enddo
-     enddo
-     divg2=divg2*gridstruct%da_min_c
+    if ( flagstruct%d_ext > 0. ) then
+          d2_divg = flagstruct%d_ext * gridstruct%da_min_c
+!$OMP parallel do default(none) shared(is,iep1,js,jep1,npz,wk,ptc,divg2,vt,d2_divg)
+          do j=js,jep1
+              do i=is,iep1
+                    wk(i,j) = ptc(i,j,1)
+                 divg2(i,j) = wk(i,j)*vt(i,j,1)
+              enddo
+              do k=2,npz
+                 do i=is,iep1
+                       wk(i,j) =    wk(i,j) + ptc(i,j,k)
+                    divg2(i,j) = divg2(i,j) + ptc(i,j,k)*vt(i,j,k)
+                 enddo
+              enddo
+              do i=is,iep1
+                 divg2(i,j) = d2_divg*divg2(i,j)/wk(i,j)
+              enddo
+          enddo
+    else
+        divg2(:,:) = 0.
+    endif
 
                                        call timing_on('COMM_TOTAL')
      call complete_group_halo_update(i_pack(1), domain)
@@ -846,7 +845,7 @@ contains
 #ifndef SW_DYNAMICS
                                             call timing_on('UPDATE_DZ')
         call update_dz_d(nord_v, damp_vt, flagstruct%hord_tm, is, ie, js, je, npz, ng, npx, npy, gridstruct%area,  &
-                         gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, gridstruct, bd, flagstruct%lim_fac)
+                         gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, flagstruct%dz_min, gridstruct, bd, flagstruct%lim_fac)
                                             call timing_off('UPDATE_DZ')
 
         if (idiag%id_ws>0 .and. last_step) then
@@ -941,13 +940,13 @@ contains
        if ( beta > 0. ) then
           call grad1_p_update(divg2, u, v, pkc, gz, dt, ng, gridstruct, bd, npx, npy, npz, ptop, beta_d, flagstruct%a2b_ord)
        else
-          call one_grad_p(u, v, pkc, gz, divg2, delp, dt, ng, gridstruct, bd, npx, npy, npz, ptop, hydrostatic, flagstruct%a2b_ord, d_ext)
+          call one_grad_p(u, v, pkc, gz, divg2, delp, dt, ng, gridstruct, bd, npx, npy, npz, ptop, hydrostatic, flagstruct%a2b_ord, flagstruct%d_ext)
        endif
     else
        if ( beta > 0. ) then
           call split_p_grad( u, v, pkc, gz, delp, pk3, beta_d, dt, ng, gridstruct, bd, npx, npy, npz, flagstruct%use_logp)
        elseif ( beta < -0.1 ) then
-         call one_grad_p(u, v, pkc, gz, divg2, delp, dt, ng, gridstruct, bd, npx, npy, npz, ptop, hydrostatic, flagstruct%a2b_ord, d_ext)
+         call one_grad_p(u, v, pkc, gz, divg2, delp, dt, ng, gridstruct, bd, npx, npy, npz, ptop, hydrostatic, flagstruct%a2b_ord, flagstruct%d_ext)
        else
           call nh_p_grad(u, v, pkc, gz, delp, pk3, dt, ng, gridstruct, bd, npx, npy, npz, flagstruct%use_logp)
        endif
@@ -1168,12 +1167,8 @@ contains
        do k=1,n_con
           delt = abs(bdt*flagstruct%delt_max)
 ! Sponge layers:
-          if ( flagstruct%n_sponge == 0) then 
-            if ( k == 1 ) delt = 0.1*delt
-            if ( k == 2 ) delt = 0.5*delt
-          else
-            delt = delt*MIN(1.0,FLOAT(k)/FLOAT(flagstruct%n_sponge))
-          endif
+          if ( k == 1 ) delt = 0.1*delt
+          if ( k == 2 ) delt = 0.5*delt
           do j=js,je
              do i=is,ie
 #ifdef MOIST_CAPPA
@@ -1735,7 +1730,7 @@ subroutine one_grad_p(u, v, pk, gz, divg2, delp, dt, ng, gridstruct, bd, npx, np
    ptop, hydrostatic, a2b_ord, d_ext)  
 
 integer, intent(IN) :: ng, npx, npy, npz, a2b_ord
-real,    intent(IN) :: dt, ptop, d_ext(npz)
+real,    intent(IN) :: dt, ptop, d_ext
 logical, intent(in) :: hydrostatic
 type(fv_grid_bounds_type), intent(IN) :: bd
 real,    intent(in) :: divg2(bd%is:bd%ie+1,bd%js:bd%je+1)
@@ -1799,6 +1794,8 @@ do k=1,npz+1
    endif
 enddo
 
+if ( d_ext > 0. ) then
+
    !$OMP parallel do default(none) shared(is,ie,js,je,wk2,divg2)
    do j=js,je+1
       do i=is,ie
@@ -1813,8 +1810,22 @@ enddo
       enddo
    enddo
 
+else
+
+   !$OMP parallel do default(none) shared(is,ie,js,je,wk1,wk2)
+   do j=js,je+1
+      do i=is,ie
+         wk2(i,j) = 0.
+      enddo
+      do i=is,ie+1
+         wk1(i,j) = 0.
+      enddo
+   enddo
+
+endif
+
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,pk,delp,hydrostatic,a2b_ord,gridstruct, &
-!$OMP                                  npx,npy,isd,jsd,ng,u,v,wk2,dt,gz,wk1,d_ext) &
+!$OMP                                  npx,npy,isd,jsd,ng,u,v,wk2,dt,gz,wk1) &
 !$OMP                          private(wk)
 do k=1,npz
 
@@ -1834,14 +1845,14 @@ do k=1,npz
 
    do j=js,je+1
       do i=is,ie
-         u(i,j,k) = gridstruct%rdx(i,j)*(d_ext(k)*wk2(i,j)+u(i,j,k) + dt/(wk(i,j)+wk(i+1,j)) * &
+         u(i,j,k) = gridstruct%rdx(i,j)*(wk2(i,j)+u(i,j,k) + dt/(wk(i,j)+wk(i+1,j)) * &
                                  ((gz(i,j,k+1)-gz(i+1,j,k))*(pk(i+1,j,k+1)-pk(i,j,k)) &
                                 + (gz(i,j,k)-gz(i+1,j,k+1))*(pk(i,j,k+1)-pk(i+1,j,k))))
       enddo
    enddo
    do j=js,je
       do i=is,ie+1
-         v(i,j,k) = gridstruct%rdy(i,j)*(d_ext(k)*wk1(i,j)+v(i,j,k) + dt/(wk(i,j)+wk(i,j+1)) * &
+         v(i,j,k) = gridstruct%rdy(i,j)*(wk1(i,j)+v(i,j,k) + dt/(wk(i,j)+wk(i,j+1)) * &
                                  ((gz(i,j,k+1)-gz(i,j+1,k))*(pk(i,j+1,k+1)-pk(i,j,k)) &
                                 + (gz(i,j,k)-gz(i,j+1,k+1))*(pk(i,j,k+1)-pk(i,j+1,k))))
       enddo
