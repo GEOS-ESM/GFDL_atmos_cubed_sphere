@@ -769,8 +769,8 @@ module fv_control_mod
       if (ntiles==6) then
 #ifdef MAPL_MODE
          dimx = stretch_fac*4.0*(npx-1)
-                                ns0 = 4
-         if (stretch_fac > 1.0) ns0 = 5
+                        ns0 = 4
+         if (npx > 180) ns0 = 5
 #else
          dimx = 4.0*(npx-1)
          if ( hydrostatic ) then
