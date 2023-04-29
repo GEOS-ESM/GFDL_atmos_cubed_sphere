@@ -641,7 +641,7 @@ module fv_control_mod
    real :: dt0  = 1800.          !< base time step
    real :: ns0  = 5.             !< base nsplit for base dimension 
                                  !< For cubed sphere 5 is better
-   !real :: umax = 350.           ! max wave speed for grid_type>3 ! Now defined above
+   real :: offset = 0.49         !< base to help round up n_split
    real :: dimx, dl, dp, dxmin, dymin, d_fac
 
    integer :: n0split
@@ -769,9 +769,12 @@ module fv_control_mod
       if (ntiles==6) then
 #ifdef MAPL_MODE
          dimx = stretch_fac*4.0*(npx-1)
-                        ns0 = 4
-         if (npx >= 90) ns0 = 5
+                              ns0 = 4
+         if (npx >= 90)       ns0 = 5
+                              offset = 0.49
+         if (stretch_fac > 1) offset = 0.99
 #else
+         offset = 0.49
          dimx = 4.0*(npx-1)
          if ( hydrostatic ) then
             if ( npx >= 120 ) ns0 = 6
@@ -790,9 +793,9 @@ module fv_control_mod
       endif
           
       if (grid_type < 4) then
-         n0split = nint ( ns0*abs(dt_atmos)*dimx/(dt0*dim0) + 0.49 )
+         n0split = nint ( ns0*abs(dt_atmos)*dimx/(dt0*dim0) + offset )
       elseif (grid_type == 4 .or. grid_type == 7) then
-         n0split = nint ( 2.*umax*dt_atmos/sqrt(dx_const**2 + dy_const**2) + 0.49 )
+         n0split = nint ( 2.*umax*dt_atmos/sqrt(dx_const**2 + dy_const**2) + offset )
       elseif (grid_type == 5 .or. grid_type == 6) then
          if (grid_type == 6) then
             deglon_start = 0.; deglon_stop  = 360.
@@ -803,7 +806,7 @@ module fv_control_mod
          dxmin=dl*radius*min(cos(deglat_start*pi/180.-ng*dp),   &
                              cos(deglat_stop *pi/180.+ng*dp))
          dymin=dp*radius
-         n0split = nint ( 2.*umax*dt_atmos/sqrt(dxmin**2 + dymin**2) + 0.49 )
+         n0split = nint ( 2.*umax*dt_atmos/sqrt(dxmin**2 + dymin**2) + offset )
       endif
       n0split = max ( 1, n0split )
 
