@@ -767,12 +767,15 @@ module fv_control_mod
 
       ! Define n_split if not in namelist
       if (ntiles==6) then
+         offset = 0.49
 #ifdef MAPL_MODE
          dimx = stretch_fac*4.0*(npx-1)
                               ns0 = 4
          if (npx >= 90)       ns0 = 5
-                              offset = 0.49
-         if (stretch_fac > 1) offset = 0.99
+         if (stretch_fac > 1) then
+                              ns0 = 6
+            if (npx >= 1500)  ns0 = 7
+         endif
 #else
          offset = 0.49
          dimx = 4.0*(npx-1)
