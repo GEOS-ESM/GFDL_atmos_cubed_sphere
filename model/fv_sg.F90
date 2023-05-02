@@ -405,13 +405,13 @@ contains
 !!!         ri_ref = min(ri_max, ri_min + (ri_max-ri_min)*dim(500.e2,pm(i,k))/250.e2 )
             ri_ref = min(ri_max, ri_min + (ri_max-ri_min)*dim(400.e2,pm(i,k))/200.e2 )
 ! Enhancing mixing at the model top
-!           if ( k==2 ) then
-!                ri_ref = 4.*ri_ref
-!           elseif ( k==3 ) then
-!                ri_ref = 2.*ri_ref
-!           elseif ( k==4 ) then
-!                ri_ref = 1.5*ri_ref
-!           endif
+            if ( k==2 ) then
+                 ri_ref = 4.*ri_ref
+            elseif ( k==3 ) then
+                 ri_ref = 2.*ri_ref
+            elseif ( k==4 ) then
+                 ri_ref = 1.5*ri_ref
+            endif
 
             if ( ri < ri_ref ) then
                mc = ratio*delp(i,j,km1)*delp(i,j,k)/(delp(i,j,km1)+delp(i,j,k))*(1.-max(0.0,ri/ri_ref))**2

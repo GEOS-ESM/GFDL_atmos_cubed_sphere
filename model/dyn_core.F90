@@ -371,7 +371,7 @@ contains
     endif
 
     if ( flagstruct%convert_ke .or. flagstruct%vtdm4> 1.E-4 ) then
-         n_con = min(3, flagstruct%nord+1)
+         n_con = npz
     else
          if ( flagstruct%d2_bg_k1 < 1.E-3 ) then
               n_con = 0
@@ -1144,58 +1144,44 @@ contains
 !
 ! del(Cp*T) = - del(KE)
 !
-!$OMP parallel do default(none) shared(flagstruct,is,ie,js,je,npz,n_con,pt,heat_source,delp,pkz,bdt) &
+!$OMP parallel do default(none) shared(flagstruct,is,ie,js,je,n_con,pt,heat_source,delp,pkz,bdt) &
 !$OMP                          private(dtmp)
-       do k=1,npz
-          if ( k<n_con ) then ! n_con is usually less than 3;
-             do j=js,je
+       do j=js,je
+          do k=1,n_con  ! n_con is usually less than 3;
+             if ( k<3 ) then
                 do i=is,ie
                    pt(i,j,k) = pt(i,j,k) + heat_source(i,j,k)/(cp_air*delp(i,j,k)*pkz(i,j,k))
                 enddo
-             enddo
-          else 
-             do j=js,je
+             else
                 do i=is,ie
-                        dtmp = heat_source(i,j,k) / (cp_air*delp(i,j,k))
-                   pt(i,j,k) = pt(i,j,k) + sign(min(abs(bdt)*flagstruct%delt_max,abs(dtmp)), dtmp)/pkz(i,j,k)
+                     dtmp = heat_source(i,j,k) / (cp_air*delp(i,j,k))
+                pt(i,j,k) = pt(i,j,k) + sign(min(abs(bdt)*flagstruct%delt_max,abs(dtmp)), dtmp)/pkz(i,j,k)
                 enddo
-             enddo
-          endif
+             endif
+          enddo
        enddo
     else
-!$OMP parallel do default(none) shared(flagstruct,is,ie,js,je,npz,n_con,pkz,cappa,rdg,delp,delz,pt, &
+!$OMP parallel do default(none) shared(flagstruct,is,ie,js,je,n_con,pkz,cappa,rdg,delp,delz,pt, &
 !$OMP                                  heat_source,k1k,cv_air,bdt) &
-!$OMP                          private(dtmp)
-       do k=1,npz
-          if ( k<n_con ) then ! n_con is usually less than 3;
-             do j=js,je
-                do i=is,ie
+!$OMP                          private(dtmp, delt)
+       do k=1,n_con
+          delt = abs(bdt*flagstruct%delt_max)
+! Sponge layers:
+          if ( k == 1 ) delt = 0.1*delt
+          if ( k == 2 ) delt = 0.5*delt
+          do j=js,je
+             do i=is,ie
 #ifdef MOIST_CAPPA
-                   pkz(i,j,k) = exp( cappa(i,j,k)/(1.-cappa(i,j,k))*log(rdg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)) )
+                pkz(i,j,k) = exp( cappa(i,j,k)/(1.-cappa(i,j,k))*log(rdg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)) )
 #else
-                   pkz(i,j,k) = exp( k1k*log(rdg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)) )
+                pkz(i,j,k) = exp( k1k*log(rdg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)) )
 #endif
-                   pt(i,j,k) = pt(i,j,k) + heat_source(i,j,k)/(cv_air*delp(i,j,k)*pkz(i,j,k))
-                enddo
+                     dtmp = heat_source(i,j,k) / (cv_air*delp(i,j,k))
+                pt(i,j,k) = pt(i,j,k) + sign(min(delt, abs(dtmp)),dtmp) / pkz(i,j,k)
              enddo
-          else
-             do j=js,je
-                do i=is,ie
-#ifdef MOIST_CAPPA
-                   pkz(i,j,k) = exp( cappa(i,j,k)/(1.-cappa(i,j,k))*log(rdg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)) )
-#else
-                   pkz(i,j,k) = exp( k1k*log(rdg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)) )
-#endif
-                         dtmp = heat_source(i,j,k) / (cv_air*delp(i,j,k))
-                    pt(i,j,k) = pt(i,j,k) + sign(min(abs(bdt)*flagstruct%delt_max,abs(dtmp)), dtmp)/pkz(i,j,k)
-                 enddo
-              enddo
-           endif
+          enddo
        enddo
     endif
-
-    nf_ke = min(3, flagstruct%nord+1)
-    call del2_cubed(pt(:,:,1:n_con), cnst_0p20*gridstruct%da_min, gridstruct, domain, npx, npy, n_con, nf_ke, bd)
 
   endif
   if (allocated(heat_source)) deallocate( heat_source ) !If ncon == 0 but d_con > 1.e-5, this would not be deallocated in earlier versions of the code
