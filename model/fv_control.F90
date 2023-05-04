@@ -222,6 +222,7 @@ module fv_control_mod
    logical , pointer :: reset_eta 
    real    , pointer :: p_fac
    real    , pointer :: a_imp
+   real    , pointer :: dz_min
    integer , pointer :: n_split 
                              ! Default 
    integer , pointer :: m_split 
@@ -656,7 +657,7 @@ module fv_control_mod
 
    namelist /fv_grid_nml/ grid_name, grid_file
    namelist /fv_core_nml/npx, npy, ntiles, npz, npz_rst, layout, io_layout, ncnst, nwat,  &
-                         use_logp, p_fac, a_imp, k_split, n_split, m_split, q_split, print_freq, write_3d_diags, do_schmidt,  &
+                         use_logp, p_fac, a_imp, dz_min, k_split, n_split, m_split, q_split, print_freq, write_3d_diags, do_schmidt,  &
                          hord_mt, hord_vt, hord_tm, hord_dp, hord_tr, shift_fac, stretch_fac, target_lat, target_lon, &
                          kord_mt, kord_wz, kord_tm, kord_tr, fv_debug, fv_land, nudge, do_sat_adj, do_f3d, &
                          external_ic, read_increment, ncep_ic, nggps_ic, ecmwf_ic, use_new_ncep, use_ncep_phy, fv_diag_ic, &
@@ -916,6 +917,7 @@ module fv_control_mod
          if(is_master()) then
             write(*,*) 'Off center implicit scheme param=', a_imp
             write(*,*) ' p_fac=', p_fac
+            write(*,*) ' dz_min=', dz_min
          endif
       endif
 
@@ -1220,6 +1222,7 @@ module fv_control_mod
      reset_eta                     => Atm%flagstruct%reset_eta
      p_fac                         => Atm%flagstruct%p_fac
      a_imp                         => Atm%flagstruct%a_imp
+     dz_min                        => Atm%flagstruct%dz_min
      n_split                       => Atm%flagstruct%n_split
      m_split                       => Atm%flagstruct%m_split
      k_split                       => Atm%flagstruct%k_split

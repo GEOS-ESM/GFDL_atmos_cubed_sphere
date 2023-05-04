@@ -557,7 +557,7 @@ contains
            enddo
         endif
                                             call timing_on('UPDATE_DZ_C')
-         call update_dz_c(is, ie, js, je, npz, ng, dt2, dp_ref, zs, gridstruct%area, ut, vt, gz, ws3, &
+         call update_dz_c(is, ie, js, je, npz, ng, dt2, flagstruct%dz_min, dp_ref, zs, gridstruct%area, ut, vt, gz, ws3, &
              npx, npy, gridstruct%sw_corner, gridstruct%se_corner, &
              gridstruct%ne_corner, gridstruct%nw_corner, bd, gridstruct%grid_type)
                                             call timing_off('UPDATE_DZ_C')
@@ -695,16 +695,18 @@ contains
                    if ( flagstruct%do_vort_damp ) then
 ! damping on delp and vorticity:
                         nord_v(k)=0; 
+                        damp_vt(k) = 0.5*d2_divg
                    endif
                    d_con_k = 0.
-              elseif ( (k<=MAX(2,flagstruct%n_sponge-1)).and. flagstruct%d2_bg_k2>0.01 ) then
+              elseif ( k<=MAX(2,flagstruct%n_sponge-1) .and. flagstruct%d2_bg_k2>0.01 ) then
                    nord_k=0; d2_divg = max(flagstruct%d2_bg, flagstruct%d2_bg_k2)
                    nord_w=0; damp_w = d2_divg
                    if ( flagstruct%do_vort_damp ) then
                         nord_v(k)=0; 
+                        damp_vt(k) = 0.5*d2_divg
                    endif
                    d_con_k = 0.
-              elseif ( (k<=MAX(3,flagstruct%n_sponge))  .and. flagstruct%d2_bg_k2>0.05 ) then
+              elseif ( k<=MAX(3,flagstruct%n_sponge) .and. flagstruct%d2_bg_k2>0.05 ) then
                    nord_k=0;  d2_divg = max(flagstruct%d2_bg, 0.2*flagstruct%d2_bg_k2)
                    nord_w=0;  damp_w = d2_divg
                    d_con_k = 0.
@@ -843,7 +845,7 @@ contains
 #ifndef SW_DYNAMICS
                                             call timing_on('UPDATE_DZ')
         call update_dz_d(nord_v, damp_vt, flagstruct%hord_tm, is, ie, js, je, npz, ng, npx, npy, gridstruct%area,  &
-                         gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, gridstruct, bd, flagstruct%lim_fac)
+                         gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, flagstruct%dz_min, gridstruct, bd, flagstruct%lim_fac)
                                             call timing_off('UPDATE_DZ')
 
         if (idiag%id_ws>0 .and. last_step) then
@@ -1165,12 +1167,8 @@ contains
        do k=1,n_con
           delt = abs(bdt*flagstruct%delt_max)
 ! Sponge layers:
-          if ( flagstruct%n_sponge == 0) then 
-            if ( k == 1 ) delt = 0.1*delt
-            if ( k == 2 ) delt = 0.5*delt
-          else
-            delt = delt*MIN(1.0,FLOAT(k)/FLOAT(flagstruct%n_sponge))
-          endif
+          if ( k == 1 ) delt = 0.1*delt
+          if ( k == 2 ) delt = 0.5*delt
           do j=js,je
              do i=is,ie
 #ifdef MOIST_CAPPA
@@ -1801,7 +1799,7 @@ if ( d_ext > 0. ) then
    !$OMP parallel do default(none) shared(is,ie,js,je,wk2,divg2)
    do j=js,je+1
       do i=is,ie
-         wk2(i,j) = divg2(i,j)-divg2(i+1,j)
+         wk2(i,j) = (divg2(i,j)-divg2(i+1,j))
       enddo
    enddo
 
