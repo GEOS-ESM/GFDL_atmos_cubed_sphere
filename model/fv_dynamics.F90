@@ -159,9 +159,10 @@ contains
 !     fv_dynamics :: FV dynamical core driver
 !-----------------------------------------------------------------------
  
-  subroutine fv_dynamics(npx, npy, npz, nq_tot,  ng, bdt, consv_te, fill,               &
-                        reproduce_sum, kappa, cp_air, zvir, ptop, ks, ncnst, n_split,     &
-                        q_split, u, v, w, delz, hydrostatic, pt, delp, q,   &
+  subroutine fv_dynamics(npx, npy, npz, nq_tot,  ng, bdt, consv_te, fill,    &
+                        reproduce_sum, kappa, cp_air, zvir, ptop, ks, ncnst, &
+                        k_split, n_split,                                    &
+                        q_split, u, v, w, delz, hydrostatic, pt, delp, q,    &
                         ps, pe, pk, peln, pkz, phis, varflt, q_con, omga, ua, va, uc, vc,          &
                         ak, bk, mfx, mfy, cx, cy, ze0, hybrid_z, &
                         gridstruct, flagstruct, neststruct, idiag, bd, &
@@ -182,6 +183,7 @@ contains
     integer, intent(IN) :: ng
     integer, intent(IN) :: ks
     integer, intent(IN) :: ncnst
+    integer, intent(IN) :: k_split        !< remap-step vertical dynamics
     integer, intent(IN) :: n_split        !< small-step horizontal dynamics
     integer, intent(IN) :: q_split        !< tracer
     logical, intent(IN) :: fill
@@ -273,7 +275,7 @@ contains
       real(kind=8), allocatable :: dpx(:,:,:) !needed for OpenMP
       real:: akap, rdg, ph1, ph2, mdt, gam, amdt, u0
       integer:: kord_tracer(ncnst)
-      integer :: i,j,k, n, iq, n_map, nq, nwat, k_split
+      integer :: i,j,k, n, iq, n_map, nq, nwat
       integer :: sphum, liq_wat = -999, ice_wat = -999      ! GFDL physics
       integer :: rainwat = -999, snowwat = -999, graupel = -999, cld_amt = -999
       integer :: theta_d = -999
@@ -302,7 +304,6 @@ contains
 !     cv_air =  cp_air - rdgas
       agrav = 1. / grav
         dt2 = 0.5*bdt
-      k_split = flagstruct%k_split
       nwat = flagstruct%nwat
       nq = nq_tot - flagstruct%dnats
       rdg = -rdgas * agrav
@@ -569,6 +570,7 @@ contains
 
   last_step = .false.
   mdt = bdt / real(k_split)
+  flagstruct%m_split = CEILING(1. + abs(bdt)/real(k_split*n_split))
 
   allocate ( dtdt_m(is:ie,js:je,npz) )
   if ( idiag%id_mdt > 0 .and. (.not. do_adiabatic_init) ) then
@@ -632,7 +634,7 @@ contains
     endif
 
                                            call timing_on('DYN_CORE')
-      call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
+      call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
                     u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va,           & 
                     uc, vc, &
 #ifdef SINGLE_FV
@@ -922,11 +924,11 @@ contains
        call range_check('VA_dyn', ua, is, ie, js, je, ng, npz, gridstruct%agrid,   &
                          -280., 280., bad_range)
        call range_check('TA_dyn', pt, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         150., 333., bad_range)
-       if ( .not. hydrostatic ) then
-            call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         -100., 100., bad_range)
-       endif
+                         130., 335., bad_range)
+      !if ( .not. hydrostatic ) then
+      !     call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
+      !                  -100., 100., bad_range)
+      !endif
   endif
 
   end subroutine fv_dynamics

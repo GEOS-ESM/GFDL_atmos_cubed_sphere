@@ -2172,6 +2172,19 @@ end subroutine divergence_corner_nest
            do i=is-1, ie+1
               smt5(i) = 3.*abs(b0(i)) < abs(bl(i)-br(i))
            enddo
+!WMP
+! fix edge issues
+   if ( (.not.nested) .and. grid_type < 3) then
+     if( is==1 ) then
+       smt5(0) = bl(0)*br(0) < 0.
+       smt5(1) = bl(1)*br(1) < 0.
+     endif
+     if( (ie+1)==npx ) then
+        smt5(npx-1) = bl(npx-1)*br(npx-1) < 0.
+        smt5(npx  ) = bl(npx  )*br(npx  ) < 0.
+     endif
+   endif
+!WMP
         endif
 
 !DEC$ VECTOR ALWAYS
@@ -2581,6 +2594,23 @@ end subroutine divergence_corner_nest
               smt6(i,j) = 3.*abs(b0(i,j)) < abs(bl(i,j)-br(i,j))
            enddo
         enddo
+!WMP
+! fix edge issues
+   if ( (.not.nested) .and. grid_type < 3) then
+     if( js==1 ) then
+       do i=is,ie+1
+          smt6(i,0) = bl(i,0)*br(i,0) < 0.
+          smt6(i,1) = bl(i,1)*br(i,1) < 0.
+       enddo
+     endif
+     if( (je+1)==npy ) then
+       do i=is,ie+1
+          smt6(i,npy-1) = bl(i,npy-1)*br(i,npy-1) < 0.
+          smt6(i,npy  ) = bl(i,npy  )*br(i,npy  ) < 0.
+       enddo
+     endif
+   endif
+!WMP
         do j=js,je+1
 !DEC$ VECTOR ALWAYS
         do i=is,ie+1
