@@ -157,7 +157,7 @@ contains
 !     dyn_core :: FV Lagrangian dynamics driver
 !-----------------------------------------------------------------------
  
- subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, n_split, zvir, cp, akap, cappa, grav, hydrostatic,  &
+ subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, k_split, n_split, zvir, cp, akap, cappa, grav, hydrostatic,  &
                      u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
                      uc, vc, mfx, mfy, cx, cy, pkz, peln, q_con, ak, bk, dpx, &
                      ks, gridstruct, flagstruct, neststruct, idiag, bd, domain, &
@@ -167,7 +167,7 @@ contains
     integer, intent(IN) :: npy
     integer, intent(IN) :: npz
     integer, intent(IN) :: ng, nq, sphum
-    integer, intent(IN) :: n_split
+    integer, intent(IN) :: k_split, n_split
     real   , intent(IN) :: bdt
     real   , intent(IN) :: zvir, cp, akap, grav
     real   , intent(IN) :: ptop
@@ -401,7 +401,7 @@ contains
      if (gridstruct%nested) then
         !First split timestep has split_timestep_BC = n_split*k_split
         !   to do time-extrapolation on BCs.
-        split_timestep_bc = real(n_split*flagstruct%k_split+neststruct%nest_timestep)
+        split_timestep_bc = real(n_split*k_split+neststruct%nest_timestep)
      endif
 
      if ( nq > 0 ) then
@@ -517,11 +517,11 @@ contains
 
       if (gridstruct%nested) then
          call nested_grid_BC_apply_intT(delpc, &
-              0, 0, npx, npy, npz, bd, split_timestep_BC+0.5, real(n_split*flagstruct%k_split), &
+              0, 0, npx, npy, npz, bd, split_timestep_BC+0.5, real(n_split*k_split), &
               neststruct%delp_BC, bctype=neststruct%nestbctype)
 #ifndef SW_DYNAMICS
          call nested_grid_BC_apply_intT(ptc, &
-              0, 0, npx, npy, npz, bd, split_timestep_BC+0.5, real(n_split*flagstruct%k_split), &
+              0, 0, npx, npy, npz, bd, split_timestep_BC+0.5, real(n_split*k_split), &
               neststruct%pt_BC, bctype=neststruct%nestbctype )
 #endif
       endif
@@ -557,7 +557,7 @@ contains
            enddo
         endif
                                             call timing_on('UPDATE_DZ_C')
-         call update_dz_c(is, ie, js, je, npz, ng, dt2, dp_ref, zs, gridstruct%area, ut, vt, gz, ws3, &
+         call update_dz_c(is, ie, js, je, npz, ng, dt2, flagstruct%dz_min, dp_ref, zs, gridstruct%area, ut, vt, gz, ws3, &
              npx, npy, gridstruct%sw_corner, gridstruct%se_corner, &
              gridstruct%ne_corner, gridstruct%nw_corner, bd, gridstruct%grid_type)
                                             call timing_off('UPDATE_DZ_C')
@@ -571,7 +571,7 @@ contains
 
            if (gridstruct%nested) then
                  call nested_grid_BC_apply_intT(delz, &
-                      0, 0, npx, npy, npz, bd, split_timestep_BC+0.5, real(n_split*flagstruct%k_split), &
+                      0, 0, npx, npy, npz, bd, split_timestep_BC+0.5, real(n_split*k_split), &
                 neststruct%delz_BC, bctype=neststruct%nestbctype )
 
 
@@ -625,14 +625,14 @@ contains
 
 
             call nested_grid_BC_apply_intT(vc, &
-                 0, 1, npx, npy, npz, bd, split_timestep_bc+0.5, real(n_split*flagstruct%k_split), & 
+                 0, 1, npx, npy, npz, bd, split_timestep_bc+0.5, real(n_split*k_split), & 
             neststruct%vc_BC, bctype=neststruct%nestbctype )
             call nested_grid_BC_apply_intT(uc, &
-                 1, 0, npx, npy, npz, bd, split_timestep_bc+0.5, real(n_split*flagstruct%k_split), &
+                 1, 0, npx, npy, npz, bd, split_timestep_bc+0.5, real(n_split*k_split), &
             neststruct%uc_BC, bctype=neststruct%nestbctype )
 
             call nested_grid_BC_apply_intT(divgd, &
-                 1, 1, npx, npy, npz, bd, split_timestep_bc, real(n_split*flagstruct%k_split), &
+                 1, 1, npx, npy, npz, bd, split_timestep_bc, real(n_split*k_split), &
             neststruct%divg_BC, bctype=neststruct%nestbctype )
 
       end if
@@ -640,7 +640,7 @@ contains
     if ( gridstruct%nested .and. flagstruct%inline_q ) then
             do iq=1,nq
                   call nested_grid_BC_apply_intT(q(isd:ied,jsd:jed,:,iq), &
-                       0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*flagstruct%k_split), &
+                       0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
                neststruct%q_BC(iq), bctype=neststruct%nestbctype )
             end do
       endif
@@ -695,16 +695,18 @@ contains
                    if ( flagstruct%do_vort_damp ) then
 ! damping on delp and vorticity:
                         nord_v(k)=0; 
+                        damp_vt(k) = 0.5*d2_divg
                    endif
                    d_con_k = 0.
-              elseif ( (k<=MAX(2,flagstruct%n_sponge-1)).and. flagstruct%d2_bg_k2>0.01 ) then
+              elseif ( k<=MAX(2,flagstruct%n_sponge-1) .and. flagstruct%d2_bg_k2>0.01 ) then
                    nord_k=0; d2_divg = max(flagstruct%d2_bg, flagstruct%d2_bg_k2)
                    nord_w=0; damp_w = d2_divg
                    if ( flagstruct%do_vort_damp ) then
                         nord_v(k)=0; 
+                        damp_vt(k) = 0.5*d2_divg
                    endif
                    d_con_k = 0.
-              elseif ( (k<=MAX(3,flagstruct%n_sponge))  .and. flagstruct%d2_bg_k2>0.05 ) then
+              elseif ( k<=MAX(3,flagstruct%n_sponge) .and. flagstruct%d2_bg_k2>0.05 ) then
                    nord_k=0;  d2_divg = max(flagstruct%d2_bg, 0.2*flagstruct%d2_bg_k2)
                    nord_w=0;  damp_w = d2_divg
                    d_con_k = 0.
@@ -822,15 +824,15 @@ contains
      !Want to move this block into the hydro/nonhydro branch above and merge the two if structures
      if (gridstruct%nested) then
        call nested_grid_BC_apply_intT(delp, &
-            0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*flagstruct%k_split), &
+            0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
             neststruct%delp_BC, bctype=neststruct%nestbctype )
 #ifndef SW_DYNAMICS
        call nested_grid_BC_apply_intT(pt, &
-            0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*flagstruct%k_split), &
+            0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
             neststruct%pt_BC, bctype=neststruct%nestbctype  )
 #ifdef USE_COND
        call nested_grid_BC_apply_intT(q_con, &
-            0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*flagstruct%k_split), &
+            0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
             neststruct%q_con_BC, bctype=neststruct%nestbctype  )       
 #endif
 #endif
@@ -843,7 +845,7 @@ contains
 #ifndef SW_DYNAMICS
                                             call timing_on('UPDATE_DZ')
         call update_dz_d(nord_v, damp_vt, flagstruct%hord_tm, is, ie, js, je, npz, ng, npx, npy, gridstruct%area,  &
-                         gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, gridstruct, bd, flagstruct%lim_fac)
+                         gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, flagstruct%dz_min, gridstruct, bd, flagstruct%lim_fac)
                                             call timing_off('UPDATE_DZ')
 
         if (idiag%id_ws>0 .and. last_step) then
@@ -882,7 +884,7 @@ contains
 
         if (gridstruct%nested) then
           call nested_grid_BC_apply_intT(delz, &
-               0, 0, npx, npy, npz, bd, split_timestep_BC+1., real(n_split*flagstruct%k_split), &
+               0, 0, npx, npy, npz, bd, split_timestep_BC+1., real(n_split*k_split), &
                neststruct%delz_BC, bctype=neststruct%nestbctype  )
           
           !Compute gz/pkc/pk3; note that now pkc should be nonhydro pert'n pressure
@@ -1092,15 +1094,15 @@ contains
 #ifndef SW_DYNAMICS
          if (.not. hydrostatic) then
                call nested_grid_BC_apply_intT(w, &
-               0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*flagstruct%k_split), &
+               0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
                neststruct%w_BC, bctype=neststruct%nestbctype  )
        end if
 #endif SW_DYNAMICS
             call nested_grid_BC_apply_intT(u, &
-            0, 1, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*flagstruct%k_split), &
+            0, 1, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
             neststruct%u_BC, bctype=neststruct%nestbctype  )
             call nested_grid_BC_apply_intT(v, &
-            1, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*flagstruct%k_split), &
+            1, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
             neststruct%v_BC, bctype=neststruct%nestbctype )
 
     end if
@@ -1134,8 +1136,8 @@ contains
 
 
   if ( n_con/=0 .and. flagstruct%d_con > 1.e-5 ) then
-       nf_ke = min(3, flagstruct%nord+1)
-       call del2_cubed(heat_source, cnst_0p20*gridstruct%da_min, gridstruct, domain, npx, npy, npz, nf_ke, bd)
+    nf_ke = min(3, flagstruct%nord+1)
+    call del2_cubed(heat_source, cnst_0p20*gridstruct%da_min, gridstruct, domain, npx, npy, npz, nf_ke, bd)
 
 ! Note: pt here is cp*(Virtual_Temperature/pkz)
     if ( hydrostatic ) then
@@ -1165,12 +1167,8 @@ contains
        do k=1,n_con
           delt = abs(bdt*flagstruct%delt_max)
 ! Sponge layers:
-          if ( flagstruct%n_sponge == 0) then 
-            if ( k == 1 ) delt = 0.1*delt
-            if ( k == 2 ) delt = 0.5*delt
-          else
-            delt = delt*MIN(1.0,FLOAT(k)/FLOAT(flagstruct%n_sponge))
-          endif
+          if ( k == 1 ) delt = 0.1*delt
+          if ( k == 2 ) delt = 0.5*delt
           do j=js,je
              do i=is,ie
 #ifdef MOIST_CAPPA
@@ -1801,7 +1799,7 @@ if ( d_ext > 0. ) then
    !$OMP parallel do default(none) shared(is,ie,js,je,wk2,divg2)
    do j=js,je+1
       do i=is,ie
-         wk2(i,j) = divg2(i,j)-divg2(i+1,j)
+         wk2(i,j) = (divg2(i,j)-divg2(i+1,j))
       enddo
    enddo
 

@@ -614,6 +614,8 @@ module fv_arrays_mod
                           !< and 1. The default value is 0.75. Only used if 
                           !< 'hydrostatic' = .false.
 
+   real :: dz_min = 2.0   !< Controls minimum thickness in NH solver
+
    integer :: n_split = 0   !< The number of small dynamics (acoustic) time steps between
                             !< vertical remapping. 0 by default, in which case the model 
                             !< produces a good first guess by examining the resolution, 
