@@ -1,26 +1,26 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
 !>@brief The module 'fv_mapz' contains the vertical mapping routines \cite lin2004vertically
-!>@note April 12, 2012 -SJL: This revision may actually produce rounding level differences 
+!>@note April 12, 2012 -SJL: This revision may actually produce rounding level differences
 !! due to the elimination of KS to compute pressure level for remapping.
 
 module fv_mapz_mod
@@ -123,7 +123,7 @@ module fv_mapz_mod
   character(len=128) :: tagname = '$Name$'
 
 contains
- 
+
 !>@brief The subroutine 'Lagrangian_to_Eulerian' remaps deformed Lagrangian layers back to the reference Eulerian coordinate.
 !>@details It also includes the entry point for calling fast microphysical processes. This is typically calle on the k_split loop.
  subroutine Lagrangian_to_Eulerian(last_step, consv, ps, pe, delp, pkz, pk,   &
@@ -180,7 +180,7 @@ contains
   real, intent(inout)::  u(isd:ied  ,jsd:jed+1,km)   !< u-wind (m/s)
   real, intent(inout)::  v(isd:ied+1,jsd:jed  ,km)   !< v-wind (m/s)
   real, intent(inout)::  w(isd:     ,jsd:     ,1:)   !< vertical velocity (m/s)
-  real, intent(inout):: pt(isd:ied  ,jsd:jed  ,km)   !< cp*virtual potential temperature 
+  real, intent(inout):: pt(isd:ied  ,jsd:jed  ,km)   !< cp*virtual potential temperature
                                                      !< as input; output: temperature
   real, intent(inout), dimension(isd:,jsd:,1:)::delz, q_con, cappa
   logical, intent(in):: hydrostatic
@@ -218,7 +218,7 @@ contains
   real(kind=8):: tesum, zsum, dtmp
   real   :: rcp, rg, tmp, tpe, rrg, bkh, k1k, dlnp
   logical:: fast_mp_consv
-  integer:: i,j,k 
+  integer:: i,j,k
   integer:: nt, liq_wat, ice_wat, rainwat, snowwat, cld_amt, graupel, iq, n, kmp, kp, k_next
   logical:: remap_t, remap_pt, remap_te
 
@@ -246,7 +246,7 @@ contains
     ! GMAO quadratic remap
   case(3)
     ! GMAO cubic remap
-  case default 
+  case default
     print*, ' INVALID GMAO_REMAP'
     stop
   end select
@@ -497,7 +497,7 @@ contains
 
    if (remap_t) then
 !----------------------------------
-! map T in log P 
+! map T in log P
 !----------------------------------
       if ( gmao_remap > 0 ) then
          call map1_gmao (km,   pe1,  pt,       &
@@ -510,7 +510,7 @@ contains
       endif
    elseif (remap_pt) then
 !------------------------------------
-! map PT in P^KAPPA 
+! map PT in P^KAPPA
 !------------------------------------
       if ( gmao_remap > 0 ) then
          call map1_gmao (km,   pe1,  pt,       &
@@ -630,7 +630,7 @@ contains
                enddo
             enddo
          endif
- 
+
     endif
 
   endif !(j < je+1)
@@ -710,7 +710,7 @@ contains
 !$OMP                                  pt,pk,rg,peln,q,nwat,liq_wat,rainwat,ice_wat,snowwat,    &
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
-!$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, adiabatic, &
+!$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, &
 !$OMP                                  hs,w,ws,kord_wz,do_omega,omga,rrg,kord_mt)    &
 !$OMP                          private(gz,cvm,kp,k_next,bkh,dp2,   &
 !$OMP                                  pe2,pe3,pk2,pn2,phis,tpe,dlnp,tmp)
@@ -782,7 +782,7 @@ contains
             pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
          enddo
       enddo
-      if ((.not.remap_t) .and. (.not.adiabatic) ) then
+      if (.not.remap_t) then
          if (remap_te) then
            ! Get updated T_v (store in pt)
             do i=is,ie
@@ -872,13 +872,9 @@ contains
          do k=1,km
             do i=is,ie
                pkz(i,j,k) = exp( k1k*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)) )
-            enddo
-            if (.not.adiabatic) then
               ! Make pt T_v
-               do i=is,ie
-                  pt(i,j,k) = pt(i,j,k)*pkz(i,j,k)
-               enddo
-            endif
+                pt(i,j,k) = pt(i,j,k)*pkz(i,j,k)
+             enddo
          enddo
       endif
    endif
@@ -1119,7 +1115,7 @@ endif        ! end last_step check
         enddo  ! k-loop
 #ifdef USE_COND
 ! Fill condensate output
-!$OMP do  
+!$OMP do
         do k=1,km
            do j=js,je
               do i=is,ie
@@ -1144,7 +1140,18 @@ endif        ! end last_step check
         enddo  ! k-loop
        endif
 
-    else  ! not last_step .or. (.not. adiabatic)
+    elseif ( last_step .and. adiabatic ) then
+
+!$OMP do
+        do k=1,km                          
+           do j=js,je
+                 do i=is,ie
+                    pt(i,j,k) = (pt(i,j,k)+dtmp*pkz(i,j,k))
+                 enddo
+           enddo   ! j-loop
+        enddo  ! k-loop
+
+    else
 
      ! Top of the loop expects PT to be Theta_V
 !$OMP do
@@ -1156,7 +1163,7 @@ endif        ! end last_step check
           enddo
        enddo
 
-    endif ! last_step
+    endif
 !$OMP end parallel
 
  end subroutine Lagrangian_to_Eulerian
@@ -1666,7 +1673,7 @@ endif        ! end last_step check
 ! entire new grid is within the original grid
             pr = (pe2(i,k+1)-pe1(i,l)) / dp1(i,l)
             fac1 = pr + pl
-            fac2 = r3*(pr*fac1 + pl*pl) 
+            fac2 = r3*(pr*fac1 + pl*pl)
             fac1 = 0.5*fac1
             do iq=1,nq
                q2(i,k,iq) = q4(2,i,l,iq) + (q4(4,i,l,iq)+q4(3,i,l,iq)-q4(2,i,l,iq))*fac1  &
@@ -1928,7 +1935,7 @@ endif        ! end last_step check
  real  gam(i1:i2,km)
  real    q(i1:i2,km+1)
  real   d4(i1:i2)
- real   bet, a_bot, grat 
+ real   bet, a_bot, grat
  real   pmp_1, lac_1, pmp_2, lac_2, x0, x1
  integer i, k, im
 
@@ -1946,7 +1953,7 @@ endif        ! end last_step check
          enddo
       enddo
       do i=i1,i2
-            grat = delp(i,km-1) / delp(i,km) 
+            grat = delp(i,km-1) / delp(i,km)
          q(i,km) = (3.*(a4(1,i,km-1)+a4(1,i,km)) - grat*qs(i) - q(i,km-1)) /  &
                    (2. + grat + grat - gam(i,km))
          q(i,km+1) = qs(i)
@@ -1972,7 +1979,7 @@ endif        ! end last_step check
         gam(i,k) = d4(i) / bet
      enddo
   enddo
- 
+
   do i=i1,i2
          a_bot = 1. + d4(i)*(d4(i)+1.5)
      q(i,km+1) = (2.*d4(i)*(d4(i)+1.)*a4(1,i,km)+a4(1,i,km-1)-a_bot*q(i,km))  &
@@ -2003,7 +2010,7 @@ endif        ! end last_step check
 !------------------
   im = i2 - i1 + 1
 
-! Apply *large-scale* constraints 
+! Apply *large-scale* constraints
   do i=i1,i2
      q(i,2) = min( q(i,2), max(a4(1,i,1), a4(1,i,2)) )
      q(i,2) = max( q(i,2), min(a4(1,i,1), a4(1,i,2)) )
@@ -2079,7 +2086,7 @@ endif        ! end last_step check
      do i=i1,i2
         a4(2,i,1) = max(0., a4(2,i,1))
      enddo
-  elseif ( iv==-1 ) then 
+  elseif ( iv==-1 ) then
       do i=i1,i2
          if ( a4(2,i,1)*a4(1,i,1) <= 0. ) a4(2,i,1) = 0.
       enddo
@@ -2303,7 +2310,7 @@ endif        ! end last_step check
      do i=i1,i2
         a4(3,i,km) = max(0., a4(3,i,km))
      enddo
-  elseif ( iv .eq. -1 ) then 
+  elseif ( iv .eq. -1 ) then
       do i=i1,i2
          if ( a4(3,i,km)*a4(1,i,km) <= 0. )  a4(3,i,km) = 0.
       enddo
@@ -2320,7 +2327,7 @@ endif        ! end last_step check
  end subroutine scalar_profile
 
 !>@brief The subroutine 'cs_profile' performs the optimized vertical profile reconstruction:
-!>@date April 2008 
+!>@date April 2008
 !>@author S. J. Lin, NOAA/GFDL
  subroutine cs_profile(qs, a4, delp, km, i1, i2, iv, kord)
 ! Optimized vertical profile reconstruction:
@@ -2339,7 +2346,7 @@ endif        ! end last_step check
  real  gam(i1:i2,km)
  real    q(i1:i2,km+1)
  real   d4(i1:i2)
- real   bet, a_bot, grat 
+ real   bet, a_bot, grat
  real   pmp_1, lac_1, pmp_2, lac_2, x0, x1
  integer i, k, im
 
@@ -2357,7 +2364,7 @@ endif        ! end last_step check
          enddo
       enddo
       do i=i1,i2
-            grat = delp(i,km-1) / delp(i,km) 
+            grat = delp(i,km-1) / delp(i,km)
          q(i,km) = (3.*(a4(1,i,km-1)+a4(1,i,km)) - grat*qs(i) - q(i,km-1)) /  &
                    (2. + grat + grat - gam(i,km))
          q(i,km+1) = qs(i)
@@ -2383,7 +2390,7 @@ endif        ! end last_step check
         gam(i,k) = d4(i) / bet
      enddo
   enddo
- 
+
   do i=i1,i2
          a_bot = 1. + d4(i)*(d4(i)+1.5)
      q(i,km+1) = (2.*d4(i)*(d4(i)+1.)*a4(1,i,km)+a4(1,i,km-1)-a_bot*q(i,km))  &
@@ -2414,7 +2421,7 @@ endif        ! end last_step check
 !------------------
   im = i2 - i1 + 1
 
-! Apply *large-scale* constraints 
+! Apply *large-scale* constraints
   do i=i1,i2
      q(i,2) = min( q(i,2), max(a4(1,i,1), a4(1,i,2)) )
      q(i,2) = max( q(i,2), min(a4(1,i,1), a4(1,i,2)) )
@@ -2490,7 +2497,7 @@ endif        ! end last_step check
      do i=i1,i2
         a4(2,i,1) = max(0., a4(2,i,1))
      enddo
-  elseif ( iv==-1 ) then 
+  elseif ( iv==-1 ) then
       do i=i1,i2
          if ( a4(2,i,1)*a4(1,i,1) <= 0. ) a4(2,i,1) = 0.
       enddo
@@ -2708,7 +2715,7 @@ endif        ! end last_step check
      do i=i1,i2
         a4(3,i,km) = max(0., a4(3,i,km))
      enddo
-  elseif ( iv .eq. -1 ) then 
+  elseif ( iv .eq. -1 ) then
       do i=i1,i2
          if ( a4(3,i,km)*a4(1,i,km) <= 0. )  a4(3,i,km) = 0.
       enddo
@@ -2812,7 +2819,7 @@ endif        ! end last_step check
  integer, intent(in):: i2      !< Finishing longitude
  integer, intent(in):: km      !< Vertical dimension
  integer, intent(in):: kord    !< Order (or more accurately method no.):
-                               ! 
+                               !
  real , intent(in):: delp(i1:i2,km)     !< Layer pressure thickness
 
 ! !INPUT/OUTPUT PARAMETERS:
@@ -2821,8 +2828,8 @@ endif        ! end last_step check
 ! DESCRIPTION:
 !
 !   Perform the piecewise parabolic reconstruction
-! 
-! !REVISION HISTORY: 
+!
+! !REVISION HISTORY:
 ! S.-J. Lin   revised at GFDL 2007
 !-----------------------------------------------------------------------
 ! local arrays:
@@ -2905,7 +2912,7 @@ endif        ! end last_step check
          do i=i1,i2
             a4(2,i,1) = max(0., a4(2,i,1))
             a4(2,i,2) = max(0., a4(2,i,2))
-         enddo 
+         enddo
       elseif( iv==-1 ) then
          do i=i1,i2
             if ( a4(2,i,1)*a4(1,i,1) <= 0. ) a4(2,i,1) = 0.
@@ -2998,7 +3005,7 @@ endif        ! end last_step check
 ! Method#2 - better
             h2(i,k) = 2.*(dc(i,k+1)/delp(i,k+1) - dc(i,k-1)/delp(i,k-1))  &
                      / ( delp(i,k)+0.5*(delp(i,k-1)+delp(i,k+1)) )        &
-                     * delp(i,k)**2 
+                     * delp(i,k)**2
 ! Method#3
 !!!            h2(i,k) = dc(i,k+1) - dc(i,k-1)
          enddo
@@ -3067,7 +3074,7 @@ endif        ! end last_step check
       real , intent(in):: dm(*)     !< Linear slope
       integer, intent(in) :: itot      !< Total Longitudes
       integer, intent(in) :: lmt       !< 0: Standard PPM constraint 1: Improved full monotonicity constraint
-                                       !< (Lin) 2: Positive definite constraint 
+                                       !< (Lin) 2: Positive definite constraint
                                        !< 3: do nothing (return immediately)
 ! INPUT/OUTPUT PARAMETERS:
       real , intent(inout) :: a4(4,*)   !< PPM array AA <-- a4(1,i) AL <-- a4(2,i) AR <-- a4(3,i) A6 <-- a4(4,i)
@@ -3145,7 +3152,7 @@ endif        ! end last_step check
  integer, intent(in) :: km, i1, i2
    real , intent(in) ::  dp(i1:i2,km)       !< Grid size
    real , intent(in) ::  dq(i1:i2,km)       !< Backward diff of q
-   real , intent(in) ::  d4(i1:i2,km)       !< Backward sum:  dp(k)+ dp(k-1) 
+   real , intent(in) ::  d4(i1:i2,km)       !< Backward sum:  dp(k)+ dp(k-1)
    real , intent(in) :: df2(i1:i2,km)       !< First guess mismatch
    real , intent(in) ::  dm(i1:i2,km)       !< Monotonic mismatch
 ! INPUT/OUTPUT PARAMETERS:
@@ -3331,7 +3338,7 @@ endif        ! end last_step check
                    kn, pe2,   u(is:ie,j:j,1:kn),       &
                    is, ie, -1, kord)
 
-  if ( j /= (je+1) )  then 
+  if ( j /= (je+1) )  then
 
 !---------------
 ! Hybrid sigma-p
@@ -3386,7 +3393,7 @@ endif        ! end last_step check
              w(i,j,k) = 0.
           endif
        enddo
-       enddo         
+       enddo
 #endif
 
 #ifndef HYDRO_DELZ_REMAP
@@ -3468,21 +3475,21 @@ endif        ! end last_step check
         do i=is,ie
            pt(i,j,k) = pt(i,j,k) / (1.+r_vir*q(i,j,k,1))
         enddo
-     enddo   
+     enddo
   enddo
 
  end subroutine rst_remap
 
 !>@brief The subroutine 'mappm' is a general-purpose routine for remapping
-!! one set of vertical levels to another. 
+!! one set of vertical levels to another.
  subroutine mappm(km, pe1, q1, kn, pe2, q2, i1, i2, iv, kord, ptop)
 
 ! IV = 0: constituents
 ! IV = 1: potential temp
 ! IV =-1: winds
- 
+
 ! Mass flux preserving mapping: q1(im,km) -> q2(im,kn)
- 
+
 ! pe1: pressure at layer edges (from model top to bottom surface)
 !      in the original vertical coordinate
 ! pe2: pressure at layer edges (from model top to bottom surface)
@@ -3490,8 +3497,8 @@ endif        ! end last_step check
 
  integer, intent(in):: i1, i2, km, kn, kord, iv
  real, intent(in ):: pe1(i1:i2,km+1), pe2(i1:i2,kn+1) !< pe1: pressure at layer edges from model top to bottom
-                                                      !!      surface in the ORIGINAL vertical coordinate 
-                                                      !< pe2: pressure at layer edges from model top to bottom 
+                                                      !!      surface in the ORIGINAL vertical coordinate
+                                                      !< pe2: pressure at layer edges from model top to bottom
                                                       !!      surface in the NEW vertical coordinate
 ! Mass flux preserving mapping: q1(im,km) -> q2(im,kn)
  real, intent(in )::  q1(i1:i2,km)
@@ -3661,13 +3668,13 @@ endif        ! end last_step check
         cvm(i) = (1.-(qv(i)+qd(i)))*cv_air + qv(i)*cv_vap + ql(i)*c_liq + qs(i)*c_ice
      enddo
   case(4)              ! K_warm_rain with fake ice
-     do i=is,ie 
+     do i=is,ie
         qv(i) = max(q(i,j,k,sphum)  ,0.0)
         ql(i) = max(q(i,j,k,liq_wat),0.0) + max(q(i,j,k,rainwat),0.0)
         cvm(i) = (1.-(qv(i)+qd(i)))*cv_air + qv(i)*cv_vap + qd(i)*c_liq
      enddo
   case(5)
-     do i=is,ie 
+     do i=is,ie
         qv(i) = max(q(i,j,k,sphum)  ,0.0)
         ql(i) = max(q(i,j,k,liq_wat),0.0) + max(q(i,j,k,rainwat),0.0)
         qs(i) = max(q(i,j,k,ice_wat),0.0) + max(q(i,j,k,snowwat),0.0)
@@ -3675,16 +3682,16 @@ endif        ! end last_step check
         cvm(i) = (1.-(qv(i)+qd(i)))*cv_air + qv(i)*cv_vap + ql(i)*c_liq + qs(i)*c_ice
      enddo
   case(6:7)
-     do i=is,ie 
+     do i=is,ie
         qv(i) = max(q(i,j,k,sphum)  ,0.0)
-        ql(i) = max(q(i,j,k,liq_wat),0.0) + max(q(i,j,k,rainwat),0.0) 
+        ql(i) = max(q(i,j,k,liq_wat),0.0) + max(q(i,j,k,rainwat),0.0)
         qs(i) = max(q(i,j,k,ice_wat),0.0) + max(q(i,j,k,snowwat),0.0) + max(q(i,j,k,graupel),0.0)
         qd(i) = ql(i) + qs(i)
         cvm(i) = (1.-(qv(i)+qd(i)))*cv_air + qv(i)*cv_vap + ql(i)*c_liq + qs(i)*c_ice
      enddo
   case default
     !call mpp_error (NOTE, 'fv_mapz::moist_cv - using default cv_air')
-     do i=is,ie 
+     do i=is,ie
          qd(i) = 0.
         cvm(i) = cv_air
      enddo
@@ -3736,7 +3743,7 @@ endif        ! end last_step check
   case(3)
      do i=is,ie
         qv(i) = q(i,j,k,sphum)
-        ql(i) = q(i,j,k,liq_wat) 
+        ql(i) = q(i,j,k,liq_wat)
         qs(i) = q(i,j,k,ice_wat)
         qd(i) = ql(i) + qs(i)
         cpm(i) = (1.-(qv(i)+qd(i)))*cp_air + qv(i)*cp_vapor + ql(i)*c_liq + qs(i)*c_ice
@@ -3748,24 +3755,24 @@ endif        ! end last_step check
         cpm(i) = (1.-(qv(i)+qd(i)))*cp_air + qv(i)*cp_vapor + qd(i)*c_liq
      enddo
   case(5)
-     do i=is,ie 
+     do i=is,ie
         qv(i) = q(i,j,k,sphum)
-        ql(i) = q(i,j,k,liq_wat) + q(i,j,k,rainwat) 
+        ql(i) = q(i,j,k,liq_wat) + q(i,j,k,rainwat)
         qs(i) = q(i,j,k,ice_wat) + q(i,j,k,snowwat)
         qd(i) = ql(i) + qs(i)
         cpm(i) = (1.-(qv(i)+qd(i)))*cp_air + qv(i)*cp_vapor + ql(i)*c_liq + qs(i)*c_ice
      enddo
   case(6:7)
-     do i=is,ie 
+     do i=is,ie
         qv(i) = q(i,j,k,sphum)
-        ql(i) = q(i,j,k,liq_wat) + q(i,j,k,rainwat) 
+        ql(i) = q(i,j,k,liq_wat) + q(i,j,k,rainwat)
         qs(i) = q(i,j,k,ice_wat) + q(i,j,k,snowwat) + q(i,j,k,graupel)
         qd(i) = ql(i) + qs(i)
         cpm(i) = (1.-(qv(i)+qd(i)))*cp_air + qv(i)*cp_vapor + ql(i)*c_liq + qs(i)*c_ice
      enddo
   case default
    ! call mpp_error (NOTE, 'fv_mapz::moist_cp - using default cp_air')
-     do i=is,ie 
+     do i=is,ie
         qd(i) = 0.
         cpm(i) = cp_air
      enddo
@@ -3773,7 +3780,7 @@ endif        ! end last_step check
 
  end subroutine moist_cp
 
-!----------------------------------------------------------------------- 
+!-----------------------------------------------------------------------
 !BOP
 ! !ROUTINE:  map1_gmao --- GMAO Interpolation for vertical re-mapping
 !
@@ -3788,7 +3795,7 @@ endif        ! end last_step check
       integer, intent(in) :: i2                ! Finishing longitude
       real, intent(in) :: akap
       integer, intent(in) :: T_VAR             ! Thermodynamic variable to remap
-                                               ! 1:TE  2:T  3:PT 
+                                               ! 1:TE  2:T  3:PT
       integer, intent(in) :: gmao_remap        ! 3:cubic  2:quadratic  1:linear
       logical, intent(in) :: conserv
       integer, intent(in) :: j                 ! Current latitude
@@ -3796,10 +3803,10 @@ endif        ! end last_step check
       integer, intent(in) :: km                ! Original vertical dimension
       integer, intent(in) :: kn                ! Target vertical dimension
 
-      real, intent(in) ::  pe1(i1:i2,km+1)  ! pressure at layer edges 
+      real, intent(in) ::  pe1(i1:i2,km+1)  ! pressure at layer edges
                                                ! (from model top to bottom surface)
                                                ! in the original vertical coordinate
-      real, intent(in) ::  pe2(i1:i2,kn+1)  ! pressure at layer edges 
+      real, intent(in) ::  pe2(i1:i2,kn+1)  ! pressure at layer edges
                                                ! (from model top to bottom surface)
                                                ! in the new vertical coordinate
 
