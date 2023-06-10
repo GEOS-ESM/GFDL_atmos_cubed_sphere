@@ -478,7 +478,7 @@ contains
    do k=1,km+1
       do i=is,ie
          pk1(i,k) = pk(i,j,k)
-         pn1(i,k) = peln(i,j,k)
+         pn1(i,k) = peln(i,k,j)
       enddo
    enddo
 
