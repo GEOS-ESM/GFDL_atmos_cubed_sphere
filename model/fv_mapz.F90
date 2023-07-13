@@ -1464,6 +1464,7 @@ endif        ! end last_step check
    real   q4(4,i1:i2,km)
    real    pl, pr, qsum, dp, esl
    integer i, k, l, m, k0
+   integer LM1,LP0,LP1 
 
    do k=1,km
       do i=i1,i2
@@ -1479,9 +1480,39 @@ endif        ! end last_step check
         call ppm_profile( q4, dp1, km, i1, i2, iv, kord )
    endif
 
-  do i=i1,i2
+! Interpolate field onto target Pressures
+! ---------------------------------------
+     do i=i1,i2
      k0 = 1
      do 555 k=1,kn
+      LM1 = 1
+      LP0 = 1
+      do while( LP0.le.km )
+         if (pe1(i,LP0).lt.pe2(i,k)) then
+            LP0 = LP0+1
+         else
+            exit
+         endif
+      enddo
+      LM1 = max(LP0-1,1)
+      LP0 = min(LP0, km)
+! Extrapolate Linearly above first model level
+! ----------------------------------------------------
+      if( LM1.eq.1 .and. LP0.eq.1 ) then
+             q2(i,j,k) = q1(i,j,1) + ( q1(i,j,2)-q1(i,j,1) )*( pe2(i,k)-pe1(i,1) ) &
+                                                            /( pe1(i,2)-pe1(i,1) )
+! Extrapolate Linearly below last model level
+! ---------------------------------------------------
+      else if( LM1.eq.km .and. LP0.eq.km ) then
+             q2(i,j,k) = q1(i,j,km) + ( q1(i,j,km)-q1(i,j,km-1) )*( pe2(i,k )-pe1(i,km  ) ) &
+                                                                 /( pe1(i,km)-pe1(i,km-1) )
+! Interpolate Linearly between levels 1 => 2 and km-1 => km
+! -----------------------------------------------------------------
+      else if( LM1.eq.1 .or. LP0.eq.km ) then
+             q2(i,j,k) = q1(i,j,LP0) + ( q1(i,j,LM1)-q1(i,j,LP0) )*( pe2(i,k  )-pe1(i,LP0) ) &
+                                                                  /( pe1(i,LM1)-pe1(i,LP0) )
+      else
+         
       do l=k0,km
 ! locate the top edge: pe2(i,k)
       if( pe2(i,k) >= pe1(i,l) .and. pe2(i,k) <= pe1(i,l+1) ) then
@@ -1517,6 +1548,8 @@ endif        ! end last_step check
       endif
       enddo
 123   q2(i,j,k) = qsum / ( pe2(i,k+1) - pe2(i,k) )
+
+      endif
 555   continue
   enddo
 
@@ -3768,29 +3801,6 @@ endif        ! end last_step check
   end select
 
  end subroutine moist_cp
-
-!-----------------------------------------------------------------------
-!BOP
-! !ROUTINE:  gmao_profile --- GMAO Interpolation for vertical re-mapping
-!
-! !INTERFACE:
-  subroutine gmao_profile( q4, dp1, km, i1, i2 )
-      implicit none
-  
-! !INPUT PARAMETERS:
-      integer, intent(in) :: i1                ! Starting longitude
-      integer, intent(in) :: i2                ! Finishing longitude
-      integer, intent(in) :: km                ! vertical dimension
- 
-      real, intent(in)    ::  dp1(i1:i2,km)     !< Layer pressure thickness
-      real, intent(inout) :: q4(4,i1:i2,km)     !< 1: original
-                                                !< 2: subgrid L
-                                                !< 3: subgrid R
-                                                !< 4: new value
-
-!EOC           
- end subroutine gmao_profile
-!-----------------------------------------------------------------------
 
 !-----------------------------------------------------------------------
 !BOP
