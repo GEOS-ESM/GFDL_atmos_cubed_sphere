@@ -875,16 +875,16 @@ contains
 
                allocate(vnames(nVars))
                vars => cfg(1)%get_variables()
-               iter = vars%begin()
+               iter = vars%ftn_begin()
         
                lvar_cnt=0 
-               do while(iter /= vars%end())
-                  var_name => iter%key()
+               do while(iter /= vars%ftn_end())
+                  call iter%next()
+                  var_name => iter%first()
                   if (.not.cfg(1)%is_coordinate_variable(var_name)) then
                      lvar_cnt=lvar_cnt+1
                      vnames(lvar_cnt)=var_name
                   end if
-                  call iter%next()
                enddo
             end if
 
@@ -945,16 +945,16 @@ contains
 
                allocate(vnames(nVars))
                vars => cfg(1)%get_variables()
-               iter = vars%begin()
+               iter = vars%ftn_begin()
         
                lvar_cnt=0 
-               do while(iter /= vars%end())
-                  var_name => iter%key()
+               do while(iter /= vars%ftn_end())
+                  call iter%next()
+                  var_name => iter%first()
                   if (.not.cfg(1)%is_coordinate_variable(var_name)) then
                      lvar_cnt=lvar_cnt+1
                      vnames(lvar_cnt)=var_name
                   end if
-                  call iter%next()
                enddo
             end if
 
@@ -1451,10 +1451,11 @@ contains
 
                allocate(vnames(nVars))
                vars => cfg(1)%get_variables()
-               iter = vars%begin()
+               iter = vars%ftn_begin()
 
-               do while(iter /= vars%end())
-                  var_name => iter%key()
+               do while(iter /= vars%ftn_end())
+                  call iter%next()
+                  var_name => iter%first()
                   if (.not.cfg(1)%is_coordinate_variable(var_name)) then
                      lvar_cnt=lvar_cnt+1
                      vnames(lvar_cnt)=var_name
@@ -1518,10 +1519,11 @@ contains
 
                allocate(vnames(nVars))
                vars => cfg(1)%get_variables()
-               iter = vars%begin()
+               iter = vars%ftn_begin()
 
-               do while(iter /= vars%end())
-                  var_name => iter%key()
+               do while(iter /= vars%ftn_end())
+                  call iter%next()
+                  var_name => iter%first()
                   if (.not.cfg(1)%is_coordinate_variable(var_name)) then
                      lvar_cnt=lvar_cnt+1
                      vnames(lvar_cnt)=var_name
