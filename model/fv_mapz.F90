@@ -212,7 +212,7 @@ contains
   real(kind=8), dimension(is:ie,js:je):: te_2d, zsum0, zsum1
   real, dimension(is:ie,js:je):: dpln
   real, dimension(is:ie,km)  :: q2, dp2, w2
-  real, dimension(is:ie,km+1):: pe1, pe2, pk1, pk2, pn1, pn2, phis
+  real, dimension(is:ie,km+1):: pe1, pe2, pk1, pk2, pn2, phis
   real, dimension(is:ie+1,km+1):: pe0, pe3
   real, dimension(is:ie):: gz, cvm
   real(kind=8):: tesum, zsum, dtmp
@@ -336,7 +336,7 @@ contains
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, adiabatic, &
 !$OMP                                  hs,w,ws,kord_wz,rrg,kord_mt,consv,remap_option,gmao_remap)    &
 !$OMP                          private(gz,cvm,bkh,dp2,   &
-!$OMP                                  pe0,pe1,pe2,pe3,pk1,pk2,pn1,pn2,phis,q2,w2,dpln,dlnp)
+!$OMP                                  pe0,pe1,pe2,pe3,pk1,pk2,pn2,phis,q2,w2,dpln,dlnp)
   do 1000 j=js,je+1
 
      do k=1,km+1
@@ -478,7 +478,6 @@ contains
    do k=1,km+1
       do i=is,ie
          pk1(i,k) = pk(i,j,k)
-         pn1(i,k) = peln(i,k,j)
       enddo
    enddo
 
@@ -496,31 +495,44 @@ contains
       enddo
    enddo
 
-   if (remap_te) then
+   if (remap_t) then
+!----------------------------------
+! map T in log P
+!----------------------------------
+      if ( gmao_remap > 0 ) then
+         call map1_gmao (km,   pe1,  pt,       &
+                         km,   pe2,  pt,       &
+                         is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, T_VAR=3, conserv=.false.)
+      else
+         call map_scalar(km,  peln(is,1,j),  pt, gz,   &
+                         km,  pn2,           pt,              &
+                         is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), t_min)
+      endif
+   elseif (remap_pt) then
+!------------------------------------
+! map PT in P^KAPPA
+!------------------------------------
+      if ( gmao_remap > 0 ) then
+         call map1_gmao (km,   pe1,  pt,       &
+                         km,   pe2,  pt,       &
+                         is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, T_VAR=2, conserv=.false.)
+      else
+         call map1_ppm (km,  pe1,  pt,  gz,       &
+                        km,  pe2,  pt,                  &
+                        is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm))
+      endif
+   elseif (remap_te) then
 !----------------------------------
 ! map TE in log P
 !----------------------------------
       if ( gmao_remap > 0 ) then
-         call map1_gmao (km,  pe1,  te,       &
-                         km,  pe2,  te,       &
-                         is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, P_MAP=1, conserv=.true.)
+         call map1_gmao (km,   pe1,  te,       &
+                         km,   pe2,  te,       &
+                         is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, T_VAR=1, conserv=.true.)
       else
-         call map_scalar(km,  pn1,  te, gz,   &
-                         km,  pn2,  te,       &
+         call map_scalar(km,  peln(is,1,j),  te, gz,   &
+                         km,  pn2,           te,              &
                          is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), te_min)
-      endif
-   else
-!----------------------------------
-! map T or PT in log P
-!----------------------------------
-      if ( gmao_remap > 0 ) then
-         call map1_gmao (km,  pe1,  pt,       &
-                         km,  pe2,  pt,       &
-                         is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, P_MAP=1, conserv=.false.)
-      else
-         call map_scalar(km,  pn1,  pt, gz,   &
-                         km,  pn2,  pt,       &
-                         is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), t_min)
       endif
    endif
 
@@ -558,7 +570,7 @@ contains
         enddo
         call map1_ppm (km,   pe1, delz,  gz,   &
                        km,   pe2, delz,              &
-                       is, ie, j, isd,  ied,  jsd,  jed,  1, abs(kord_wz))
+                       is, ie, j, isd,  ied,  jsd,  jed,  1, abs(kord_tm))
         do k=1,km
            do i=is,ie
               delz(i,j,k) = -delz(i,j,k)*dp2(i,k)
@@ -1464,7 +1476,6 @@ endif        ! end last_step check
    real   q4(4,i1:i2,km)
    real    pl, pr, qsum, dp, esl
    integer i, k, l, m, k0
-   integer LM1,LP0,LP1 
 
    do k=1,km
       do i=i1,i2
@@ -1474,45 +1485,15 @@ endif        ! end last_step check
    enddo
 
 ! Compute vertical subgrid distribution
-   if ( kord >  7 ) then
+   if ( kord >7 ) then
         call scalar_profile( qs, q4, dp1, km, i1, i2, iv, kord, q_min )
    else
         call ppm_profile( q4, dp1, km, i1, i2, iv, kord )
    endif
 
-! Interpolate field onto target Pressures
-! ---------------------------------------
-     do i=i1,i2
+  do i=i1,i2
      k0 = 1
      do 555 k=1,kn
-      LM1 = 1
-      LP0 = 1
-      do while( LP0.le.km )
-         if (pe1(i,LP0).lt.pe2(i,k)) then
-            LP0 = LP0+1
-         else
-            exit
-         endif
-      enddo
-      LM1 = max(LP0-1,1)
-      LP0 = min(LP0, km)
-! Extrapolate Linearly above first model level
-! ----------------------------------------------------
-      if( LM1.eq.1 .and. LP0.eq.1 ) then
-             q2(i,j,k) = q1(i,j,1) + ( q1(i,j,2)-q1(i,j,1) )*( pe2(i,k)-pe1(i,1) ) &
-                                                            /( pe1(i,2)-pe1(i,1) )
-! Extrapolate Linearly below last model level
-! ---------------------------------------------------
-      else if( LM1.eq.km .and. LP0.eq.km ) then
-             q2(i,j,k) = q1(i,j,km) + ( q1(i,j,km)-q1(i,j,km-1) )*( pe2(i,k )-pe1(i,km  ) ) &
-                                                                 /( pe1(i,km)-pe1(i,km-1) )
-! Interpolate Linearly between levels 1 => 2 and km-1 => km
-! -----------------------------------------------------------------
-      else if( LM1.eq.1 .or. LP0.eq.km ) then
-             q2(i,j,k) = q1(i,j,LP0) + ( q1(i,j,LM1)-q1(i,j,LP0) )*( pe2(i,k  )-pe1(i,LP0) ) &
-                                                                  /( pe1(i,LM1)-pe1(i,LP0) )
-      else
-         
       do l=k0,km
 ! locate the top edge: pe2(i,k)
       if( pe2(i,k) >= pe1(i,l) .and. pe2(i,k) <= pe1(i,l+1) ) then
@@ -1548,8 +1529,6 @@ endif        ! end last_step check
       endif
       enddo
 123   q2(i,j,k) = qsum / ( pe2(i,k+1) - pe2(i,k) )
-
-      endif
 555   continue
   enddo
 
@@ -2026,7 +2005,6 @@ endif        ! end last_step check
   return
  endif
 !----- Perfectly linear scheme --------------------------------
-
 !------------------
 ! Apply constraints
 !------------------
@@ -2307,7 +2285,7 @@ endif        ! end last_step check
        do i=i1,i2
           a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
        enddo
-     elseif ( abs(kord)<16 ) then ! kord = 11, 13
+     else      ! kord = 11, 13
        do i=i1,i2
          if ( ext5(i,k) .and. (ext5(i,k-1).or.ext5(i,k+1).or.a4(1,i,k)<qmin) ) then
 ! Noisy region:
@@ -3809,15 +3787,15 @@ endif        ! end last_step check
 ! !INTERFACE:
   subroutine map1_gmao( km,   pe1,    q1,                 &
                         kn,   pe2,    q2,   i1, i2,       &
-                        j,    ibeg, iend, jbeg, jend, akap, gmao_remap, P_MAP, conserv)
+                        j,    ibeg, iend, jbeg, jend, akap, gmao_remap, T_VAR, conserv)
       implicit none
 
 ! !INPUT PARAMETERS:
       integer, intent(in) :: i1                ! Starting longitude
       integer, intent(in) :: i2                ! Finishing longitude
       real, intent(in) :: akap
-      integer, intent(in) :: P_MAP             ! Thermodynamic variable to remap
-                                               ! 1:TE-logP  2:PT-PK  3:T-logP
+      integer, intent(in) :: T_VAR             ! Thermodynamic variable to remap
+                                               ! 1:TE  2:T  3:PT
       integer, intent(in) :: gmao_remap        ! 3:cubic  2:quadratic  1:linear
       logical, intent(in) :: conserv
       integer, intent(in) :: j                 ! Current latitude
@@ -3866,9 +3844,9 @@ endif        ! end last_step check
 ! Initialization
 ! --------------
 
-      select case (P_MAP)
+      select case (T_VAR)
       case(1)
-       ! Remapping in Log(P)
+       ! Total Energy Remapping in Log(P)
         do k=1,km
             qx(:,k) = q1(i1:i2,j,k)
         logpl1(:,k) = log( r2*(pe1(:,k)+pe1(:,k+1)) )
@@ -3876,11 +3854,27 @@ endif        ! end last_step check
         do k=1,kn
         logpl2(:,k) = log( r2*(pe2(:,k)+pe2(:,k+1)) )
         enddo
+
         do k=1,km-1
         dlogp1(:,k) = logpl1(:,k+1)-logpl1(:,k)
         enddo
+
       case(2)
-       ! Remapping in P^KAPPA
+       ! Temperature Remapping in Log(P)
+        do k=1,km
+            qx(:,k) = q1(i1:i2,j,k)
+        logpl1(:,k) = log( r2*(pe1(:,k)+pe1(:,k+1)) )
+        enddo
+        do k=1,kn
+        logpl2(:,k) = log( r2*(pe2(:,k)+pe2(:,k+1)) )
+        enddo
+
+        do k=1,km-1
+        dlogp1(:,k) = logpl1(:,k+1)-logpl1(:,k)
+        enddo
+
+      case(3)
+       ! Potential Temperature Remapping in P^KAPPA
         do k=1,km
             qx(:,k) = q1(i1:i2,j,k)
         logpl1(:,k) = exp( akap*log( r2*(pe1(:,k)+pe1(:,k+1))) )
@@ -3888,14 +3882,16 @@ endif        ! end last_step check
         do k=1,kn
         logpl2(:,k) = exp( akap*log( r2*(pe2(:,k)+pe2(:,k+1))) )
         enddo
+
         do k=1,km-1
         dlogp1(:,k) = logpl1(:,k+1)-logpl1(:,k)
         enddo
+
       end select
 
       if (conserv) then
-! Compute vertical integral of Input field
-! ----------------------------------------
+! Compute vertical integral of Input TE
+! -------------------------------------
         vsum1(:) = r0
         do i=i1,i2
         do k=1,km
@@ -3903,10 +3899,11 @@ endif        ! end last_step check
         enddo
         vsum1(i) = vsum1(i) / ( pe1(i,km+1)-pe1(i,1) )
         enddo
+
       endif
 
-! Interpolate field onto target Pressures
-! ---------------------------------------
+! Interpolate TE onto target Pressures
+! ------------------------------------
       do i=i1,i2
       do k=1,kn
          LM1 = 1
@@ -3921,24 +3918,24 @@ endif        ! end last_step check
          LM1 = max(LP0-1,1)
          LP0 = min(LP0, km)
 
-! Extrapolate Linearly above first model level
+! Extrapolate Linearly in LogP above first model level
 ! ----------------------------------------------------
          if( LM1.eq.1 .and. LP0.eq.1 ) then
              q2(i,j,k) = qx(i,1) + ( qx(i,2)-qx(i,1) )*( logpl2(i,k)-logpl1(i,1) ) &
                                                       /( logpl1(i,2)-logpl1(i,1) )
 
-! Extrapolate Linearly below last model level
+! Extrapolate Linearly in LogP below last model level
 ! ---------------------------------------------------
          else if( LM1.eq.km .and. LP0.eq.km ) then
              q2(i,j,k) = qx(i,km) + ( qx(i,km)-qx(i,km-1) )*( logpl2(i,k )-logpl1(i,km  ) ) &
                                                            /( logpl1(i,km)-logpl1(i,km-1) )
 
-! Interpolate Linearly between levels 1 => 2 and km-1 => km
+! Interpolate Linearly in LogP between levels 1 => 2 and km-1 => km
 ! -----------------------------------------------------------------
          else if( LM1.eq.1 .or. LP0.eq.km ) then
              q2(i,j,k) = qx(i,LP0) + ( qx(i,LM1)-qx(i,LP0) )*( logpl2(i,k  )-logpl1(i,LP0) ) &
                                                             /( logpl1(i,LM1)-logpl1(i,LP0) )
-! Interpolate Cubicly between other model levels
+! Interpolate Cubicly in LogP between other model levels
 ! ------------------------------------------------------
          else
               LP1 = LP0+1
@@ -3982,10 +3979,10 @@ endif        ! end last_step check
 
       enddo
       enddo
-
       if (conserv) then
-! Compute vertical integral of Output field
-! -----------------------------------------
+
+! Compute vertical integral of Output TE
+! --------------------------------------
         vsum2(:) = r0
         do i=i1,i2
         do k=1,kn
@@ -3993,13 +3990,16 @@ endif        ! end last_step check
         enddo
         vsum2(i) = vsum2(i) / ( pe2(i,kn+1)-pe2(i,1) )
         enddo
-! Adjust Final field to conserve
-! ------------------------------
+
+! Adjust Final TE to conserve
+! ---------------------------
         do i=i1,i2
         do k=1,kn
            q2(i,j,k) = q2(i,j,k) + vsum1(i)-vsum2(i)
+!          q2(i,j,k) = q2(i,j,k) * vsum1(i)/vsum2(i)
         enddo
         enddo
+
       endif
 
       return
