@@ -383,12 +383,18 @@ module fv_control_mod
 
  end subroutine fv_init1
          
- subroutine fv_init2(Atm, dt_atmos, grids_on_this_pe, p_split)
+ subroutine fv_init2(Atm, dt_atmos, grids_on_this_pe, p_split, grid_global, xs, ys, root_node, use_shmem)
 
    type(fv_atmos_type), allocatable, intent(inout), target :: Atm(:)
    real,                intent(in)    :: dt_atmos
    logical, allocatable, intent(INOUT) :: grids_on_this_pe(:)
    integer, intent(INOUT) :: p_split
+!--------------------------------------------------------
+    real(kind=R_GRID), pointer, optional, dimension(:,:,:,:) :: grid_global
+    real(kind=R_GRID), pointer, optional   ::  xs(:,:)
+    real(kind=R_GRID), pointer, optional   ::  ys(:,:)
+    logical, optional, intent(IN) :: root_node, use_shmem
+!--------------------------------------------------------
 
    integer :: i, j, k, n, p
    real :: sdt
@@ -455,7 +461,7 @@ module fv_control_mod
             Atm(n)%gridstruct%grid_type => Atm(n)%flagstruct%grid_type
             Atm(n)%flagstruct%grid_number => Atm(n)%grid_number
 
-            call init_grid(Atm(n), grid_name, grid_file, npx, npy, npz, ndims, ntiles, ng)
+            call init_grid(Atm(n), grid_name, grid_file, npx, npy, npz, ndims, ntiles, ng, grid_global, xs, ys, root_node, use_shmem)
 
             ! Initialize the SW (2D) part of the model
             !!!CLEANUP: this call could definitely use some cleaning up

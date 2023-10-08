@@ -124,7 +124,7 @@ module fv_grid_tools_mod
                            spherical_linear_interpolation, big_number, &
                            project_sphere_v 
   use fv_timing_mod,  only: timing_on, timing_off
-  use fv_mp_mod,      only: ng, is_master, fill_corners, XDir, YDir
+  use fv_mp_mod,      only: ng, is_master, fill_corners, XDir, YDir, mp_barrier
   use fv_mp_mod,      only: mp_gather, mp_bcst, mp_reduce_max, mp_stop
   use sorted_index_mod,  only: sorted_inta, sorted_intb
   use mpp_mod,           only: mpp_error, FATAL, get_unit, mpp_chksum, mpp_pe, stdout, &
@@ -510,7 +510,7 @@ contains
 
 !>@brief The subroutine 'init_grid' reads the grid from the input file
 !! and sets up grid descriptors.
-  subroutine init_grid(Atm, grid_name, grid_file, npx, npy, npz, ndims, nregions, ng)
+  subroutine init_grid(Atm, grid_name, grid_file, npx, npy, npz, ndims, nregions, ng, grid_global, xs, ys, root_node, use_shmem)
 !--------------------------------------------------------
     type(fv_atmos_type), intent(inout), target :: Atm
     character(len=80), intent(IN) :: grid_name
@@ -520,8 +520,11 @@ contains
     integer,      intent(IN) :: nregions
     integer,      intent(IN) :: ng
 !--------------------------------------------------------
-    real(kind=R_GRID)   ::  xs(npx,npy)
-    real(kind=R_GRID)   ::  ys(npx,npy)
+    real(kind=R_GRID), pointer, optional, dimension(:,:,:,:) :: grid_global
+    real(kind=R_GRID), pointer, optional   ::  xs(:,:)
+    real(kind=R_GRID), pointer, optional   ::  ys(:,:)
+    logical, optional, intent(IN) :: root_node, use_shmem
+!--------------------------------------------------------
 
     real(kind=R_GRID)  :: dp, dl
     real(kind=R_GRID)  :: x1,x2,y1,y2,z1,z2
@@ -564,8 +567,6 @@ contains
 
     integer, pointer, dimension(:,:,:) ::  iinta, jinta, iintb, jintb
 
-    real(kind=R_GRID), pointer, dimension(:,:,:,:) :: grid_global
-
     integer, pointer :: npx_g, npy_g, ntiles_g, tile
     logical, pointer :: sw_corner, se_corner, ne_corner, nw_corner
     logical, pointer :: latlon, cubed_sphere, have_south_pole, have_north_pole, stretched_grid
@@ -573,6 +574,7 @@ contains
     type(domain2d), pointer :: domain
     integer :: is,  ie,  js,  je
     integer :: isd, ied, jsd, jed
+    logical :: do_coord
 
     is  = Atm%bd%is
     ie  = Atm%bd%ie
@@ -612,7 +614,9 @@ contains
     if (Atm%neststruct%nested .or. ANY(Atm%neststruct%child_grids)) then
         grid_global => Atm%grid_global
     else if( trim(grid_file) .NE. 'INPUT/grid_spec.nc') then
-       allocate(grid_global(1-ng:npx  +ng,1-ng:npy  +ng,ndims,1:nregions))
+       !ALT This is allocated in sharedc memory 
+       !ALT       allocate(grid_global(1-ng:npx  +ng,1-ng:npy  +ng,ndims,1:nregions))
+       !ALT
     endif
     
     iinta                         => Atm%gridstruct%iinta
@@ -674,10 +678,17 @@ contains
           if(trim(grid_file) == 'INPUT/grid_spec.nc') then  
              call read_grid(Atm, grid_file, ndims, nregions, ng)
           else
+             if (.not. use_shmem) then
+                do_coord = .true.
+             else
+                do_coord = root_node
+             end if
 
-             if (Atm%flagstruct%grid_type>=0) call gnomonic_grids(Atm%flagstruct%grid_type, npx-1, xs, ys)
-
-          if (is_master()) then
+             if (do_coord) then
+                if (Atm%flagstruct%grid_type>=0) call gnomonic_grids(Atm%flagstruct%grid_type, npx-1, xs, ys)
+             end if
+                
+          if (root_node) then
 
              if (Atm%flagstruct%grid_type>=0) then
                 do j=1,npy
@@ -738,7 +749,11 @@ contains
              enddo
              endif
         endif
-             call mpp_broadcast(grid_global, size(grid_global), mpp_root_pe())
+        if (.not. use_shmem) then
+           call mpp_broadcast(grid_global, size(grid_global), mpp_root_pe())
+        else
+           call mp_barrier()
+        end if
 !--- copy grid to compute domain
        do n=1,ndims
           do j=js,je+1
@@ -963,7 +978,7 @@ contains
              p4(1:2) = grid(i,j,1:2)
              area_c(i,j) = 3.*get_area(p1, p4, p2, p3, radius)
        endif
-   endif
+    endif
 !-----------------
 
        call mpp_update_domains( dxc, dyc, Atm%domain, flags=SCALAR_PAIR,   &
@@ -1117,7 +1132,9 @@ contains
     if (Atm%neststruct%nested .or. ANY(Atm%neststruct%child_grids)) then
     nullify(grid_global)
     else if( trim(grid_file) .NE. 'INPUT/grid_spec.nc') then
-       deallocate(grid_global)
+       !ALT
+       !ALT deallocate(grid_global)
+       !ALT
     endif
 
     nullify(agrid)
