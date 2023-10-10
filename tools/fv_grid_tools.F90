@@ -753,11 +753,12 @@ contains
                       enddo
                    enddo
                 enddo
-             else
+             else ! local algorithm
                 allocate(grid_local(is:ie+1,js:je+1))
-                call get_gnomonic_local_coords(grid_type, npts, start, grid_local(:,:,1), tile_local(:,:,2))
+                call gnomonic_grids_local(Atm%flagstruct%grid_type, npts, start, grid_local(:,:,1), grid_local(:,:,2))
                 call mirror_grid_local_new(grid_local, tile)
                 grid(js:je+1,is:ie+1,:) = grid_local(:,:,:)
+                deallocate grid_local
              endif
 !
 ! SJL: For phys/exchange grid, etc
@@ -1126,9 +1127,11 @@ contains
     endif!if gridtype > 3
 
     if (Atm%neststruct%nested .or. ANY(Atm%neststruct%child_grids)) then
-    nullify(grid_global)
-    else if( trim(grid_file) .NE. 'INPUT/grid_spec.nc') then
-       deallocate(grid_global)
+       nullify(grid_global)
+    else if( trim(grid_file) .ne. 'INPUT/grid_spec.nc') then
+       if (.not. local_algorithm) then
+          deallocate(grid_global)
+       end if
     endif
 
     nullify(agrid)
@@ -2475,7 +2478,7 @@ contains
   ! are far more accurate due to careful construction of symmetric
   ! loops.
   
-  subroutine mirror_grid_local_new(local_tile, tileno)
+  subroutine mirror_grid_local(local_tile, tileno)
      real(ESMF_KIND_R8)   , intent(INOUT) :: local_tile(:,:,:)
      integer, intent(IN)    :: tileno
 
@@ -2559,7 +2562,7 @@ contains
            enddo
         enddo
      endif
-  end subroutine mirror_grid_local_new
+  end subroutine mirror_grid_local
 
 
   !-------------------------------------------------------------------------------
