@@ -3377,8 +3377,8 @@
      integer, intent(in) :: grid_type
      integer, intent(in) :: im
      integer, intent(in) :: start(:)
-     real(ESMF_KIND_R8), intent(out):: lon(:,:)
-     real(ESMF_KIND_R8), intent(out):: lat(:,:)
+     real(R_GRID), intent(out):: lon(:,:)
+     real(R_GRID), intent(out):: lat(:,:)
 
      integer i, j
 
@@ -3400,14 +3400,14 @@
   subroutine get_gnomonic_ed_coords(im, start, lambda, theta)
      integer, intent(in) :: im
      integer, intent(in) :: start(:)
-     real(ESMF_KIND_R8), intent(out) :: lambda(start(1):, start(2):)
-     real(ESMF_KIND_R8), intent(out) :: theta(start(1):, start(2):)
+     real(R_GRID), intent(out) :: lambda(start(1):, start(2):)
+     real(R_GRID), intent(out) :: theta(start(1):, start(2):)
 
 
      ! Local:
-     real(ESMF_KIND_R8) :: pp(3,lbound(lambda,1):ubound(lambda,1), lbound(lambda,2):ubound(lambda,2))
-     real(ESMF_KIND_R8) :: rsq3, alpha, beta, dely
-     real(ESMF_KIND_R8) :: b(1:im+1)
+     real(R_GRID) :: pp(3,lbound(lambda,1):ubound(lambda,1), lbound(lambda,2):ubound(lambda,2))
+     real(R_GRID) :: rsq3, alpha, beta, dely
+     real(R_GRID) :: b(1:im+1)
      integer i, j
 
      rsq3 = 1./sqrt(3.) 
@@ -3444,16 +3444,16 @@
   subroutine get_gnomonic_angl_coords(im, start, lambda, theta)
      integer, intent(in) :: im
      integer, intent(in) :: start(:)
-     real(ESMF_KIND_R8), intent(out) :: lambda(start(1):, start(2):)
-     real(ESMF_KIND_R8), intent(out) :: theta(start(1):, start(2):)
+     real(R_GRID), intent(out) :: lambda(start(1):, start(2):)
+     real(R_GRID), intent(out) :: theta(start(1):, start(2):)
 
      ! Local
-     real(ESMF_KIND_R8) p(3,im+1,im+1)
-     real(ESMF_KIND_R8) rsq3
-     real(ESMF_KIND_R8) dp
+     real(R_GRID) p(3,im+1,im+1)
+     real(R_GRID) rsq3
+     real(R_GRID) dp
      integer i,j
 
-     dp = (pi/4) /real(im,ESMF_KIND_R8)
+     dp = (pi/4) /real(im,R_GRID)
      rsq3 = 1./sqrt(3.) 
      do j = lbound(lambda,2), ubound(lambda,2)
         do i = lbound(lambda,1), ubound(lambda,1)
@@ -3474,13 +3474,13 @@
   subroutine get_gnomonic_dist_coords(im, start, lambda, theta)
      integer, intent(in) :: im
      integer, intent(in) :: start(:)
-     real(ESMF_KIND_R8), intent(out) :: lambda(start(1):, start(2):)
-     real(ESMF_KIND_R8), intent(out) :: theta(start(1):, start(2):)
+     real(R_GRID), intent(out) :: lambda(start(1):, start(2):)
+     real(R_GRID), intent(out) :: theta(start(1):, start(2):)
 
      ! Local
-     real(ESMF_KIND_R8) rsq3, xf
-     real(ESMF_KIND_R8) dx
-     real(ESMF_KIND_R8) p(3,lbound(lambda,1):ubound(lambda,1),lbound(lambda,2):ubound(lambda,2))
+     real(R_GRID) rsq3, xf
+     real(R_GRID) dx
+     real(R_GRID) p(3,lbound(lambda,1):ubound(lambda,1),lbound(lambda,2):ubound(lambda,2))
      integer i, j
 
      ! Face-2

@@ -575,7 +575,10 @@ contains
     integer :: is,  ie,  js,  je
     integer :: isd, ied, jsd, jed
 
-    logical :: local_algorithm = .true.
+    
+    logical :: local_algorithm
+
+    local_algorithm =atm%flagstruct%compute_coords_locally
 
     is  = Atm%bd%is
     ie  = Atm%bd%ie
@@ -684,7 +687,7 @@ contains
                 if (Atm%flagstruct%grid_type>=0) call gnomonic_grids(Atm%flagstruct%grid_type, npx-1, xs, ys)
 
                 if (is_master()) then
-                   
+
                    if (Atm%flagstruct%grid_type>=0) then
                       do j=1,npy
                          do i=1,npx
@@ -743,7 +746,8 @@ contains
                               n, grid_global(1:npx,1:npy,1,n), grid_global(1:npx,1:npy,2,n))
                       enddo
                    endif
-                endif
+                endif ! is_master
+
                 call mpp_broadcast(grid_global, size(grid_global), mpp_root_pe())
                 !--- copy grid to compute domain
                 do n=1,ndims
@@ -754,12 +758,18 @@ contains
                    enddo
                 enddo
              else ! local algorithm
-                allocate(grid_local(is:ie+1,js:je+1))
-                call gnomonic_grids_local(Atm%flagstruct%grid_type, npts, start, grid_local(:,:,1), grid_local(:,:,2))
+                allocate(grid_local(is:ie+1,js:je+1,2))
+                call gnomonic_grids_local(Atm%flagstruct%grid_type, npx-1, [is,js], grid_local(:,:,1), grid_local(:,:,2))
                 call mirror_grid_local_new(grid_local, tile)
+                do n=1,nregions
+                   call direct_transform(Atm%flagstruct%stretch_fac, is, ie+1, js, je+1, &
+                        Atm%flagstruct%target_lon, Atm%flagstruct%target_lat, &
+                        n, grid_local(:,:,1), grid_local(:,:,2))
+                enddo
                 grid(js:je+1,is:ie+1,:) = grid_local(:,:,:)
-                deallocate grid_local
+                deallocate(grid_local)
              endif
+          end if
 !
 ! SJL: For phys/exchange grid, etc
 !
@@ -2479,11 +2489,11 @@ contains
   ! loops.
   
   subroutine mirror_grid_local(local_tile, tileno)
-     real(ESMF_KIND_R8)   , intent(INOUT) :: local_tile(:,:,:)
+     real(R_GRID)   , intent(INOUT) :: local_tile(:,:,:)
      integer, intent(IN)    :: tileno
 
      integer :: i,j,n,n1,n2,nreg, npx, npy
-     real(ESMF_KIND_R8) :: x1,y1,z1, x2,y2,z2, ang, sa, ca
+     real(R_GRID) :: x1,y1,z1, x2,y2,z2, ang, sa, ca
 
      if (tileno == 1) then
         ! no op
@@ -2578,14 +2588,14 @@ contains
   subroutine rot_3d_new(axis, x1in, y1in, z1in, sa, ca, x2out, y2out, z2out, convert)
 
      integer, intent(IN) :: axis         ! axis of rotation 1=x, 2=y, 3=z
-     real(ESMF_KIND_R8) , intent(IN)    :: x1in, y1in, z1in
-     real(ESMF_KIND_R8) , intent(IN)    :: sa, ca   ! sin and cos of angle to rotate in radians
-     real(ESMF_KIND_R8) , intent(OUT)   :: x2out, y2out, z2out
+     real(R_GRID) , intent(IN)    :: x1in, y1in, z1in
+     real(R_GRID) , intent(IN)    :: sa, ca   ! sin and cos of angle to rotate in radians
+     real(R_GRID) , intent(OUT)   :: x2out, y2out, z2out
      integer, intent(IN), optional :: convert ! if present convert input point
      ! from spherical to cartesian, rotate, 
      ! and convert back
 
-     real(ESMF_KIND_R8)  :: x1,y1,z1, x2,y2,z2
+     real(R_GRID)  :: x1,y1,z1, x2,y2,z2
 
      if ( present(convert) ) then
         call spherical_to_cartesian(x1in, y1in, z1in, x1, y1, z1)
