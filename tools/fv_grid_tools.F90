@@ -778,11 +778,6 @@ contains
                         n, grid_local(:,:,1), grid_local(:,:,2))
                 enddo
                 grid(is:ie+1,js:je+1,:) = grid_local(:,:,:)
-                do j = js, je+1
-                   do i = is, ie+1
-                      write(*,*) tile, i,j, grid_local(i,j,:) * (180/pi)
-                   end do
-                end do
                 deallocate(grid_local)
              endif
           end if
