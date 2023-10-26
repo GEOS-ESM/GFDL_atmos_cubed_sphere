@@ -578,7 +578,7 @@ contains
     
     logical :: local_algorithm
 
-    local_algorithm =atm%flagstruct%compute_coords_locally
+    local_algorithm = atm%flagstruct%compute_coords_locally
 
     is  = Atm%bd%is
     ie  = Atm%bd%ie
@@ -759,14 +759,30 @@ contains
                 enddo
              else ! local algorithm
                 allocate(grid_local(is:ie+1,js:je+1,2))
-                call gnomonic_grids_local(Atm%flagstruct%grid_type, npx-1, [is,js], grid_local(:,:,1), grid_local(:,:,2))
-                call mirror_grid_local_new(grid_local, tile)
+                call gnomonic_grids_local(Atm%flagstruct%grid_type, npx, [is,js], grid_local(:,:,1), grid_local(:,:,2))
+                call mirror_grid_local(grid_local, tile)
+                !---------------------------------
+                ! Shift the corner away from Japan
+                !---------------------------------
+                !--------------------- This will result in the corner close to east coast of China ------------------
+                if ( .not.Atm%flagstruct%do_schmidt .and. (Atm%flagstruct%shift_fac)>1.E-4 )   &
+                     grid_local(:,:,1) = grid_local(:,:,1) - pi/Atm%flagstruct%shift_fac
+                !----------------------------------------------------------------------------------------------------
+                where (grid_local(:,:,1) < 0.)
+                   grid_local(:,:,1) = grid_local(:,:,1) + 2*pi
+                end where
+                where (abs(grid_local(:,:,:)) < 1.d-10) grid_local = 0
                 do n=1,nregions
                    call direct_transform(Atm%flagstruct%stretch_fac, is, ie+1, js, je+1, &
                         Atm%flagstruct%target_lon, Atm%flagstruct%target_lat, &
                         n, grid_local(:,:,1), grid_local(:,:,2))
                 enddo
-                grid(js:je+1,is:ie+1,:) = grid_local(:,:,:)
+                grid(is:ie+1,js:je+1,:) = grid_local(:,:,:)
+                do j = js, je+1
+                   do i = is, ie+1
+                      write(*,*) tile, i,j, grid_local(i,j,:) * (180/pi)
+                   end do
+                end do
                 deallocate(grid_local)
              endif
           end if

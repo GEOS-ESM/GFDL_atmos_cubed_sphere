@@ -3500,5 +3500,41 @@
 
   end subroutine get_gnomonic_dist_coords
 
+  subroutine cart_to_latlon_new(q, xs, ys)
+     ! vector version of cart_to_latlon1
+     real(R_GRID), intent(inout) :: q(:,:,:)
+     real(R_GRID), intent(inout) :: xs(:,:), ys(:,:)
+     
+     ! local
+     real(R_GRID), parameter:: esl=1.e-10
+     real(R_GRID) :: p(3)
+     real(R_GRID) :: dist, lat, lon
+     integer i, j, k
+     
+     
+     do j = 1, size(q,3)
+        do i = 1, size(q,2)
+           p = q(:,i,j)
+           
+           dist = sqrt(p(1)**2 + p(2)**2 + p(3)**2)
+           p = p/dist
+           
+           if ( (abs(p(1))+abs(p(2)))  < esl ) then
+              lon = 0.
+           else
+              lon = atan2( p(2), p(1) )   ! range [-pi,pi]
+           endif
+           
+           if ( lon < 0.) lon = 2.*pi + lon
+           lat = asin(p(3))
+           
+           xs(i,j) = lon
+           ys(i,j) = lat
+           ! q Normalized:
+           q(:,i,j) = p
+        enddo
+     end do
+     
+  end  subroutine cart_to_latlon_new
 
  end module fv_grid_utils_mod
