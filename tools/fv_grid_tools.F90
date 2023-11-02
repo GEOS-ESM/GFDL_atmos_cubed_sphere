@@ -759,7 +759,7 @@ contains
                 enddo
              else ! local algorithm
                 allocate(grid_local(is:ie+1,js:je+1,2))
-                call gnomonic_grids_local(Atm%flagstruct%grid_type, npx, [is,js], grid_local(:,:,1), grid_local(:,:,2))
+                call gnomonic_grids_local(Atm%flagstruct%grid_type, npx-1, [is,js], grid_local(:,:,1), grid_local(:,:,2))
                 call mirror_grid_local(grid_local, tile)
                 !---------------------------------
                 ! Shift the corner away from Japan
