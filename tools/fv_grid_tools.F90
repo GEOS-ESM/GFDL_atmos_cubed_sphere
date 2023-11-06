@@ -117,7 +117,7 @@ module fv_grid_tools_mod
 
   use constants_mod, only: grav, omega, pi=>pi_8, cnst_radius=>radius
   use fv_arrays_mod, only: fv_atmos_type, fv_grid_type, fv_grid_bounds_type, R_GRID
-  use fv_grid_utils_mod, only: gnomonic_grids, great_circle_dist,  &
+  use fv_grid_utils_mod, only: gnomonic_grids, gnomonic_grids_local, great_circle_dist,  &
                            mid_pt_sphere, spherical_angle,     &
                                cell_center2, get_area, inner_prod, fill_ghost, &
                            direct_transform, dist2side_latlon, &
@@ -172,7 +172,7 @@ module fv_grid_tools_mod
   END INTERFACE
 
   public :: todeg, missing, init_grid, spherical_to_cartesian
-  public :: mirror_grid, get_unit_vector
+  public :: mirror_grid, mirror_grid_local, get_unit_vector
 
 contains
 
@@ -565,6 +565,7 @@ contains
     integer, pointer, dimension(:,:,:) ::  iinta, jinta, iintb, jintb
 
     real(kind=R_GRID), pointer, dimension(:,:,:,:) :: grid_global
+    real(kind=R_GRID), allocatable, dimension(:,:,:) :: grid_local
 
     integer, pointer :: npx_g, npy_g, ntiles_g, tile
     logical, pointer :: sw_corner, se_corner, ne_corner, nw_corner
@@ -573,6 +574,11 @@ contains
     type(domain2d), pointer :: domain
     integer :: is,  ie,  js,  je
     integer :: isd, ied, jsd, jed
+
+    
+    logical :: local_algorithm
+
+    local_algorithm = atm%flagstruct%compute_coords_locally
 
     is  = Atm%bd%is
     ie  = Atm%bd%ie
@@ -610,9 +616,11 @@ contains
     e2     => Atm%gridstruct%e2
 
     if (Atm%neststruct%nested .or. ANY(Atm%neststruct%child_grids)) then
-        grid_global => Atm%grid_global
-    else if( trim(grid_file) .NE. 'INPUT/grid_spec.nc') then
-       allocate(grid_global(1-ng:npx  +ng,1-ng:npy  +ng,ndims,1:nregions))
+       grid_global => Atm%grid_global
+    else if( trim(grid_file) .ne. 'INPUT/grid_spec.nc') then
+       if (.not. local_algorithm) then
+          allocate(grid_global(1-ng:npx  +ng,1-ng:npy  +ng,ndims,1:nregions))
+       end if
     endif
     
     iinta                         => Atm%gridstruct%iinta
@@ -675,79 +683,104 @@ contains
              call read_grid(Atm, grid_file, ndims, nregions, ng)
           else
 
-             if (Atm%flagstruct%grid_type>=0) call gnomonic_grids(Atm%flagstruct%grid_type, npx-1, xs, ys)
+             if (.not. local_algorithm) then
+                if (Atm%flagstruct%grid_type>=0) call gnomonic_grids(Atm%flagstruct%grid_type, npx-1, xs, ys)
 
-          if (is_master()) then
+                if (is_master()) then
 
-             if (Atm%flagstruct%grid_type>=0) then
-                do j=1,npy
-                   do i=1,npx
-                      grid_global(i,j,1,1) = xs(i,j)
-                      grid_global(i,j,2,1) = ys(i,j)
-                   enddo
-                enddo
-! mirror_grid assumes that the tile=1 is centered on equator and greenwich meridian Lon[-pi,pi] 
-                call mirror_grid(grid_global, ng, npx, npy, 2, 6)
-                do n=1,nregions
-                   do j=1,npy
-                      do i=1,npx
-!---------------------------------
-! Shift the corner away from Japan
-!---------------------------------
-!--------------------- This will result in the corner close to east coast of China ------------------
-                         if ( .not.Atm%flagstruct%do_schmidt .and. (Atm%flagstruct%shift_fac)>1.E-4 )   &
-                              grid_global(i,j,1,n) = grid_global(i,j,1,n) - pi/Atm%flagstruct%shift_fac
-!----------------------------------------------------------------------------------------------------
-                         if ( grid_global(i,j,1,n) < 0. )              &
-                              grid_global(i,j,1,n) = grid_global(i,j,1,n) + 2.*pi
-                         if (ABS(grid_global(i,j,1,1)) < 1.d-10) grid_global(i,j,1,1) = 0.0
-                         if (ABS(grid_global(i,j,2,1)) < 1.d-10) grid_global(i,j,2,1) = 0.0
+                   if (Atm%flagstruct%grid_type>=0) then
+                      do j=1,npy
+                         do i=1,npx
+                            grid_global(i,j,1,1) = xs(i,j)
+                            grid_global(i,j,2,1) = ys(i,j)
                          enddo
                       enddo
+                      ! mirror_grid assumes that the tile=1 is centered on equator and greenwich meridian Lon[-pi,pi] 
+                      call mirror_grid(grid_global, ng, npx, npy, 2, 6)
+                      do n=1,nregions
+                         do j=1,npy
+                            do i=1,npx
+                               !---------------------------------
+                               ! Shift the corner away from Japan
+                               !---------------------------------
+                               !--------------------- This will result in the corner close to east coast of China ------------------
+                               if ( .not.Atm%flagstruct%do_schmidt .and. (Atm%flagstruct%shift_fac)>1.E-4 )   &
+                                    grid_global(i,j,1,n) = grid_global(i,j,1,n) - pi/Atm%flagstruct%shift_fac
+                               !----------------------------------------------------------------------------------------------------
+                               if ( grid_global(i,j,1,n) < 0. )              &
+                                    grid_global(i,j,1,n) = grid_global(i,j,1,n) + 2.*pi
+                               if (abs(grid_global(i,j,1,1)) < 1.d-10) grid_global(i,j,1,1) = 0.0
+                               if (abs(grid_global(i,j,2,1)) < 1.d-10) grid_global(i,j,2,1) = 0.0
+                            enddo
+                         enddo
+                      enddo
+                   else
+                      call mpp_error(FATAL, "fv_grid_tools: reading of ASCII grid files no longer supported")
+                   endif
+                   
+                   grid_global(  1,1:npy,:,2)=grid_global(npx,1:npy,:,1)
+                   grid_global(  1,1:npy,:,3)=grid_global(npx:1:-1,npy,:,1)
+                   grid_global(1:npx,npy,:,5)=grid_global(1,npy:1:-1,:,1)
+                   grid_global(1:npx,npy,:,6)=grid_global(1:npx,1,:,1)
+                   
+                   grid_global(1:npx,  1,:,3)=grid_global(1:npx,npy,:,2)
+                   grid_global(1:npx,  1,:,4)=grid_global(npx,npy:1:-1,:,2)
+                   grid_global(npx,1:npy,:,6)=grid_global(npx:1:-1,1,:,2)
+                   
+                   grid_global(  1,1:npy,:,4)=grid_global(npx,1:npy,:,3)
+                   grid_global(  1,1:npy,:,5)=grid_global(npx:1:-1,npy,:,3)
+                   
+                   grid_global(npx,1:npy,:,3)=grid_global(1,1:npy,:,4)
+                   grid_global(1:npx,  1,:,5)=grid_global(1:npx,npy,:,4)
+                   grid_global(1:npx,  1,:,6)=grid_global(npx,npy:1:-1,:,4)
+                   
+                   grid_global(  1,1:npy,:,6)=grid_global(npx,1:npy,:,5)
+                   
+                   !------------------------
+                   ! Schmidt transformation:
+                   !------------------------
+                   if ( Atm%flagstruct%do_schmidt ) then
+                      do n=1,nregions
+                         call direct_transform(Atm%flagstruct%stretch_fac, 1, npx, 1, npy, &
+                              Atm%flagstruct%target_lon, Atm%flagstruct%target_lat, &
+                              n, grid_global(1:npx,1:npy,1,n), grid_global(1:npx,1:npy,2,n))
+                      enddo
+                   endif
+                endif ! is_master
+
+                call mpp_broadcast(grid_global, size(grid_global), mpp_root_pe())
+                !--- copy grid to compute domain
+                do n=1,ndims
+                   do j=js,je+1
+                      do i=is,ie+1
+                         grid(i,j,n) = grid_global(i,j,n,tile)
+                      enddo
                    enddo
-                else
-                   call mpp_error(FATAL, "fv_grid_tools: reading of ASCII grid files no longer supported")
-                endif
-
-                grid_global(  1,1:npy,:,2)=grid_global(npx,1:npy,:,1)
-                grid_global(  1,1:npy,:,3)=grid_global(npx:1:-1,npy,:,1)
-                grid_global(1:npx,npy,:,5)=grid_global(1,npy:1:-1,:,1)
-                grid_global(1:npx,npy,:,6)=grid_global(1:npx,1,:,1)
-
-                grid_global(1:npx,  1,:,3)=grid_global(1:npx,npy,:,2)
-                grid_global(1:npx,  1,:,4)=grid_global(npx,npy:1:-1,:,2)
-                grid_global(npx,1:npy,:,6)=grid_global(npx:1:-1,1,:,2)
-
-                grid_global(  1,1:npy,:,4)=grid_global(npx,1:npy,:,3)
-                grid_global(  1,1:npy,:,5)=grid_global(npx:1:-1,npy,:,3)
-
-                grid_global(npx,1:npy,:,3)=grid_global(1,1:npy,:,4)
-                grid_global(1:npx,  1,:,5)=grid_global(1:npx,npy,:,4)
-                grid_global(1:npx,  1,:,6)=grid_global(npx,npy:1:-1,:,4)
-
-                grid_global(  1,1:npy,:,6)=grid_global(npx,1:npy,:,5)
-
-!------------------------
-! Schmidt transformation:
-!------------------------
-             if ( Atm%flagstruct%do_schmidt ) then
-             do n=1,nregions
-                call direct_transform(Atm%flagstruct%stretch_fac, 1, npx, 1, npy, &
-                                      Atm%flagstruct%target_lon, Atm%flagstruct%target_lat, &
-                                      n, grid_global(1:npx,1:npy,1,n), grid_global(1:npx,1:npy,2,n))
-             enddo
+                enddo
+             else ! local algorithm
+                allocate(grid_local(is:ie+1,js:je+1,2))
+                call gnomonic_grids_local(Atm%flagstruct%grid_type, npx-1, [is,js], grid_local(:,:,1), grid_local(:,:,2))
+                call mirror_grid_local(grid_local, tile)
+                !---------------------------------
+                ! Shift the corner away from Japan
+                !---------------------------------
+                !--------------------- This will result in the corner close to east coast of China ------------------
+                if ( .not.Atm%flagstruct%do_schmidt .and. (Atm%flagstruct%shift_fac)>1.E-4 )   &
+                     grid_local(:,:,1) = grid_local(:,:,1) - pi/Atm%flagstruct%shift_fac
+                !----------------------------------------------------------------------------------------------------
+                where (grid_local(:,:,1) < 0.)
+                   grid_local(:,:,1) = grid_local(:,:,1) + 2*pi
+                end where
+                where (abs(grid_local(:,:,:)) < 1.d-10) grid_local = 0
+                do n=1,nregions
+                   call direct_transform(Atm%flagstruct%stretch_fac, is, ie+1, js, je+1, &
+                        Atm%flagstruct%target_lon, Atm%flagstruct%target_lat, &
+                        n, grid_local(:,:,1), grid_local(:,:,2))
+                enddo
+                grid(is:ie+1,js:je+1,:) = grid_local(:,:,:)
+                deallocate(grid_local)
              endif
-        endif
-             call mpp_broadcast(grid_global, size(grid_global), mpp_root_pe())
-!--- copy grid to compute domain
-       do n=1,ndims
-          do j=js,je+1
-             do i=is,ie+1
-                grid(i,j,n) = grid_global(i,j,n,tile)
-             enddo
-          enddo
-       enddo
-          endif
+          end if
 !
 ! SJL: For phys/exchange grid, etc
 !
@@ -1115,9 +1148,11 @@ contains
     endif!if gridtype > 3
 
     if (Atm%neststruct%nested .or. ANY(Atm%neststruct%child_grids)) then
-    nullify(grid_global)
-    else if( trim(grid_file) .NE. 'INPUT/grid_spec.nc') then
-       deallocate(grid_global)
+       nullify(grid_global)
+    else if( trim(grid_file) .ne. 'INPUT/grid_spec.nc') then
+       if (.not. local_algorithm) then
+          deallocate(grid_global)
+       end if
     endif
 
     nullify(agrid)
@@ -2456,6 +2491,161 @@ contains
  enddo
 
  end subroutine normalize_vect
+
+  !-----------
+  ! New version of coordinate calculations
+  !
+  ! These only require allocation of arrays that span local domain and
+  ! are far more accurate due to careful construction of symmetric
+  ! loops.
+  
+  subroutine mirror_grid_local(local_tile, tileno)
+     real(R_GRID)   , intent(INOUT) :: local_tile(:,:,:)
+     integer, intent(IN)    :: tileno
+
+     integer :: i,j,n,n1,n2,nreg, npx, npy
+     real(R_GRID) :: x1,y1,z1, x2,y2,z2, ang, sa, ca
+
+     if (tileno == 1) then
+        ! no op
+     else
+        do j = 1, size(local_tile,2)
+           do i = 1, size(local_tile,1)
+
+              x1 = local_tile(i,j,1)
+              y1 = local_tile(i,j,2)
+              z1 = radius
+
+              select case (tileno)
+              case (2)
+                 ang = -90.
+                 sa = -1
+                 ca = 0
+                 call rot_3d_new( 3, x1, y1, z1, sa, ca, x2, y2, z2, 1)  ! rotate about the z-axis
+
+              case (3)
+                 ang = -90.
+                 sa = -1
+                 ca = 0
+                 call rot_3d_new( 3, x1, y1, z1, sa, ca, x2, y2, z2, 1)  ! rotate about the z-axis
+                 ang = 90.
+                 sa = +1
+                 ca = 0
+                 call rot_3d_new( 1, x2, y2, z2, sa, ca, x1, y1, z1, 1)  ! rotate about the x-axis
+                 x2=x1
+                 y2=y1
+                 z2=z1
+
+              case (4)
+                 ang = -180.
+                 sa = 0
+                 ca = -1
+                 call rot_3d_new( 3, x1, y1, z1, sa, ca, x2, y2, z2, 1)  ! rotate about the z-axis
+                 ang = 90.
+                 sa = 1
+                 ca = 0
+                 call rot_3d_new( 1, x2, y2, z2, sa, ca, x1, y1, z1, 1)  ! rotate about the x-axis
+                 x2=x1
+                 y2=y1
+                 z2=z1
+
+              case (5)
+                 ang = 90.
+                 sa = 1
+                 ca = 0
+                 call rot_3d_new( 3, x1, y1, z1, sa, ca, x2, y2, z2, 1)  ! rotate about the z-axis
+                 ang = 90.
+                 sa = 1
+                 ca = 0
+                 call rot_3d_new( 2, x2, y2, z2, sa, ca, x1, y1, z1, 1)  ! rotate about the y-axis
+                 x2=x1
+                 y2=y1
+                 z2=z1
+
+              case (6)
+                 ang = 90.
+                 sa = 1
+                 ca = 0
+                 call rot_3d_new( 2, x1, y1, z1, sa, ca, x2, y2, z2, 1)  ! rotate about the y-axis
+                 ang = 0.
+                 sa = 0
+                 ca = 1
+                 call rot_3d_new( 3, x2, y2, z2, sa, ca, x1, y1, z1, 1)  ! rotate about the z-axis
+                 x2=x1
+                 y2=y1
+                 z2=z1
+
+              end select
+
+              local_tile(i,j,1) = x2
+              local_tile(i,j,2) = y2
+
+           enddo
+        enddo
+     endif
+  end subroutine mirror_grid_local
+
+
+  !-------------------------------------------------------------------------------
+  ! vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv !
+  !
+  !     rot_3d_new :: rotate points on a sphere in xyz coords given sin
+  !                   and cos of angle.  Only works for {0,-1,+1} - 90
+  !                   degree rotations.  This approach guarantees
+  !                   symmetry by avoiding roundoff associated with
+  !                   inexact values of pi (and thus cos(pi/2)).
+
+  !
+  subroutine rot_3d_new(axis, x1in, y1in, z1in, sa, ca, x2out, y2out, z2out, convert)
+
+     integer, intent(IN) :: axis         ! axis of rotation 1=x, 2=y, 3=z
+     real(R_GRID) , intent(IN)    :: x1in, y1in, z1in
+     real(R_GRID) , intent(IN)    :: sa, ca   ! sin and cos of angle to rotate in radians
+     real(R_GRID) , intent(OUT)   :: x2out, y2out, z2out
+     integer, intent(IN), optional :: convert ! if present convert input point
+     ! from spherical to cartesian, rotate, 
+     ! and convert back
+
+     real(R_GRID)  :: x1,y1,z1, x2,y2,z2
+
+     if ( present(convert) ) then
+        call spherical_to_cartesian(x1in, y1in, z1in, x1, y1, z1)
+     else
+        x1=x1in
+        y1=y1in
+        z1=z1in
+     endif
+
+
+     SELECT CASE(axis)
+
+     CASE(1)
+        x2 =  x1
+        y2 =  ca*y1 + sa*z1
+        z2 = -sa*y1 + ca*z1
+     CASE(2)
+        x2 = ca*x1 - sa*z1
+        y2 = y1
+        z2 = sa*x1 + ca*z1
+     CASE(3)
+        x2 =  ca*x1 + sa*y1
+        y2 = -sa*x1 + ca*y1
+        z2 = z1
+     CASE DEFAULT
+        write(*,*) "Invalid axis: must be 1 for X, 2 for Y, 3 for Z."
+
+     END SELECT
+
+     if ( present(convert) ) then
+        call cartesian_to_spherical(x2, y2, z2, x2out, y2out, z2out)
+     else
+        x2out=x2
+        y2out=y2
+        z2out=z2
+     endif
+
+  end subroutine rot_3d_new
+
 
       end module fv_grid_tools_mod
 
