@@ -111,7 +111,7 @@
  public f_p 
  public ptop_min, big_number !CLEANUP: OK to keep since they are constants?
  public cos_angle
- public latlon2xyz, gnomonic_grids, &
+ public latlon2xyz, gnomonic_grids, gnomonic_grids_local, &
         global_mx, unit_vect_latlon,  &
         cubed_to_latlon, c2l_ord2, g_sum, global_qsum, great_circle_dist,  &
         v_prod, get_unit_vect2, project_sphere_v
@@ -3372,5 +3372,169 @@
 
  end subroutine init_mq
 #endif
+
+  subroutine gnomonic_grids_local(grid_type, im, start, lon, lat)
+     integer, intent(in) :: grid_type
+     integer, intent(in) :: im
+     integer, intent(in) :: start(:)
+     real(R_GRID), intent(out):: lon(:,:)
+     real(R_GRID), intent(out):: lat(:,:)
+
+     integer i, j
+
+     select case (grid_type)
+     case (0)
+        call get_gnomonic_ed_coords(im, start, lon, lat)
+     case (1)
+        call get_gnomonic_dist_coords(im, start, lon, lat)
+     case (2)
+        call get_gnomonic_angl_coords(im, start, lon, lat)
+     end select
+
+     if (grid_type < 3) then
+        lon = lon - pi
+     end if
+
+  end subroutine gnomonic_grids_local
+
+  subroutine get_gnomonic_ed_coords(im, start, lambda, theta)
+     integer, intent(in) :: im
+     integer, intent(in) :: start(:)
+     real(R_GRID), intent(out) :: lambda(start(1):, start(2):)
+     real(R_GRID), intent(out) :: theta(start(1):, start(2):)
+
+
+     ! Local:
+     real(R_GRID) :: pp(3,lbound(lambda,1):ubound(lambda,1), lbound(lambda,2):ubound(lambda,2))
+     real(R_GRID) :: rsq3, alpha, beta, dely
+     real(R_GRID) :: b(1:im+1)
+     integer i, j
+
+     rsq3 = 1./sqrt(3.) 
+     alpha = asin( rsq3 )
+     dely = alpha / im
+
+    ! Compute distances along cube edge (segment) at equispaced
+     ! angles.  The formula is same for i and for j, but for local
+     ! region these may or may not overlap.   Worst case we
+     ! do this twice for a "diagonal subdomain"
+
+     do i = lbound(lambda,1), ubound(lambda,1)
+        beta = -dely * (im + 2 - 2*i)
+        b(i) = tan(beta)*cos(alpha)
+     end do
+
+     do j = lbound(lambda,2), ubound(lambda,2)
+        beta = -dely * (im + 2 - 2*j)
+        b(j) = tan(beta)*cos(alpha)
+     end do
+
+     ! Use the edge position to construct an array of
+     ! cartesian points in the local domain.
+     do j = lbound(lambda,2), ubound(lambda,2)
+        do i = lbound(lambda,1), ubound(lambda,1)
+           pp(:,i,j) = [-rsq3, -b(i), b(j)]
+        end do
+     end do
+
+     call cart_to_latlon_new(pp, lambda, theta)
+
+  end subroutine get_gnomonic_ed_coords
+
+  subroutine get_gnomonic_angl_coords(im, start, lambda, theta)
+     integer, intent(in) :: im
+     integer, intent(in) :: start(:)
+     real(R_GRID), intent(out) :: lambda(start(1):, start(2):)
+     real(R_GRID), intent(out) :: theta(start(1):, start(2):)
+
+     ! Local
+     real(R_GRID) p(3,im+1,im+1)
+     real(R_GRID) rsq3
+     real(R_GRID) dp
+     integer i,j
+
+     dp = (pi/4) /real(im,R_GRID)
+     rsq3 = 1./sqrt(3.) 
+     do j = lbound(lambda,2), ubound(lambda,2)
+        do i = lbound(lambda,1), ubound(lambda,1)
+           p(1,i,j) =-rsq3               ! constant
+           p(2,i,j) =-rsq3*tan(dp * (im + 2 - 2*i))
+           p(2,i,j) =+rsq3*tan(dp * (im + 2 - 2*j))
+        enddo
+     enddo
+
+     call cart_to_latlon_new(p, lambda, theta)
+
+  end subroutine get_gnomonic_angl_coords
+
+
+  ! It is important to use symmetric expressions for coordinates here.
+  ! This avoids the need for a subsequent forced symmetrization which in turn
+  ! thwarts fully local computation of coordinates.
+  subroutine get_gnomonic_dist_coords(im, start, lambda, theta)
+     integer, intent(in) :: im
+     integer, intent(in) :: start(:)
+     real(R_GRID), intent(out) :: lambda(start(1):, start(2):)
+     real(R_GRID), intent(out) :: theta(start(1):, start(2):)
+
+     ! Local
+     real(R_GRID) rsq3, xf
+     real(R_GRID) dx
+     real(R_GRID) p(3,lbound(lambda,1):ubound(lambda,1),lbound(lambda,2):ubound(lambda,2))
+     integer i, j
+
+     ! Face-2
+
+     rsq3 = 1./sqrt(3.) 
+     xf = -rsq3
+     dx = rsq3/im
+
+     do j = lbound(lambda,2), ubound(lambda,2)
+        do i = lbound(lambda,1), ubound(lambda,1)
+           p(1,i,j) = xf
+           p(2,i,j) = +dx * (im + 2 - 2*i)
+           p(3,i,j) = -dx * (im + 2 - 2*j)
+        enddo
+     enddo
+     call cart_to_latlon_new(p, lambda, theta)
+
+  end subroutine get_gnomonic_dist_coords
+
+  subroutine cart_to_latlon_new(q, xs, ys)
+     ! vector version of cart_to_latlon1
+     real(R_GRID), intent(inout) :: q(:,:,:)
+     real(R_GRID), intent(inout) :: xs(:,:), ys(:,:)
+     
+     ! local
+     real(R_GRID), parameter:: esl=1.e-10
+     real(R_GRID) :: p(3)
+     real(R_GRID) :: dist, lat, lon
+     integer i, j, k
+     
+     
+     do j = 1, size(q,3)
+        do i = 1, size(q,2)
+           p = q(:,i,j)
+           
+           dist = sqrt(p(1)**2 + p(2)**2 + p(3)**2)
+           p = p/dist
+           
+           if ( (abs(p(1))+abs(p(2)))  < esl ) then
+              lon = 0.
+           else
+              lon = atan2( p(2), p(1) )   ! range [-pi,pi]
+           endif
+           
+           if ( lon < 0.) lon = 2.*pi + lon
+           lat = asin(p(3))
+           
+           xs(i,j) = lon
+           ys(i,j) = lat
+           ! q Normalized:
+           q(:,i,j) = p
+        enddo
+     end do
+     
+  end  subroutine cart_to_latlon_new
 
  end module fv_grid_utils_mod
