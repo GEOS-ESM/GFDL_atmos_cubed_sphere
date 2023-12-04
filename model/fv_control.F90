@@ -321,6 +321,8 @@ module fv_control_mod
           deglat_start, deglat_stop
   real(kind=R_GRID), pointer :: deglat
 
+  logical, pointer :: compute_coords_locally
+
   logical, pointer :: nested, twowaynest
   integer, pointer :: parent_tile, refinement, nestbctype, nestupdate, nsponge, ioffset, joffset
   real, pointer :: s_weight, update_blend
@@ -655,7 +657,7 @@ module fv_control_mod
    character(len=80)  :: grid_name = ''
    character(len=120) :: grid_file = ''
 
-   namelist /fv_grid_nml/ grid_name, grid_file
+   namelist /fv_grid_nml/ grid_name, grid_file, compute_coords_locally
    namelist /fv_core_nml/npx, npy, ntiles, npz, npz_rst, layout, io_layout, ncnst, nwat,  &
                          use_logp, p_fac, a_imp, dz_min, k_split, n_split, m_split, q_split, print_freq, write_3d_diags, do_schmidt,  &
                          hord_mt, hord_vt, hord_tm, hord_dp, hord_tr, shift_fac, stretch_fac, target_lat, target_lon, &
@@ -1329,6 +1331,7 @@ module fv_control_mod
 
      layout                        => Atm%layout
      io_layout                     => Atm%io_layout
+     compute_coords_locally        => Atm%flagstruct%compute_coords_locally
   end subroutine setup_pointers
 
        

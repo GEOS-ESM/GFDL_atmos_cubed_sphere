@@ -1039,6 +1039,8 @@ module fv_arrays_mod
   !integer, pointer :: test_case
   !real,    pointer :: alpha
 
+   logical :: compute_coords_locally = .false.
+
   end type fv_flags_type
 
   type fv_nest_BC_type_3D
