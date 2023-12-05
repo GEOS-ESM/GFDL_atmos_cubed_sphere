@@ -1037,7 +1037,9 @@ module fv_arrays_mod
                                      !     to .true. in the next city release if desired
   
   !integer, pointer :: test_case
-  !real,    pointer :: alpha
+   !real,    pointer :: alpha
+
+   logical :: compute_coords_locally = .false.
 
   end type fv_flags_type
 

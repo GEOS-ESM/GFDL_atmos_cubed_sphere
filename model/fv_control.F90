@@ -321,6 +321,8 @@ module fv_control_mod
           deglat_start, deglat_stop
   real(kind=R_GRID), pointer :: deglat
 
+  logical, pointer :: compute_coords_locally
+
   logical, pointer :: nested, twowaynest
   integer, pointer :: parent_tile, refinement, nestbctype, nestupdate, nsponge, ioffset, joffset
   real, pointer :: s_weight, update_blend
@@ -676,7 +678,8 @@ module fv_control_mod
                          nested, twowaynest, parent_grid_num, parent_tile, nudge_qv, &
                          refinement, nestbctype, nestupdate, nsponge, s_weight, &
                          ioffset, joffset, check_negative, nudge_ic, halo_update_type, gfs_phil, agrid_vel_rst,     &
-                         do_uni_zfull, adj_mass_vmr
+                         do_uni_zfull, adj_mass_vmr, &
+                         compute_coords_locally
 
    namelist /test_case_nml/test_case, bubble_do, alpha, nsolitons, soliton_Umax, soliton_size
 
@@ -1329,6 +1332,7 @@ module fv_control_mod
 
      layout                        => Atm%layout
      io_layout                     => Atm%io_layout
+     compute_coords_locally        => Atm%flagstruct%compute_coords_locally
   end subroutine setup_pointers
 
        
