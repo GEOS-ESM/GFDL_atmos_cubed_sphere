@@ -772,9 +772,11 @@ contains
                    grid_local(:,:,1) = grid_local(:,:,1) + 2*pi
                 end where
                 where (abs(grid_local(:,:,:)) < 1.d-10) grid_local = 0
-                call direct_transform(Atm%flagstruct%stretch_fac, is, ie+1, js, je+1, &
-                       Atm%flagstruct%target_lon, Atm%flagstruct%target_lat, &
-                       tile, grid_local(:,:,1), grid_local(:,:,2))
+                if ( Atm%flagstruct%do_schmidt ) then
+                   call direct_transform(Atm%flagstruct%stretch_fac, is, ie+1, js, je+1, &
+                        Atm%flagstruct%target_lon, Atm%flagstruct%target_lat, &
+                        tile, grid_local(:,:,1), grid_local(:,:,2))
+                end if
                 grid(is:ie+1,js:je+1,:) = grid_local(:,:,:)
                 deallocate(grid_local)
              endif
