@@ -280,7 +280,8 @@ contains
       integer :: rainwat = -999, snowwat = -999, graupel = -999, cld_amt = -999
       integer :: theta_d = -999
       logical used, last_step, do_omega
-      type(group_halo_update_type), save :: i_pack(12)
+      integer, parameter :: max_packs=12
+      type(group_halo_update_type), save :: i_pack(max_packs)
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
       real :: dt2
