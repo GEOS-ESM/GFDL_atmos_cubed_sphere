@@ -1464,7 +1464,8 @@ endif        ! end last_step check
    real   q4(4,i1:i2,km)
    real    pl, pr, qsum, dp, esl
    integer i, k, l, m, k0
-   integer LM1,LP0,LP1 
+   integer LM2,LM1,LP0,LP1 
+   real    am2,am1,ap0,ap1,P,PLP1,PLP0,PLM1,PLM2,DLP0,DLM1,DLM2
 
    do k=1,km
       do i=i1,i2
@@ -1512,7 +1513,39 @@ endif        ! end last_step check
              q2(i,j,k) = q1(i,j,LP0) + ( q1(i,j,LM1)-q1(i,j,LP0) )*( pe2(i,k  )-pe1(i,LP0) ) &
                                                                   /( pe1(i,LM1)-pe1(i,LP0) )
       else
-         
+
+#ifdef GMAO_CUBIC_REMAP
+
+! Interpolate between other model levels
+! ------------------------------------------------------
+              LP1 = LP0+1
+              LM2 = LM1-1
+             P    = pe2(i,k)
+             PLP1 = pe1(i,LP1)
+             PLP0 = pe1(i,LP0)
+             PLM1 = pe1(i,LM1)
+             PLM2 = pe1(i,LM2)
+             DLP0 = dp1(i,LP0)
+             DLM1 = dp1(i,LM1)
+             DLM2 = dp1(i,LM2)
+ 
+           ! Cubic Coefficients
+           ! ------------------
+             ap1 = (P-PLP0)*(P-PLM1)*(P-PLM2)/( DLP0*(DLP0+DLM1)*(DLP0+DLM1+DLM2) )
+             ap0 = (PLP1-P)*(P-PLM1)*(P-PLM2)/( DLP0*      DLM1 *(     DLM1+DLM2) )
+             am1 = (PLP1-P)*(PLP0-P)*(P-PLM2)/( DLM1*      DLM2 *(DLP0+DLM1     ) )
+             am2 = (PLP1-P)*(PLP0-P)*(PLM1-P)/( DLM2*(DLM1+DLM2)*(DLP0+DLM1+DLM2) )
+             q2(i,j,k) = ap1*q1(i,j,LP1) + ap0*q1(i,j,LP0) + am1*q1(i,j,LM1) + am2*q1(i,j,LM2)
+
+           ! Quadratic Coefficients
+           ! ----------------------
+           ! ap1 = (P-PLP0)*(P-PLM1)/( (PLP1-PLP0)*(PLP1-PLM1) )
+           ! ap0 = (PLP1-P)*(P-PLM1)/( (PLP1-PLP0)*(PLP0-PLM1) )
+           ! am1 = (PLP1-P)*(PLP0-P)/( (PLP1-PLM1)*(PLP0-PLM1) )
+           ! q2(i,j,k) = ap1*q1(i,j,LP1) + ap0*q1(i,j,LP0) + am1*q1(i,j,LM1)
+
+#else
+
       do l=k0,km
 ! locate the top edge: pe2(i,k)
       if( pe2(i,k) >= pe1(i,l) .and. pe2(i,k) <= pe1(i,l+1) ) then
@@ -1548,6 +1581,8 @@ endif        ! end last_step check
       endif
       enddo
 123   q2(i,j,k) = qsum / ( pe2(i,k+1) - pe2(i,k) )
+
+#endif
 
       endif
 555   continue
