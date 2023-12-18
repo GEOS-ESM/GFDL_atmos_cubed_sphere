@@ -67,11 +67,12 @@ module fv_tracer2d_mod
    use fv_mp_mod,         only: ng, mp_gather, is_master
    use fv_mp_mod,         only: group_halo_update_type
    use fv_mp_mod,         only: start_group_halo_update, complete_group_halo_update
-   use mpp_domains_mod,   only: mpp_update_domains, CGRID_NE, domain2d, mpp_get_boundary
+   use mpp_domains_mod,   only: mpp_update_domains, CGRID_NE, domain2d, mpp_get_boundary, mpp_global_sum, BITWISE_EFP_SUM
    use fv_timing_mod,     only: timing_on, timing_off
    use boundary_mod,      only: nested_grid_BC_apply_intT
-   use fv_arrays_mod,     only: fv_grid_type, fv_flags_type, fv_nest_type, fv_atmos_type, fv_grid_bounds_type
+   use fv_arrays_mod,     only: fv_grid_type, fv_flags_type, fv_nest_type, fv_atmos_type, fv_grid_bounds_type, REAL8
    use mpp_mod,           only: mpp_error, FATAL, mpp_broadcast, mpp_send, mpp_recv, mpp_sum, mpp_max
+   use fv_grid_utils_mod, only: g_sum_r8
 
 implicit none
 private
@@ -888,8 +889,10 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real  pe2(bd%is:bd%ie,npz+1)
       real  dp2(bd%is:bd%ie,npz)
       real  ple1(bd%is:bd%ie,bd%js:bd%je,npz+1)
-      real  ple2(bd%is:bd%ie,bd%js:bd%je,npz+1)
       integer kord_tracers(nq)
+! Local mass conservation
+      real(REAL8) :: qsum(bd%is:bd%ie,bd%js:bd%je)
+      real(REAL8) :: g_massB, g_massA
 
 ! Local indices
       integer     :: i,j,k,n,iq
@@ -963,17 +966,6 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
        enddo
     enddo
 
-   ! pressures mapping to
-    ple2(:,:,1) = ptop
-    ple2(:,:,npz+1) = pleA(:,:,npz+1)
-    do k=2,npz
-       do j=js,je
-          do i=is,ie
-              ple2(i,j,k) = ak(k) + bk(k)*ple2(i,j,npz+1)
-          enddo
-       enddo
-    enddo 
-
 !------------------------------------------------------------------
 ! Re-Map constituents
 !------------------------------------------------------------------
@@ -984,7 +976,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
           do j=js,je
              do k=1,npz+1
                pe1(:,k) = ple1(:,j,k)
-               pe2(:,k) = ple2(:,j,k)
+               pe2(:,k) = pleA(:,j,k)
              enddo
              do k=1,npz
                 dp2(:,k) = pe2(:,k+1) - pe2(:,k)
@@ -997,7 +989,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
           do j=js,je
              do k=1,npz+1
                pe1(:,k) = ple1(:,j,k)
-               pe2(:,k) = ple2(:,j,k)
+               pe2(:,k) = pleA(:,j,k)
              enddo
              do k=1,npz
                 dp2(:,k) = pe2(:,k+1) - pe2(:,k)
@@ -1016,61 +1008,84 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
        enddo
       end if
 
-       ! Rescale tracers based on pleA at destination timestep
-       !------------------------------------------------------
-       do iq=1,nq
-          scalingFactor = calcScalingFactor(q3(is:ie,js:je,1:npz,iq), ple2, pleA, npx, npy, npz, gridstruct, bd)
-          ! Return tracers
-          !---------------
-          q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
-       enddo
+! Compute Global Mass
+! -------------------
+      qsum(:,:) = 0.d0
+      do k=1,npz
+         qsum(:,:) = qsum(:,:) + (pleB(:,:,k+1)-pleB(:,:,k))
+      enddo
+      g_massB = g_sum_r8(domain, qsum, is,ie, js,je, 0, &
+                         gridstruct%area_64(is:ie,js:je), 1, .true.)
+      qsum(:,:) = 0.d0
+      do k=1,npz
+         qsum(:,:) = qsum(:,:) + (pleA(:,:,k+1)-pleA(:,:,k))
+      enddo
+      g_massA = g_sum_r8(domain, qsum, is,ie, js,je, 0, &
+                         gridstruct%area_64(is:ie,js:je), 1, .true.)
+
+      ! Rescale tracers based on pleB and pleA for mass conservation
+      !-------------------------------------------------------------
+      do iq=1,nq
+         scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), &
+                                           pleB, pleA, g_massB, g_massA, npz, domain, gridstruct, bd)
+         ! Return tracers
+         !---------------
+         q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+      enddo
 
 end subroutine offline_tracer_advection
 
 !------------------------------------------------------------------------------------
 
-         function calcScalingFactor(q1, ple1, ple2, npx, npy, npz, gridstruct, bd) result(scaling)
-         use mpp_mod, only: mpp_sum
-         integer, intent(in) :: npx
-         integer, intent(in) :: npy
+         function calcScalingFactor(q1, q2, ple1, ple2, g_mass1, g_mass2, npz, domain, gridstruct, bd) result(scaling)
          integer, intent(in) :: npz
-         real, intent(in) :: q1(:,:,:)
-         real, intent(in) :: ple1(:,:,:)
-         real, intent(in) :: ple2(:,:,:)
-         type(fv_grid_type), intent(IN   ) :: gridstruct
          type(fv_grid_bounds_type), intent(IN   ) :: bd
+         real, intent(in) :: q1(bd%is:bd%ie,bd%js:bd%je,npz)
+         real, intent(in) :: q2(bd%is:bd%ie,bd%js:bd%je,npz)
+         real, intent(in) :: ple1(bd%is:bd%ie,bd%js:bd%je,npz+1)
+         real, intent(in) :: ple2(bd%is:bd%ie,bd%js:bd%je,npz+1)
+         real(REAL8), intent(in) :: g_mass1, g_mass2
+         type(domain2D), intent(INOUT) :: domain
+         type(fv_grid_type), intent(IN   ) :: gridstruct
          real :: scaling
 
          integer :: k
-         real :: partialSums(2,npz), globalSums(2)
-         real, parameter :: TINY_DENOMINATOR = tiny(1.0)
-
+         real(REAL8)     :: qsum1(bd%is:bd%ie,bd%js:bd%je)
+         real(REAL8)     :: qsum2(bd%is:bd%ie,bd%js:bd%je)
+         real(REAL8)     :: globalSums(2)
+         real(REAL8), parameter :: TINY_DENOMINATOR = tiny(1.d0)
+         real(REAL8)     :: scalingR8
          !-------
          ! Compute partial sum on local array first to minimize communication.
          ! This algorithm will not be strongly repdroducible under changes do domain
          ! decomposition, but uses far less communication bandwidth (and memory BW)
          ! then the preceding implementation.
          !-------
-         do k = 1, npz
-            ! numerator
-            partialSums(1,k) = sum(q1(:,:,k)*(ple1(:,:,k+1)-ple1(:,:,k))*gridstruct%area(bd%is:bd%ie,bd%js:bd%je))
-            ! denominator
-            partialSums(2,k) = sum(q1(:,:,k)*(ple2(:,:,k+1)-ple2(:,:,k))*gridstruct%area(bd%is:bd%ie,bd%js:bd%je))
-         end do
+         qsum1(:,:) = 0.d0
+         qsum2(:,:) = 0.d0
+         do k=1,npz
+            qsum1(:,:) = qsum1(:,:) + q1(:,:,k) * (ple1(:,:,k+1)-ple1(:,:,k))
+            qsum2(:,:) = qsum2(:,:) + q2(:,:,k) * (ple2(:,:,k+1)-ple2(:,:,k))
+         enddo
 
-         globalSums(1) = sum(partialSums(1,:))
-         globalSums(2) = sum(partialSums(2,:))
+         ! numerator
+         globalSums(1) = g_sum_r8(domain, qsum1, bd%is,bd%ie, bd%js,bd%je, 0, &
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, .true.)
+         ! denominator
+         globalSums(2) = g_sum_r8(domain, qsum2, bd%is,bd%ie, bd%js,bd%je, 0, &
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, .true.)
 
-         call mpp_sum(globalSums, 2)
+         if (g_mass1 > 0.0) globalSums(1) = globalSums(1)/g_mass1
+         if (g_mass2 > 0.0) globalSums(2) = globalSums(2)/g_mass2
 
          if (globalSums(2) > TINY_DENOMINATOR) then
-            scaling =  globalSums(1) / globalSums(2)
+            scalingR8 =  globalSums(1) / globalSums(2)
             !#################################################################
             ! This line was added to ensure strong reproducibility of the code
             !#################################################################
-            scaling = REAL(scaling, KIND=kind(1.00))
+            scaling = REAL(scalingR8, KIND=kind(1.00))
          else
-            scaling = 1.d0
+            scaling = 1.0
          end if
 
          end function calcScalingFactor
