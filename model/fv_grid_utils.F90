@@ -1,26 +1,26 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
 !>@brief The module 'fv_grid_utils' contains routines for setting up and
-!! computing grid-related quantities. 
+!! computing grid-related quantities.
 !>@details Many of these are useful for computing diagnostics or setting up initial conditions.
 
  module fv_grid_utils_mod
@@ -73,7 +73,7 @@
 !   </tr>
 ! </table>
 
- 
+
 #include <fms_platform.h>
  use constants_mod,   only: omega, pi=>pi_8, cnst_radius=>radius
  use mpp_mod,         only: FATAL, mpp_error, WARNING
@@ -84,7 +84,7 @@
  use mpp_parameter_mod, only: CORNER, SCALAR_PAIR
 
  use fv_arrays_mod,   only: fv_atmos_type, fv_grid_type, fv_grid_bounds_type, &
-                            R_GRID, FVPRC, REAL4, REAL8 
+                            R_GRID, FVPRC, REAL4, REAL8
  use fv_eta_mod,      only: set_eta
  use fv_mp_mod,       only: ng, is_master
  use fv_mp_mod,       only: mp_reduce_sum, mp_reduce_min, mp_reduce_max
@@ -111,7 +111,7 @@
  logical, SAVE :: g_sum_initialized = .false.
  real(kind=R_GRID), SAVE :: global_area
 
- public f_p 
+ public f_p
  public ptop_min, big_number !CLEANUP: OK to keep since they are constants?
  public cos_angle
  public latlon2xyz, gnomonic_grids, gnomonic_grids_local, &
@@ -131,6 +131,14 @@
    MODULE PROCEDURE fill_ghost_r8
  END INTERFACE
 
+ interface g_sum
+    module procedure g_sum_r4_, g_sum_r8_
+ end interface
+
+ interface g_sum_r8
+    module procedure g_sum_r4_, g_sum_r8_
+ end interface
+
  contains
 
    subroutine grid_utils_init(Atm, npx, npy, npz, non_ortho, grid_type, c2l_order)
@@ -141,13 +149,13 @@
       integer, intent(in):: grid_type, c2l_order
 !
 ! Super (composite) grid:
- 
+
 !     9---4---8
 !     |       |
 !     1   5   3
 !     |       |
 !     6---2---7
- 
+
       real(kind=R_GRID) grid3(3,Atm%bd%isd:Atm%bd%ied+1,Atm%bd%jsd:Atm%bd%jed+1)
       real(kind=R_GRID) p1(3), p2(3), p3(3), p4(3), pp(3), ex(3), ey(3), e1(3), e2(3)
       real(kind=R_GRID) pp1(2), pp2(2), pp3(2)
@@ -354,7 +362,7 @@
            elseif (j==npy .and. .not. Atm%neststruct%nested) then
               call latlon2xyz( agrid(i,j-1,1:2), p1)
               call vect_cross(p2, p1, pp)
-           else 
+           else
               call latlon2xyz( agrid(i,j  ,1:2), p1)
               call latlon2xyz( agrid(i,j-1,1:2), p3)
               call vect_cross(p2, p3, p1)
@@ -387,11 +395,11 @@
 ! NW corner:
             cos_sg(i,j,9) = -cos_angle( grid3(1,i,j+1), grid3(1,i,j), grid3(1,i+1,j+1) )
 ! Mid-points by averaging:
-!!!         cos_sg(i,j,1) = 0.5*( cos_sg(i,j,6) + cos_sg(i,j,9) ) 
-!!!         cos_sg(i,j,2) = 0.5*( cos_sg(i,j,6) + cos_sg(i,j,7) ) 
-!!!         cos_sg(i,j,3) = 0.5*( cos_sg(i,j,7) + cos_sg(i,j,8) ) 
-!!!         cos_sg(i,j,4) = 0.5*( cos_sg(i,j,8) + cos_sg(i,j,9) ) 
-!!!!!       cos_sg(i,j,5) = 0.25*(cos_sg(i,j,6)+cos_sg(i,j,7)+cos_sg(i,j,8)+cos_sg(i,j,9)) 
+!!!         cos_sg(i,j,1) = 0.5*( cos_sg(i,j,6) + cos_sg(i,j,9) )
+!!!         cos_sg(i,j,2) = 0.5*( cos_sg(i,j,6) + cos_sg(i,j,7) )
+!!!         cos_sg(i,j,3) = 0.5*( cos_sg(i,j,7) + cos_sg(i,j,8) )
+!!!         cos_sg(i,j,4) = 0.5*( cos_sg(i,j,8) + cos_sg(i,j,9) )
+!!!!!       cos_sg(i,j,5) = 0.25*(cos_sg(i,j,6)+cos_sg(i,j,7)+cos_sg(i,j,8)+cos_sg(i,j,9))
 ! No averaging -----
             call latlon2xyz(agrid(i,j,1:2), p3)   ! righ-hand system consistent with grid3
                call mid_pt3_cart(grid3(1,i,j), grid3(1,i,j+1), p1)
@@ -422,30 +430,30 @@
       if (.not. Atm%neststruct%nested) then
       if ( sw_corner ) then
            do i=-2,0
-              sin_sg(0,i,3) = sin_sg(i,1,2) 
-              sin_sg(i,0,4) = sin_sg(1,i,1) 
+              sin_sg(0,i,3) = sin_sg(i,1,2)
+              sin_sg(i,0,4) = sin_sg(1,i,1)
            enddo
       endif
       if ( nw_corner ) then
            do i=npy,npy+2
-              sin_sg(0,i,3) = sin_sg(npy-i,npy-1,4) 
+              sin_sg(0,i,3) = sin_sg(npy-i,npy-1,4)
            enddo
            do i=-2,0
-              sin_sg(i,npy,2) = sin_sg(1,npx+i,1) 
+              sin_sg(i,npy,2) = sin_sg(1,npx+i,1)
            enddo
       endif
       if ( se_corner ) then
            do j=-2,0
-              sin_sg(npx,j,1) = sin_sg(npx-j,1,2) 
+              sin_sg(npx,j,1) = sin_sg(npx-j,1,2)
            enddo
            do i=npx,npx+2
-              sin_sg(i,0,4) = sin_sg(npx-1,npx-i,3) 
+              sin_sg(i,0,4) = sin_sg(npx-1,npx-i,3)
            enddo
       endif
       if ( ne_corner ) then
            do i=npy,npy+2
-              sin_sg(npx,i,1) = sin_sg(i,npy-1,4) 
-              sin_sg(i,npy,2) = sin_sg(npx-1,i,3) 
+              sin_sg(npx,i,1) = sin_sg(i,npy-1,4)
+              sin_sg(i,npy,2) = sin_sg(npx-1,i,3)
            enddo
         endif
      endif
@@ -487,7 +495,7 @@
      ew(1,:,:,1)=1.
      ew(2,:,:,1)=0.
      ew(3,:,:,1)=0.
-                                   
+
      ew(1,:,:,2)=0.
      ew(2,:,:,2)=1.
      ew(3,:,:,2)=0.
@@ -495,7 +503,7 @@
      es(1,:,:,1)=1.
      es(2,:,:,1)=0.
      es(3,:,:,1)=0.
-                                   
+
      es(1,:,:,2)=0.
      es(2,:,:,2)=1.
      es(3,:,:,2)=0.
@@ -571,7 +579,7 @@
             rsin_v(i,j) =  1. / max(tiny_number, sina_v(i,j)**2)
          enddo
       enddo
-     
+
       do j=jsd,jed
          do i=isd,ied
             cosa_s(i,j) = cos_sg(i,j,5)
@@ -616,8 +624,8 @@
          enddo
       enddo
 
-      !EXPLANATION HERE: calling fill_ghost overwrites **SOME** of the sin_sg 
-      !values along the outward-facing edge of a tile in the corners, which is incorrect. 
+      !EXPLANATION HERE: calling fill_ghost overwrites **SOME** of the sin_sg
+      !values along the outward-facing edge of a tile in the corners, which is incorrect.
       !What we will do is call fill_ghost and then fill in the appropriate values
 
       if (.not. Atm%neststruct%nested) then
@@ -632,28 +640,28 @@
 ! -------------------------------
       if ( sw_corner ) then
            do i=0,-2,-1
-              sin_sg(0,i,3) = sin_sg(i,1,2) 
-              sin_sg(i,0,4) = sin_sg(1,i,1) 
-              cos_sg(0,i,3) = cos_sg(i,1,2) 
-              cos_sg(i,0,4) = cos_sg(1,i,1) 
+              sin_sg(0,i,3) = sin_sg(i,1,2)
+              sin_sg(i,0,4) = sin_sg(1,i,1)
+              cos_sg(0,i,3) = cos_sg(i,1,2)
+              cos_sg(i,0,4) = cos_sg(1,i,1)
 !!!           cos_sg(0,i,7) = cos_sg(i,1,6)
 !!!           cos_sg(0,i,8) = cos_sg(i,1,7)
 !!!           cos_sg(i,0,8) = cos_sg(1,i,9)
 !!!           cos_sg(i,0,9) = cos_sg(1,i,6)
            enddo
 !!!        cos_sg(0,0,8) = 0.5*(cos_sg(0,1,7)+cos_sg(1,0,9))
-           
+
       endif
       if ( nw_corner ) then
            do i=npy,npy+2
-              sin_sg(0,i,3) = sin_sg(npy-i,npy-1,4) 
-              cos_sg(0,i,3) = cos_sg(npy-i,npy-1,4) 
+              sin_sg(0,i,3) = sin_sg(npy-i,npy-1,4)
+              cos_sg(0,i,3) = cos_sg(npy-i,npy-1,4)
 !!!           cos_sg(0,i,7) = cos_sg(npy-i,npy-1,8)
 !!!           cos_sg(0,i,8) = cos_sg(npy-i,npy-1,9)
            enddo
            do i=0,-2,-1
-              sin_sg(i,npy,2) = sin_sg(1,npy-i,1) 
-              cos_sg(i,npy,2) = cos_sg(1,npy-i,1) 
+              sin_sg(i,npy,2) = sin_sg(1,npy-i,1)
+              cos_sg(i,npy,2) = cos_sg(1,npy-i,1)
 !!!           cos_sg(i,npy,6) = cos_sg(1,npy-i,9)
 !!!           cos_sg(i,npy,7) = cos_sg(1,npy-i,6)
            enddo
@@ -661,16 +669,16 @@
       endif
       if ( se_corner ) then
            do j=0,-2,-1
-              sin_sg(npx,j,1) = sin_sg(npx-j,1,2) 
-              cos_sg(npx,j,1) = cos_sg(npx-j,1,2) 
-!!!           cos_sg(npx,j,6) = cos_sg(npx-j,1,7) 
-!!!           cos_sg(npx,j,9) = cos_sg(npx-j,1,6) 
+              sin_sg(npx,j,1) = sin_sg(npx-j,1,2)
+              cos_sg(npx,j,1) = cos_sg(npx-j,1,2)
+!!!           cos_sg(npx,j,6) = cos_sg(npx-j,1,7)
+!!!           cos_sg(npx,j,9) = cos_sg(npx-j,1,6)
            enddo
            do i=npx,npx+2
-              sin_sg(i,0,4) = sin_sg(npx-1,npx-i,3) 
-              cos_sg(i,0,4) = cos_sg(npx-1,npx-i,3) 
-!!!           cos_sg(i,0,9) = cos_sg(npx-1,npx-i,8) 
-!!!           cos_sg(i,0,8) = cos_sg(npx-1,npx-i,7) 
+              sin_sg(i,0,4) = sin_sg(npx-1,npx-i,3)
+              cos_sg(i,0,4) = cos_sg(npx-1,npx-i,3)
+!!!           cos_sg(i,0,9) = cos_sg(npx-1,npx-i,8)
+!!!           cos_sg(i,0,8) = cos_sg(npx-1,npx-i,7)
            enddo
 !!!        cos_sg(npx,0,9) = 0.5*(cos_sg(npx,1,6)+cos_sg(npx-1,0,8))
       endif
@@ -686,7 +694,7 @@
 !!!         cos_sg(npx+i,npy,7) = cos_sg(npx-1,npy+i,8)
          end do
 !!!      cos_sg(npx,npy,6) = 0.5*(cos_sg(npx-1,npy,7)+cos_sg(npx,npy-1,9))
-      endif     
+      endif
 
    else
            sina = 1.
@@ -695,9 +703,9 @@
            rsin2  = 1.
            sina_u = 1.
            sina_v = 1.
-           cosa_u = 0.        
-           cosa_v = 0.        
-           cosa_s = 0.        
+           cosa_u = 0.
+           cosa_v = 0.
+           cosa_s = 0.
            rsin_u = 1.
            rsin_v = 1.
    endif
@@ -713,12 +721,12 @@
          do j=js-1,je+1
             if ( is==1 ) then
                i=1
-               call vect_cross(ew(1,i,j,1), grid3(1,i,j+1), grid3(1,i,j)) 
+               call vect_cross(ew(1,i,j,1), grid3(1,i,j+1), grid3(1,i,j))
                call normalize_vect( ew(1,i,j,1) )
             endif
             if ( (ie+1)==npx ) then
                i=npx
-               call vect_cross(ew(1,i,j,1), grid3(1,i,j+1), grid3(1,i,j)) 
+               call vect_cross(ew(1,i,j,1), grid3(1,i,j+1), grid3(1,i,j))
                call normalize_vect( ew(1,i,j,1) )
             endif
          enddo
@@ -726,14 +734,14 @@
          if ( js==1 ) then
             j=1
             do i=is-1,ie+1
-               call vect_cross(es(1,i,j,2), grid3(1,i,j),grid3(1,i+1,j)) 
+               call vect_cross(es(1,i,j,2), grid3(1,i,j),grid3(1,i+1,j))
                call normalize_vect( es(1,i,j,2) )
             enddo
          endif
          if ( (je+1)==npy ) then
             j=npy
             do i=is-1,ie+1
-               call vect_cross(es(1,i,j,2), grid3(1,i,j),grid3(1,i+1,j)) 
+               call vect_cross(es(1,i,j,2), grid3(1,i,j),grid3(1,i+1,j))
                call normalize_vect( es(1,i,j,2) )
             enddo
          endif
@@ -750,7 +758,7 @@
      enddo
      do j=js,je
         do i=is,ie+1
-           call vect_cross(en2(1:3,i,j), grid3(1,i,j+1), grid3(1,i,j)) 
+           call vect_cross(en2(1:3,i,j), grid3(1,i,j+1), grid3(1,i,j))
            call normalize_vect( en2(1:3,i,j) )
         enddo
      enddo
@@ -758,7 +766,7 @@
 ! Make unit vectors for the coordinate extension:
 !-------------------------------------------------------------
   endif
- 
+
   do j=jsd,jed+1
      if ((j==1 .OR. j==npy) .and. .not. Atm%neststruct%nested) then
         do i=isd,ied
@@ -899,7 +907,7 @@
 
   end subroutine grid_utils_init
 
- 
+
   subroutine grid_utils_end
 ! deallocate sst_ncep (if allocated)
 #ifndef DYCORE_SOLO
@@ -908,9 +916,9 @@
 #endif
   end subroutine grid_utils_end
 
-!>@brief The subroutine 'direct_transform' performs a direct transformation of the 
+!>@brief The subroutine 'direct_transform' performs a direct transformation of the
 !! standard (symmetrical) cubic grid to a locally enhanced high-res grid on the sphere.
-!>@details It is an application of the Schmidt transformation at the south pole 
+!>@details It is an application of the Schmidt transformation at the south pole
 !! followed by a pole_shift_to_target (rotation) operation.
   subroutine direct_transform(c, i1, i2, j1, j2, lon_p, lat_p, n, lon, lat)
     real(kind=R_GRID),    intent(in):: c              !< Stretching factor
@@ -940,13 +948,13 @@
     do j=j1,j2
        do i=i1,i2
           if ( abs(c2m1) > 1.d-7 ) then
-               sin_lat = sin(lat(i,j)) 
+               sin_lat = sin(lat(i,j))
                lat_t = asin( (c2m1+c2p1*sin_lat)/(c2p1+c2m1*sin_lat) )
           else         ! no stretching
                lat_t = lat(i,j)
           endif
-          sin_lat = sin(lat_t) 
-          cos_lat = cos(lat_t) 
+          sin_lat = sin(lat_t)
+          cos_lat = cos(lat_t)
             sin_o = -(sin_p*sin_lat + cos_p*cos_lat*cos(lon(i,j)))
           if ( (1.-abs(sin_o)) < 1.d-7 ) then    ! poles
                lon(i,j) = 0.d0
@@ -971,7 +979,7 @@
        real(kind=R_GRID),intent(in):: v1(3), v2(3)
        real (f_p) :: vp1(3), vp2(3), prod16
        integer k
-      
+
          do k=1,3
             vp1(k) = real(v1(k),kind=f_p)
             vp2(k) = real(v2(k),kind=f_p)
@@ -997,7 +1005,7 @@
  real(kind=R_GRID) d1, d2
  integer i, j
  integer im2, jm2
- 
+
  integer :: is,  ie,  js,  je
  integer :: isd, ied, jsd, jed
 
@@ -1195,7 +1203,7 @@
      edge_n = big_number
      edge_w = big_number
      edge_e = big_number
- 
+
 ! west edge:
 !----------------------------------------------------------
 ! p_west(j) = (1.-edge_w(j)) * p(j) + edge_w(j) * p(j-1)
@@ -1292,15 +1300,15 @@
  end subroutine gnomonic_grids
 
 !-----------------------------------------------------
-!>@brief The subroutine 'gnomonic_ed' computes the equal 
+!>@brief The subroutine 'gnomonic_ed' computes the equal
 !! distances along the 4 edges of the cubed sphere.
 !-----------------------------------------------------
-!>@details Properties: 
+!>@details Properties:
 !!  defined by intersections of great circles
 !!  max(dx,dy; global) / min(dx,dy; global) = sqrt(2) = 1.4142
 !!  Max(aspect ratio) = 1.06089
-!!  the N-S coordinate curves are const longitude on the 4 
-!!  faces with equator 
+!!  the N-S coordinate curves are const longitude on the 4
+!!  faces with equator
 !! For C2000: (dx_min, dx_max) = (3.921, 5.545) in km unit
 !! This is the grid of choice for global cloud resolving
  subroutine gnomonic_ed(im, lamda, theta)
@@ -1315,7 +1323,7 @@
  real(f_p):: rsq3, alpha, delx, dely
  integer i, j, k
 
-  rsq3 = 1.d0/sqrt(3.d0) 
+  rsq3 = 1.d0/sqrt(3.d0)
  alpha = asin( rsq3 )
 
 ! Ranges:
@@ -1390,13 +1398,13 @@
 
  end subroutine gnomonic_ed
 
-!>@brief The subroutine 'gnomonic_ed_limited' creates a limited-area 
+!>@brief The subroutine 'gnomonic_ed_limited' creates a limited-area
 !! equidistant gnomonic grid with corners given by lL (lower-left),
-!! lR (lower-right), uL (upper-left),and uR (upper-right) with im by in 
-!! cells. 
-!>@details 'lamda' and 'theta' are the latitude-longitude coordinates of 
-!! the corners of the cells. This formulation assumes the coordinates given 
-!! are on the 'prototypical equatorial panel' given by gnomonic_ed. 
+!! lR (lower-right), uL (upper-left),and uR (upper-right) with im by in
+!! cells.
+!>@details 'lamda' and 'theta' are the latitude-longitude coordinates of
+!! the corners of the cells. This formulation assumes the coordinates given
+!! are on the 'prototypical equatorial panel' given by gnomonic_ed.
 !! The resulting gnomonic limited area grid can then be translated and/or
 !! scaled to its appropriate location on another panel if desired.
  subroutine gnomonic_ed_limited(im, in, nghost, lL, lR, uL, uR, lamda, theta)
@@ -1410,8 +1418,8 @@
    real(kind=R_GRID) p1(2), p2(2)
    real(f_p):: rsq3, alpha, delx, dely
    integer i, j, k, irefl
-   
-   rsq3 = 1.d0/sqrt(3.d0) 
+
+   rsq3 = 1.d0/sqrt(3.d0)
    alpha = asin( rsq3 )
 
    lamda(1,1) = lL(1);         theta(1,1) = lL(2)
@@ -1455,7 +1463,7 @@
    end do
 
    !Get cartesian coordinates and project onto the cube face with x = -rsq3
-   
+
    i=1
    do j=1-nghost,in+1+nghost
       call latlon2xyz2(lamda(i,j), theta(i,j), pp(1,i,j))
@@ -1492,7 +1500,7 @@
         lamda(1-nghost:im+1+nghost,1-nghost:in+1+nghost), &
         theta(1-nghost:im+1+nghost,1-nghost:in+1+nghost))
    !call cart_to_latlon( (im+1)*(in+1), pp(:,1:im+1,1:in+1), lamda(1:im+1,1:in+1), theta(1:im+1,1:in+1))
-   
+
    ! Compute great-circle-distance "resolution" along the face edge:
    if ( is_master() ) then
       p1(1) = lamda(1,1);    p1(2) = theta(1,1)
@@ -1522,7 +1530,7 @@
 
  dp = 0.5d0*pi/real(im,kind=R_GRID)
 
- rsq3 = 1.d0/sqrt(3.d0) 
+ rsq3 = 1.d0/sqrt(3.d0)
  do k=1,im+1
     do j=1,im+1
        p(1,j,k) =-rsq3               ! constant
@@ -1548,9 +1556,9 @@
 
 ! Face-2
 
- rsq3 = 1.d0/sqrt(3.d0) 
+ rsq3 = 1.d0/sqrt(3.d0)
  xf = -rsq3
- y0 =  rsq3;  dy = -2.d0*rsq3/im 
+ y0 =  rsq3;  dy = -2.d0*rsq3/im
  z0 = -rsq3;  dz =  2.d0*rsq3/im
 
  do k=1,im+1
@@ -1583,7 +1591,7 @@
        ip = im + 2 - i
        avg = 0.5d0*(lamda(i,j)-lamda(ip,j))
        lamda(i, j) = avg + pi
-       lamda(ip,j) = pi - avg 
+       lamda(ip,j) = pi - avg
        avg = 0.5d0*(theta(i,j)+theta(ip,j))
        theta(i, j) = avg
        theta(ip,j) = avg
@@ -1643,7 +1651,7 @@
  end subroutine latlon2xyz
 
 !>@brief The subroutine 'mirror_xyz' computes the mirror image of p0(x0, y0, z0)
-!! as p(x, y, z) given the "mirror" as defined by p1(x1, y1, z1), p2(x2, y2, z2), 
+!! as p(x, y, z) given the "mirror" as defined by p1(x1, y1, z1), p2(x2, y2, z2),
 !! and the center of the sphere.
  subroutine mirror_xyz(p1, p2, p0, p)
 !-------------------------------------------------------------------------------
@@ -1651,7 +1659,7 @@
 !
 ! p(k) = p0(k) - 2 * [p0(k) .dot. NB(k)] * NB(k)
 !
-! where 
+! where
 !       NB(k) = p1(k) .cross. p2(k)         ---- direction of NB is imaterial
 !       the normal unit vector to the "mirror" plane
 !-------------------------------------------------------------------------------
@@ -1675,11 +1683,11 @@
     p(k) = p0(k) - 2.d0*pdot*nb(k)
  enddo
 
- end subroutine mirror_xyz 
+ end subroutine mirror_xyz
 
-!>@brief The subroutine 'mirror_latlon' computes the mirror image of 
+!>@brief The subroutine 'mirror_latlon' computes the mirror image of
 !! (lon0, lat0) as  (lon3, lat3) given the "mirror" as defined by
-!! (lon1, lat1), (lon2, lat2), and center of the sphere. 
+!! (lon1, lat1), (lon2, lat2), and center of the sphere.
  subroutine mirror_latlon(lon1, lat1, lon2, lat2, lon0, lat0, lon3, lat3)
  real(kind=R_GRID), intent(in):: lon1, lat1, lon2, lat2, lon0, lat0
  real(kind=R_GRID), intent(out):: lon3, lat3
@@ -1739,7 +1747,7 @@
      if ( lon < 0.) lon = real(2.,kind=f_p)*pi + lon
 ! RIGHT_HAND system:
      lat = asin(p(3))
-     
+
      xs(i) = lon
      ys(i) = lat
 ! q Normalized:
@@ -1750,7 +1758,7 @@
 
  end  subroutine cart_to_latlon
 
-!>@brief The subroutine 'vect_cross performs cross products 
+!>@brief The subroutine 'vect_cross performs cross products
 !! of 3D vectors: e = P1 X P2
  subroutine vect_cross(e, p1, p2)
  real(kind=R_GRID), intent(in) :: p1(3), p2(3)
@@ -1855,7 +1863,7 @@
  integer k
 
     pdot = e(1)**2 + e(2)**2 + e(3)**2
-    pdot = sqrt( pdot ) 
+    pdot = sqrt( pdot )
 
     do k=1,3
        e(k) = e(k) / pdot
@@ -1896,7 +1904,7 @@
  end subroutine intp_great_circle
 
 !>@brief The subroutine 'spherical_linear_interpolation' interpolates along the great circle connecting points p1 and p2.
-!>@details The routine uses the formula taken from <http://en.wikipedia.org/wiki/Slerp> 
+!>@details The routine uses the formula taken from <http://en.wikipedia.org/wiki/Slerp>
 !! and is attributed to Glenn Davis based on a concept by Ken Shoemake.
  subroutine spherical_linear_interpolation(beta, p1, p2, pb)
 
@@ -1907,7 +1915,7 @@
  real(kind=R_GRID):: pm(2)
  real(kind=R_GRID):: e1(3), e2(3), eb(3)
  real(kind=R_GRID):: dd, alpha, omg
- 
+
  if ( abs(p1(1) - p2(1)) < 1.d-8 .and. abs(p1(2) - p2(2)) < 1.d-8) then
     call mpp_error(WARNING, 'spherical_linear_interpolation was passed two colocated points.')
     pb = p1
@@ -1918,13 +1926,13 @@
  call latlon2xyz(p2, e2)
 
  dd = sqrt( e1(1)**2 + e1(2)**2 + e1(3)**2 )
- 
+
  e1(1) = e1(1) / dd
  e1(2) = e1(2) / dd
  e1(3) = e1(3) / dd
 
  dd = sqrt( e2(1)**2 + e2(2)**2 + e2(3)**2 )
- 
+
  e2(1) = e2(1) / dd
  e2(2) = e2(2) / dd
  e2(3) = e2(3) / dd
@@ -2012,7 +2020,7 @@
  real function great_circle_dist( q1, q2, radius )
       real(kind=R_GRID), intent(IN)           :: q1(2), q2(2)
       real(kind=R_GRID), intent(IN), optional :: radius
- 
+
       real (f_p):: p1(2), p2(2)
       real (f_p):: beta
       integer n
@@ -2033,12 +2041,12 @@
 
   end function great_circle_dist
 
-  !>@brief The function 'great_circle_dist_cart' calculates the 
-  !! normalized great circle distance between 'v1' and 'v2'.      
-  !>@date July 2006                                               
-  !>@version 0.1                                                                                                                     
+  !>@brief The function 'great_circle_dist_cart' calculates the
+  !! normalized great circle distance between 'v1' and 'v2'.
+  !>@date July 2006
+  !>@version 0.1
   function great_circle_dist_cart(v1, v2, radius)
-   
+
     real(kind=R_GRID) :: great_circle_dist_cart
     real(kind=R_GRID), dimension(3), intent(in) :: v1, v2
     real(kind=R_GRID), intent(IN), optional :: radius
@@ -2046,7 +2054,7 @@
 
     norm = (v1(1)*v1(1)+v1(2)*v1(2)+v1(3)*v1(3))                  &
                 *(v2(1)*v2(1)+v2(2)*v2(2)+v2(3)*v2(3))
-    
+
     !if (norm <= 0.) print*, 'negative norm: ', norm, v1, v2
 
     great_circle_dist_cart=(v1(1)*v2(1)+v1(2)*v2(2)+v1(3)*v2(3))                  &
@@ -2060,18 +2068,18 @@
 
 
   end function great_circle_dist_cart
-                                                                                                           
- !>@brief The subroutine 'intersect' calculates the intersection of two great circles.       
- !>@details input:                                                           
- !> a1, a2,  -   pairs of points on sphere in cartesian coordinates  
- !> b1, b2       defining great circles                              
- !> radius   -   radius of the sphere                                                                                                
- !> output:                                                          
- !> x_inter  -   nearest intersection point of the great circles     
- !> local_a  -   true if x1 between (a1, a2)                         
- !> local_b  -   true if x1 between (b1, b2)                                        
- !>@date July 2006                                                 
- !>@version: 0.1        
+
+ !>@brief The subroutine 'intersect' calculates the intersection of two great circles.
+ !>@details input:
+ !> a1, a2,  -   pairs of points on sphere in cartesian coordinates
+ !> b1, b2       defining great circles
+ !> radius   -   radius of the sphere
+ !> output:
+ !> x_inter  -   nearest intersection point of the great circles
+ !> local_a  -   true if x1 between (a1, a2)
+ !> local_b  -   true if x1 between (b1, b2)
+ !>@date July 2006
+ !>@version: 0.1
  subroutine intersect(a1,a2,b1,b2,radius,x_inter,local_a,local_b)
 
     real(kind=R_GRID), dimension(3), intent(in)  :: a1, a2, b1, b2
@@ -2138,7 +2146,7 @@
 
       dx(:)=x1(:)-x2(:)
       dist=dx(1)*dx(1)+dx(2)*dx(2)+dx(3)*dx(3)
-    
+
       dx(:)=x1(:)-x_inter(:)
       dist1=dx(1)*dx(1)+dx(2)*dx(2)+dx(3)*dx(3)
       dx(:)=x2(:)-x_inter(:)
@@ -2149,23 +2157,23 @@
       else
          local=.false.
       endif
-      
+
     end subroutine check_local
     !------------------------------------------------------------------!
   end subroutine intersect
- 
- !>@brief The subroutine 'intersect_cross' calculates the intersection of two great circles.       
- !>@details input:                                                           
- !> a1, a2,  -   pairs of points on sphere in cartesian coordinates  
- !> b1, b2       defining great circles                              
- !> radius   -   radius of the sphere                                
- !>                                                                  
- !> output:                                                          
- !> x_inter  -   nearest intersection point of the great circles     
- !> local_a  -   true if x1 between (a1, a2)                         
- !> local_b  -   true if x1 between (b1, b2)     
+
+ !>@brief The subroutine 'intersect_cross' calculates the intersection of two great circles.
+ !>@details input:
+ !> a1, a2,  -   pairs of points on sphere in cartesian coordinates
+ !> b1, b2       defining great circles
+ !> radius   -   radius of the sphere
+ !>
+ !> output:
+ !> x_inter  -   nearest intersection point of the great circles
+ !> local_a  -   true if x1 between (a1, a2)
+ !> local_b  -   true if x1 between (b1, b2)
  subroutine intersect_cross(a1,a2,b1,b2,radius,x_inter,local_a,local_b)
-  
+
     real(kind=R_GRID), dimension(3), intent(in)  :: a1, a2, b1, b2
     real(kind=R_GRID), intent(in) :: radius
     real(kind=R_GRID), dimension(3), intent(out) :: x_inter
@@ -2177,7 +2185,7 @@
     !! vector v1, which is the cross product of any two vectors lying
     !! in the plane; here, we use position vectors, which are unit
     !! vectors lying in the plane and rooted at the center of the
-    !! sphere. 
+    !! sphere.
     !> The intersection of two great circles is where the the
     !! intersection of the planes, a line, itself intersects the
     !! sphere. Since the planes are defined by perpendicular vectors
@@ -2195,7 +2203,7 @@
     !Normalize
     x_inter = x_inter/sqrt(x_inter(1)**2 + x_inter(2)**2 + x_inter(3)**2)
 
-    ! check if intersection is between pairs of points on sphere 
+    ! check if intersection is between pairs of points on sphere
     call get_nearest()
     call check_local(a1,a2,local_a)
     call check_local(b1,b2,local_b)
@@ -2224,7 +2232,7 @@
 
       dx(:)=x1(:)-x2(:)
       dist=dx(1)*dx(1)+dx(2)*dx(2)+dx(3)*dx(3)
-    
+
       dx(:)=x1(:)-x_inter(:)
       dist1=dx(1)*dx(1)+dx(2)*dx(2)+dx(3)*dx(3)
       dx(:)=x2(:)-x_inter(:)
@@ -2235,7 +2243,7 @@
       else
          local=.false.
       endif
-      
+
     end subroutine check_local
     !------------------------------------------------------------------!
   end subroutine intersect_cross
@@ -2343,7 +2351,7 @@
 
 
  subroutine cubed_to_latlon(u, v, ua, va, gridstruct, npx, npy, km, mode, grid_type, domain, nested, c2l_ord, bd)
- type(fv_grid_bounds_type), intent(IN) :: bd 
+ type(fv_grid_bounds_type), intent(IN) :: bd
  integer, intent(in) :: km, npx, npy, grid_type, c2l_ord
  integer, intent(in) :: mode   ! update if present
  type(fv_grid_type), intent(IN) :: gridstruct
@@ -2375,7 +2383,7 @@
   real, intent(out)::  va(bd%isd:bd%ied, bd%jsd:bd%jed,km)
   type(domain2d), intent(INOUT) :: domain
   logical, intent(IN) :: nested
-! Local 
+! Local
 ! 4-pt Lagrange interpolation
   real :: a1 =  0.5625
   real :: a2 = -0.0625
@@ -2514,7 +2522,7 @@
   real, intent(out):: ua(bd%isd:bd%ied, bd%jsd:bd%jed,km)
   real, intent(out):: va(bd%isd:bd%ied, bd%jsd:bd%jed,km)
 !--------------------------------------------------------------
-! Local 
+! Local
   real wu(bd%is-1:bd%ie+1,  bd%js-1:bd%je+2)
   real wv(bd%is-1:bd%ie+2,  bd%js-1:bd%je+1)
   real u1(bd%is-1:bd%ie+1), v1(bd%is-1:bd%ie+1)
@@ -2622,12 +2630,12 @@
          ec(k) = ec(k) / dd   ! cell center position
       enddo
 
-! Perform the "extrapolation" in 3D (x-y-z) 
+! Perform the "extrapolation" in 3D (x-y-z)
       do k=1,3
-         qq1(k) = ec(k) + fac*(p1(k)-ec(k)) 
-         qq2(k) = ec(k) + fac*(p2(k)-ec(k)) 
-         qq3(k) = ec(k) + fac*(p3(k)-ec(k)) 
-         qq4(k) = ec(k) + fac*(p4(k)-ec(k)) 
+         qq1(k) = ec(k) + fac*(p1(k)-ec(k))
+         qq2(k) = ec(k) + fac*(p2(k)-ec(k))
+         qq3(k) = ec(k) + fac*(p3(k)-ec(k))
+         qq4(k) = ec(k) + fac*(p4(k)-ec(k))
       enddo
 
 !--------------------------------------------------------
@@ -2747,12 +2755,12 @@
 
  end function get_area
 
-  !>@brief The function 'dist2side' calculates the shortest normalized distance 
-  !! on a sphere from point to straight line defined by 'v1' and 'v2'.  
+  !>@brief The function 'dist2side' calculates the shortest normalized distance
+  !! on a sphere from point to straight line defined by 'v1' and 'v2'.
   !>@details This version uses cartesian coordinates.
-  !>@date Feb 2007                                                
-  !>@version 0.1    
-  function dist2side(v1, v2, point)  
+  !>@date Feb 2007
+  !>@version 0.1
+  function dist2side(v1, v2, point)
     real(kind=R_GRID) :: dist2side
     real(kind=R_GRID), dimension(3), intent(in) :: v1, v2, point
 
@@ -2764,7 +2772,7 @@
 
   end function dist2side
 
-  !>@brief The function 'dist2side_latlon' is the version of 'dist2side' that 
+  !>@brief The function 'dist2side_latlon' is the version of 'dist2side' that
   !! takes points in latitude-longitude coordinates.
   function dist2side_latlon(v1,v2,point)
 
@@ -2792,7 +2800,7 @@
 
 
  real(kind=R_GRID) function spherical_angle(p1, p2, p3)
- 
+
 !           p3
 !         /
 !        /
@@ -2819,13 +2827,13 @@
 ! Page 41, Silverman's book on Vector Algebra; spherical trigonmetry
 !-------------------------------------------------------------------
 ! Vector P:
-   px = e1(2)*e2(3) - e1(3)*e2(2) 
-   py = e1(3)*e2(1) - e1(1)*e2(3) 
-   pz = e1(1)*e2(2) - e1(2)*e2(1) 
+   px = e1(2)*e2(3) - e1(3)*e2(2)
+   py = e1(3)*e2(1) - e1(1)*e2(3)
+   pz = e1(1)*e2(2) - e1(2)*e2(1)
 ! Vector Q:
-   qx = e1(2)*e3(3) - e1(3)*e3(2) 
-   qy = e1(3)*e3(1) - e1(1)*e3(3) 
-   qz = e1(1)*e3(2) - e1(2)*e3(1) 
+   qx = e1(2)*e3(3) - e1(3)*e3(2)
+   qy = e1(3)*e3(1) - e1(1)*e3(3)
+   qz = e1(1)*e3(2) - e1(2)*e3(1)
 
    ddd = (px*px+py*py+pz*pz)*(qx*qx+qy*qy+qz*qz)
 
@@ -2839,7 +2847,7 @@
            if (ddd < 0.d0) then
               angle = 4.d0*atan(1.0d0) !should be pi
            else
-              angle = 0.d0 
+              angle = 0.d0
            end if
         else
              angle = acos( ddd )
@@ -2854,9 +2862,9 @@
  real(kind=R_GRID) function cos_angle(p1, p2, p3)
 ! As spherical_angle, but returns the cos(angle)
 !       p3
-!       ^  
-!       |  
-!       | 
+!       ^
+!       |
+!       |
 !       p1 ---> p2
 !
  real(kind=R_GRID), intent(in):: p1(3), p2(3), p3(3)
@@ -2877,19 +2885,19 @@
 ! Page 41, Silverman's book on Vector Algebra; spherical trigonmetry
 !-------------------------------------------------------------------
 ! Vector P:= e1 X e2
-   px = e1(2)*e2(3) - e1(3)*e2(2) 
-   py = e1(3)*e2(1) - e1(1)*e2(3) 
-   pz = e1(1)*e2(2) - e1(2)*e2(1) 
+   px = e1(2)*e2(3) - e1(3)*e2(2)
+   py = e1(3)*e2(1) - e1(1)*e2(3)
+   pz = e1(1)*e2(2) - e1(2)*e2(1)
 
 ! Vector Q: e1 X e3
-   qx = e1(2)*e3(3) - e1(3)*e3(2) 
-   qy = e1(3)*e3(1) - e1(1)*e3(3) 
-   qz = e1(1)*e3(2) - e1(2)*e3(1) 
+   qx = e1(2)*e3(3) - e1(3)*e3(2)
+   qy = e1(3)*e3(1) - e1(1)*e3(3)
+   qz = e1(1)*e3(2) - e1(2)*e3(1)
 
 ! ddd = sqrt[ (P*P) (Q*Q) ]
    ddd = sqrt( (px**2+py**2+pz**2)*(qx**2+qy**2+qz**2) )
    if ( ddd > 0.d0 ) then
-        angle = (px*qx+py*qy+pz*qz) / ddd 
+        angle = (px*qx+py*qy+pz*qz) / ddd
    else
         angle = 1.d0
    endif
@@ -2897,8 +2905,8 @@
 
  end function cos_angle
 
- !>@brief The function 'g_sum' is the fast version of 'globalsum'. 
- real function g_sum(domain, p, ifirst, ilast, jfirst, jlast, ngc, area, mode, reproduce)
+ !>@brief The function 'g_sum_r4_' is the fast version of 'globalsum'.
+ real(KIND=REAL4) function g_sum_r4_(domain, p, ifirst, ilast, jfirst, jlast, ngc, area, mode, reproduce)
       integer, intent(IN) :: ifirst, ilast
       integer, intent(IN) :: jfirst, jlast, ngc
       integer, intent(IN) :: mode  ! if ==1 divided by area
@@ -2908,15 +2916,15 @@
       type(domain2d), intent(IN) :: domain
       integer :: i,j
       real(kind=REAL4) gsum
-      real :: tmp(ifirst:ilast,jfirst:jlast) 
+      real :: tmp(ifirst:ilast,jfirst:jlast)
       integer :: err
-        
+
       if ( .not. g_sum_initialized ) then
          global_area = mpp_global_sum(domain, area, flags=BITWISE_EFP_SUM)
          if ( is_master() ) write(*,*) 'Global Area=',global_area
          g_sum_initialized = .true.
       end if
- 
+
 !-------------------------
 ! FMS global sum algorithm:
 !-------------------------
@@ -2941,14 +2949,14 @@
       endif
 
       if ( mode==1 ) then
-           g_sum = gsum / global_area
+           g_sum_r4_ = gsum / global_area
       else
-           g_sum = gsum
+           g_sum_r4_ = gsum
       endif
- end function g_sum
+ end function g_sum_r4_
 
- !>@brief The function 'g_sum_r8' is the fast version of 'globalsum'. 
- real(kind=REAL8) function g_sum_r8(domain, p, ifirst, ilast, jfirst, jlast, ngc, area, mode, reproduce)
+ !>@brief The function 'g_sum_r8_' is the fast version of 'globalsum'.
+ real(kind=REAL8) function g_sum_r8_(domain, p, ifirst, ilast, jfirst, jlast, ngc, area, mode, reproduce)
       integer, intent(IN) :: ifirst, ilast
       integer, intent(IN) :: jfirst, jlast, ngc
       integer, intent(IN) :: mode  ! if ==1 divided by area
@@ -2966,9 +2974,9 @@
          if ( is_master() ) write(*,*) 'Global Area=',global_area
          g_sum_initialized = .true.
       end if
- 
+
 !-------------------------
-! FMS global sum algorithm: 
+! FMS global sum algorithm:
 !-------------------------
       if ( present(reproduce) ) then
          if (reproduce) then
@@ -2991,11 +2999,11 @@
       endif
 
       if ( mode==1 ) then
-           g_sum_r8 = gsum / global_area
+           g_sum_r8_ = gsum / global_area
       else
-           g_sum_r8 = gsum
+           g_sum_r8_ = gsum
       endif
- end function g_sum_r8
+ end function g_sum_r8_
 
 !>@brief The function 'global_qsum' computes the quick global sum without area weighting.
  real function global_qsum(p, ifirst, ilast, jfirst, jlast)
@@ -3004,7 +3012,7 @@
       real, intent(IN) :: p(ifirst:ilast,jfirst:jlast) !< field to be summed
       integer :: i,j
       real gsum
-         
+
       gsum = 0.
       do j=jfirst,jlast
          do i=ifirst,ilast
@@ -3087,7 +3095,7 @@
   ied = bd%ied
   jsd = bd%jsd
   jed = bd%jed
- 
+
      do j=jsd,jed
         do i=isd,ied
            if ( (i<1 .and. j<1) ) then
@@ -3127,7 +3135,7 @@
   ied = bd%ied
   jsd = bd%jsd
   jed = bd%jed
-  
+
      do j=jsd,jed
         do i=isd,ied
            if ( (i<1 .and. j<1) ) then
@@ -3188,7 +3196,7 @@
      ptop = ph(1)
      do j=js-1,je+1
         do i=is-1,ie+1
-           pe(i,1,j) = ptop 
+           pe(i,1,j) = ptop
         enddo
      enddo
 
@@ -3224,7 +3232,7 @@
   real(kind=R_GRID), intent (out), dimension (n,n):: x   !< inverted maxtrix
   real(kind=R_GRID), dimension (n,n) :: b
   integer indx(n)
- 
+
   do i = 1, n
      do j = 1, n
         b(i,j) = 0.0
@@ -3234,9 +3242,9 @@
   do i = 1, n
      b(i,i) = 1.0
   end do
- 
+
   call elgs (a,n,indx)
- 
+
   do i = 1, n-1
      do j = i+1, n
         do k = 1, n
@@ -3244,7 +3252,7 @@
         end do
      end do
   end do
- 
+
   do i = 1, n
      x(n,i) = b(indx(n),i)/a(indx(n),n)
      do j = n-1, 1, -1
@@ -3257,7 +3265,7 @@
   end do
 
  end subroutine invert_matrix
- 
+
 !>@brief The subroutine 'elgs' performs the partial-pivoting gaussian elimination.
 !>@details a(n,n) is the original matrix in the input and transformed matrix
 !! plus the pivoting element ratios below the diagonal in the output.
@@ -3269,7 +3277,7 @@
 !
   real(kind=R_GRID) :: c1, pie, pi1, pj
   real(kind=R_GRID), dimension (n) :: c
- 
+
   do i = 1, n
      indx(i) = i
   end do
@@ -3315,7 +3323,7 @@
        end do
      end do
   end do
- 
+
  end subroutine elgs
 
  subroutine get_latlon_vector(pp, elon, elat)
@@ -3334,8 +3342,8 @@
 
  end subroutine get_latlon_vector
 
- 
-  
+
+
 
  subroutine project_sphere_v( np, f, e )
 !---------------------------------
@@ -3461,7 +3469,7 @@
      real(R_GRID) :: b(1:im+1)
      integer i, j
 
-     rsq3 = 1./sqrt(3.) 
+     rsq3 = 1./sqrt(3.)
      alpha = asin( rsq3 )
      dely = alpha / im
 
@@ -3505,7 +3513,7 @@
      integer i,j
 
      dp = (pi/4) /real(im,R_GRID)
-     rsq3 = 1./sqrt(3.) 
+     rsq3 = 1./sqrt(3.)
      do j = lbound(lambda,2), ubound(lambda,2)
         do i = lbound(lambda,1), ubound(lambda,1)
            p(1,i,j) =-rsq3               ! constant
@@ -3536,7 +3544,7 @@
 
      ! Face-2
 
-     rsq3 = 1./sqrt(3.) 
+     rsq3 = 1./sqrt(3.)
      xf = -rsq3
      dx = rsq3/im
 
@@ -3555,37 +3563,37 @@
      ! vector version of cart_to_latlon1
      real(R_GRID), intent(inout) :: q(:,:,:)
      real(R_GRID), intent(inout) :: xs(:,:), ys(:,:)
-     
+
      ! local
      real(R_GRID), parameter:: esl=1.e-10
      real(R_GRID) :: p(3)
      real(R_GRID) :: dist, lat, lon
      integer i, j, k
-     
-     
+
+
      do j = 1, size(q,3)
         do i = 1, size(q,2)
            p = q(:,i,j)
-           
+
            dist = sqrt(p(1)**2 + p(2)**2 + p(3)**2)
            p = p/dist
-           
+
            if ( (abs(p(1))+abs(p(2)))  < esl ) then
               lon = 0.
            else
               lon = atan2( p(2), p(1) )   ! range [-pi,pi]
            endif
-           
+
            if ( lon < 0.) lon = 2.*pi + lon
            lat = asin(p(3))
-           
+
            xs(i,j) = lon
            ys(i,j) = lat
            ! q Normalized:
            q(:,i,j) = p
         enddo
      end do
-     
+
   end  subroutine cart_to_latlon_new
 
  end module fv_grid_utils_mod
