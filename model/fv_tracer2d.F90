@@ -67,7 +67,7 @@ module fv_tracer2d_mod
    use fv_mp_mod,         only: ng, mp_gather, is_master
    use fv_mp_mod,         only: group_halo_update_type
    use fv_mp_mod,         only: start_group_halo_update, complete_group_halo_update
-   use mpp_domains_mod,   only: mpp_update_domains, CGRID_NE, domain2d, mpp_get_boundary, mpp_global_sum, BITWISE_EFP_SUM
+   use mpp_domains_mod,   only: mpp_update_domains, CGRID_NE, domain2d, mpp_get_boundary
    use fv_timing_mod,     only: timing_on, timing_off
    use boundary_mod,      only: nested_grid_BC_apply_intT
    use fv_arrays_mod,     only: fv_grid_type, fv_flags_type, fv_nest_type, fv_atmos_type, fv_grid_bounds_type, REAL8
@@ -1008,29 +1008,30 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
        enddo
       end if
 
-! Compute Global Mass
-! -------------------
-      qsum(:,:) = 0.d0
-      do k=1,npz
-         qsum(:,:) = qsum(:,:) + (pleB(:,:,k+1)-pleB(:,:,k))
-      enddo
-      g_massB = g_sum_r8(domain, qsum, is,ie, js,je, 0, &
-                         gridstruct%area_64(is:ie,js:je), 1, .true.)
-      qsum(:,:) = 0.d0
-      do k=1,npz
-         qsum(:,:) = qsum(:,:) + (pleA(:,:,k+1)-pleA(:,:,k))
-      enddo
-      g_massA = g_sum_r8(domain, qsum, is,ie, js,je, 0, &
-                         gridstruct%area_64(is:ie,js:je), 1, .true.)
+     !! Compute Global Mass
+     !! -------------------
+     !qsum(:,:) = 0.d0
+     !do k=1,npz
+     !   qsum(:,:) = qsum(:,:) + (pleB(:,:,k+1)-pleB(:,:,k))
+     !enddo
+     !g_massB = g_sum_r8(domain, qsum, is,ie, js,je, 0, &
+     !                   gridstruct%area_64(is:ie,js:je), 1, .true.)
+     !qsum(:,:) = 0.d0
+     !do k=1,npz
+     !   qsum(:,:) = qsum(:,:) + (pleA(:,:,k+1)-pleA(:,:,k))
+     !enddo
+     !g_massA = g_sum_r8(domain, qsum, is,ie, js,je, 0, &
+     !                   gridstruct%area_64(is:ie,js:je), 1, .true.)
 
       ! Rescale tracers based on pleB and pleA for mass conservation
       !-------------------------------------------------------------
       do iq=1,nq
-         scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), &
-                                           pleB, pleA, g_massB, g_massA, npz, domain, gridstruct, bd)
-         ! Return tracers
-         !---------------
-         q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+        !scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), &
+        !                                  pleB, pleA, g_massB, g_massA, npz, domain, gridstruct, bd)
+        !! Return tracers
+        !!---------------
+        !q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+         q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq)
       enddo
 
 end subroutine offline_tracer_advection

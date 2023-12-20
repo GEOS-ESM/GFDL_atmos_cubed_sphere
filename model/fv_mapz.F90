@@ -53,7 +53,7 @@ module fv_mapz_mod
 !   </tr>
 !   <tr>
 !     <td>fv_grid_utils_mod</td>
-!     <td>g_sum, ptop_min</td>
+!     <td>g_sum_r8, ptop_min</td>
 !   </tr>
 !   <tr>
 !     <td>fv_mp_mod</td>
@@ -84,9 +84,9 @@ module fv_mapz_mod
   use constants_mod,     only: radius, pi=>pi_8, rvgas, rdgas, grav, hlv, hlf, hls, cp_air, cp_vapor
   use tracer_manager_mod,only: get_tracer_index
   use field_manager_mod, only: MODEL_ATMOS
-  use fv_grid_utils_mod, only: g_sum, ptop_min
+  use fv_grid_utils_mod, only: ptop_min
   use fv_fill_mod,       only: fillz
-  use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum, BITWISE_EFP_SUM, BITWISE_EXACT_SUM
+  use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum
   use mpp_mod,           only: NOTE, mpp_error, get_unit, mpp_root_pe, mpp_pe
   use fv_arrays_mod,     only: fv_grid_type, fv_flags_type
   use fv_timing_mod,     only: timing_on, timing_off
@@ -990,17 +990,17 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
     enddo   ! j-loop
 
 !$OMP single
-      tesum = mpp_global_sum(domain, te_2d*gridstruct%area_64(is:ie,js:je), &
-                             flags=BITWISE_EFP_SUM)
+     !tesum = g_sum_r8(domain, te_2d, is,ie, js,je, ng, gridstruct%area_64, 1, .true.) 
+      tesum = mpp_global_sum(domain, te_2d*gridstruct%area_64(is:ie,js:je))
       E_Flux = DBLE(consv)*tesum / DBLE(grav*pdt*4.*pi*radius**2)    ! unit: W/m**2
                                                            ! Note pdt is "phys" time step
       if ( hydrostatic ) then
-           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+          !zsum = g_sum_r8(domain, zsum0, is,ie, js,je, ng, gridstruct%area_64, 1, .true.)
+           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je))
            dtmp = tesum / DBLE(cp*zsum)
       else
-           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+          !zsum = g_sum_r8(domain, zsum1, is,ie, js,je, ng, gridstruct%area_64, 1, .true.)
+           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je))
            dtmp = tesum / DBLE(cv_air*zsum)
       endif
 !$OMP end single
@@ -1027,12 +1027,12 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
       E_Flux = consv
 !$OMP single
       if ( hydrostatic ) then
-           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+          !zsum = g_sum_r8(domain, zsum0, is,ie, js,je, ng, gridstruct%area_64, 1, .true.)
+           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je))
            dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cp*zsum)
       else
-           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+          !zsum = g_sum_r8(domain, zsum1, is,ie, js,je, ng, gridstruct%area_64, 1, .true.)
+           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je))
            dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cv_air*zsum)
       endif
 !$OMP end single

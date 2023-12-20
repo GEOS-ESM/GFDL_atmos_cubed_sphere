@@ -2907,7 +2907,7 @@
       real(kind=R_GRID), intent(IN) :: area(ifirst-ngc:ilast+ngc,jfirst-ngc:jlast+ngc)
       type(domain2d), intent(IN) :: domain
       integer :: i,j
-      real(kind=REAL4) gsum
+      real(kind=REAL8) gsum
       real :: tmp(ifirst:ilast,jfirst:jlast) 
       integer :: err
         
@@ -2922,22 +2922,15 @@
 !-------------------------
       if ( present(reproduce) ) then
          if (reproduce) then
-            gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast), &
-                                  flags=BITWISE_EFP_SUM)
+            gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast)) !, flags=BITWISE_EFP_SUM)
          else
-            gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast))
+            gsum = global_qsum_r8(p(:,:)*area(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast)
          endif
       else
 !-------------------------
 ! Quick local sum algorithm
 !-------------------------
-         gsum = 0.
-         do j=jfirst,jlast
-            do i=ifirst,ilast
-               gsum = gsum + p(i,j)*area(i,j)
-            enddo
-         enddo
-         call mp_reduce_sum(gsum)
+         gsum = global_qsum_r8(p(:,:)*area(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast)
       endif
 
       if ( mode==1 ) then
@@ -2972,22 +2965,15 @@
 !-------------------------
       if ( present(reproduce) ) then
          if (reproduce) then
-            gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast), &
-                                  flags=BITWISE_EFP_SUM)
+            gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast)) !, flags=BITWISE_EFP_SUM)
          else
-            gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast))
+            gsum = global_qsum_r8(p(:,:)*area(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast)
          endif
       else
 !-------------------------
 ! Quick local sum algorithm
 !-------------------------
-         gsum = 0.
-         do j=jfirst,jlast
-            do i=ifirst,ilast
-               gsum = gsum + p(i,j)*area(i,j)
-            enddo
-         enddo
-         call mp_reduce_sum(gsum)
+         gsum = global_qsum_r8(p(:,:)*area(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast)
       endif
 
       if ( mode==1 ) then
@@ -3016,6 +3002,25 @@
       global_qsum  = gsum
 
  end function global_qsum
+
+ real(kind=8) function global_qsum_r8(p, ifirst, ilast, jfirst, jlast)
+      integer, intent(IN) :: ifirst, ilast
+      integer, intent(IN) :: jfirst, jlast
+      real(kind=8), intent(IN) :: p(ifirst:ilast,jfirst:jlast) !< field to be summed
+      integer :: i,j
+      real(kind=8) gsum
+
+      gsum = 0.
+      do j=jfirst,jlast
+         do i=ifirst,ilast
+            gsum = gsum + p(i,j)
+         enddo
+      enddo
+      call mp_reduce_sum(gsum)
+
+      global_qsum_r8  = gsum
+
+ end function global_qsum_r8
 
 
  subroutine global_mx(q, n_g, qmin, qmax, bd)
