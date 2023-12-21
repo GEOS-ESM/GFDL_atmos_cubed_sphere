@@ -1252,11 +1252,11 @@ module fv_arrays_mod
    integer :: ks
 
 ! Accumulated Mass flux arrays
-    real, _ALLOCATABLE ::  mfx(:,:,:)  _NULL
-    real, _ALLOCATABLE ::  mfy(:,:,:)  _NULL
+    real(kind=REAL8), _ALLOCATABLE ::  mfx(:,:,:)  _NULL
+    real(kind=REAL8), _ALLOCATABLE ::  mfy(:,:,:)  _NULL
 ! Accumulated Courant number arrays
-    real, _ALLOCATABLE ::  cx(:,:,:)  _NULL
-    real, _ALLOCATABLE ::  cy(:,:,:)  _NULL
+    real(kind=REAL8), _ALLOCATABLE ::  cx(:,:,:)  _NULL
+    real(kind=REAL8), _ALLOCATABLE ::  cy(:,:,:)  _NULL
 
     type(fv_flags_type) :: flagstruct
     

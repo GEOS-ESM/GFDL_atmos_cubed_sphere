@@ -232,11 +232,11 @@ contains
     real, intent(in),    dimension(npz+1):: ak, bk
 
 ! Accumulated Mass flux arrays: the "Flux Capacitor"
-    real, intent(inout) ::  mfx(bd%is:bd%ie+1, bd%js:bd%je,   npz)
-    real, intent(inout) ::  mfy(bd%is:bd%ie  , bd%js:bd%je+1, npz)
+    real(kind=8), intent(inout) ::  mfx(bd%is:bd%ie+1, bd%js:bd%je,   npz)
+    real(kind=8), intent(inout) ::  mfy(bd%is:bd%ie  , bd%js:bd%je+1, npz)
 ! Accumulated Courant number arrays
-    real, intent(inout) ::  cx(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
-    real, intent(inout) ::  cy(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
+    real(kind=8), intent(inout) ::  cx(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
+    real(kind=8), intent(inout) ::  cy(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
 
     type(fv_grid_type),  intent(inout), target :: gridstruct
     type(fv_flags_type), intent(INOUT) :: flagstruct
@@ -654,6 +654,17 @@ contains
       mfyL=mfyR8
        cxL= cxR8
        cyL= cyR8 
+! Accumulate the total Mass flux and Courant numbers for export
+      mfx = mfx + mfxR8
+      mfy = mfy + mfyR8
+       cx =  cx +  cxR8
+       cy =  cy +  cyR8
+#else
+! Accumulate the total Mass flux and Courant numbers for export
+      mfx = mfx + mfxL
+      mfy = mfy + mfyL
+       cx =  cx +  cxL
+       cy =  cy +  cyL
 #endif
       
 !DryMassRoundoffControl
@@ -762,7 +773,8 @@ contains
                      idiag%id_mdt>0, dtdt_m, ptop, ak, bk, pfull, flagstruct, gridstruct, domain,   &
                      flagstruct%do_sat_adj, hydrostatic, hybrid_z, do_omega,     &
                      flagstruct%adiabatic, do_adiabatic_init, &
-                     mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap)
+                     flagstruct%remap_option, flagstruct%gmao_remap)
+!!!!!!!!!!           mfx=mfxL, mfy=mfyL, cx=cxL, cy=cyL)
 
 #ifdef AVEC_TIMERS
                                                   call avec_timer_stop(6)
@@ -775,12 +787,6 @@ contains
                  neststruct%cappa_BC, bctype=neststruct%nestbctype  )
          endif
 #endif
-
-! Accumulate the total Mass flux and Courant numbers for export
-         mfx = mfx + mfxL
-         mfy = mfy + mfyL
-          cx =  cx +  cxL
-          cy =  cy +  cyL
 
          if( last_step )  then
             if( .not. hydrostatic ) then
@@ -803,6 +809,7 @@ contains
 #endif
   enddo    ! n_map loop
                                                   call timing_off('FV_DYN_LOOP')
+  
   if ( idiag%id_mdt > 0 .and. (.not.do_adiabatic_init) ) then
 ! Output temperature tendency due to inline moist physics:
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,dtdt_m,bdt)

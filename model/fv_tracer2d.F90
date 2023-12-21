@@ -1008,29 +1008,9 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
        enddo
       end if
 
-     !! Compute Global Mass
-     !! -------------------
-     !qsum(:,:) = 0.d0
-     !do k=1,npz
-     !   qsum(:,:) = qsum(:,:) + (pleB(:,:,k+1)-pleB(:,:,k))
-     !enddo
-     !g_massB = g_sum_r8(domain, qsum, is,ie, js,je, 0, &
-     !                   gridstruct%area_64(is:ie,js:je), 1, .true.)
-     !qsum(:,:) = 0.d0
-     !do k=1,npz
-     !   qsum(:,:) = qsum(:,:) + (pleA(:,:,k+1)-pleA(:,:,k))
-     !enddo
-     !g_massA = g_sum_r8(domain, qsum, is,ie, js,je, 0, &
-     !                   gridstruct%area_64(is:ie,js:je), 1, .true.)
-
-      ! Rescale tracers based on pleB and pleA for mass conservation
-      !-------------------------------------------------------------
+      ! Return advected tracers
+      !------------------------
       do iq=1,nq
-        !scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), &
-        !                                  pleB, pleA, g_massB, g_massA, npz, domain, gridstruct, bd)
-        !! Return tracers
-        !!---------------
-        !q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
          q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq)
       enddo
 
