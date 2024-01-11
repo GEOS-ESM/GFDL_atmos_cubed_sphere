@@ -2912,7 +2912,7 @@
       integer :: err
         
       if ( .not. g_sum_initialized ) then
-         global_area = mpp_global_sum(domain, area, flags=BITWISE_EFP_SUM)
+         global_area = mpp_global_sum(domain, area) !, flags=BITWISE_EFP_SUM)
          if ( is_master() ) write(*,*) 'Global Area=',global_area
          g_sum_initialized = .true.
       end if
@@ -2955,7 +2955,7 @@
       integer :: err
 
       if ( .not. g_sum_initialized ) then
-         global_area = mpp_global_sum(domain, area, flags=BITWISE_EFP_SUM)
+         global_area = mpp_global_sum(domain, area) !, flags=BITWISE_EFP_SUM)
          if ( is_master() ) write(*,*) 'Global Area=',global_area
          g_sum_initialized = .true.
       end if

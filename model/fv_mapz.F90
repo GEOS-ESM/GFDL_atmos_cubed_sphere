@@ -86,7 +86,7 @@ module fv_mapz_mod
   use field_manager_mod, only: MODEL_ATMOS
   use fv_grid_utils_mod, only: ptop_min
   use fv_fill_mod,       only: fillz
-  use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum
+  use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum, BITWISE_EFP_SUM
   use mpp_mod,           only: NOTE, mpp_error, get_unit, mpp_root_pe, mpp_pe
   use fv_arrays_mod,     only: fv_grid_type, fv_flags_type
   use fv_timing_mod,     only: timing_on, timing_off
