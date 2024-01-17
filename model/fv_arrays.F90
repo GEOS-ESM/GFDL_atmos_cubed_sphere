@@ -31,6 +31,7 @@ module fv_arrays_mod
   use mpp_mod,               only: mpp_broadcast
   use platform_mod,          only: r8_kind
   use, intrinsic :: iso_fortran_env, only: REAL64, REAL32
+  use, intrinsic :: ieee_arithmetic, only: ieee_value, IEEE_QUIET_NAN
   public
 
   integer, public, parameter :: R_GRID = r8_kind
@@ -57,46 +58,48 @@ module fv_arrays_mod
 #endif
   type fv_diag_type
 
+     integer, parameter :: DEFAULT_INT = -HUGE(1)
+     integer, parameter :: DEFAULT_REAL = ieee_value(0., IEEE_QUIET_NAN)
 
- integer ::id_ps, id_slp, id_ua, id_va, id_pt, id_omga, id_vort,  &
-           id_tm, id_pv, id_zsurf, id_oro, id_sgh, id_divg, id_w, &
-           id_ke, id_te, id_zs, id_ze, id_mq, id_vorts, id_us, id_vs,    &
-           id_tq, id_rh, id_c15, id_c25, id_c35, id_c45,          &
-                         id_f15, id_f25, id_f35, id_f45, id_ctp,  &
-           id_ppt, id_ts, id_tb, id_ctt, id_pmask, id_pmaskv2,    &
-           id_delp, id_delz, id_zratio, id_ws, id_iw, id_lw,      &
-           id_pfhy, id_pfnh,                                      &
-           id_qn, id_qn200, id_qn500, id_qn850, id_qp, id_mdt,    &
-           id_qdt, id_aam, id_amdt,                               &
-           id_acly, id_acl, id_acl2,                              &
-           id_dbz, id_maxdbz, id_basedbz, id_dbz4km, id_dbztop, id_dbz_m10C, &
-           id_ctz, id_w1km, id_wmaxup, id_wmaxdn, id_cape, id_cin,id_diss
+ integer :: id_ps=DEFAULT_INT, id_slp=DEFAULT_INT, id_ua=DEFAULT_INT, id_va=DEFAULT_INT, id_pt=DEFAULT_INT, id_omga=DEFAULT_INT, id_vort=DEFAULT_INT,  &
+           id_tm=DEFAULT_INT, id_pv=DEFAULT_INT, id_zsurf=DEFAULT_INT, id_oro=DEFAULT_INT, id_sgh=DEFAULT_INT, id_divg=DEFAULT_INT, id_w=DEFAULT_INT, &
+           id_ke=DEFAULT_INT, id_te=DEFAULT_INT, id_zs=DEFAULT_INT, id_ze=DEFAULT_INT, id_mq=DEFAULT_INT, id_vorts=DEFAULT_INT, id_us=DEFAULT_INT, id_vs=DEFAULT_INT,    &
+           id_tq=DEFAULT_INT, id_rh=DEFAULT_INT, id_c15=DEFAULT_INT, id_c25=DEFAULT_INT, id_c35=DEFAULT_INT, id_c45=DEFAULT_INT,          &
+                         id_f15=DEFAULT_INT, id_f25=DEFAULT_INT, id_f35=DEFAULT_INT, id_f45=DEFAULT_INT, id_ctp=DEFAULT_INT,  &
+           id_ppt=DEFAULT_INT, id_ts=DEFAULT_INT, id_tb=DEFAULT_INT, id_ctt=DEFAULT_INT, id_pmask=DEFAULT_INT, id_pmaskv2=DEFAULT_INT,    &
+           id_delp=DEFAULT_INT, id_delz=DEFAULT_INT, id_zratio=DEFAULT_INT, id_ws=DEFAULT_INT, id_iw=DEFAULT_INT, id_lw=DEFAULT_INT,      &
+           id_pfhy=DEFAULT_INT, id_pfnh=DEFAULT_INT,                                      &
+           id_qn=DEFAULT_INT, id_qn200=DEFAULT_INT, id_qn500=DEFAULT_INT, id_qn850=DEFAULT_INT, id_qp=DEFAULT_INT, id_mdt=DEFAULT_INT,    &
+           id_qdt=DEFAULT_INT, id_aam=DEFAULT_INT, id_amdt=DEFAULT_INT,                               &
+           id_acly=DEFAULT_INT, id_acl=DEFAULT_INT, id_acl2=DEFAULT_INT,                              &
+           id_dbz=DEFAULT_INT, id_maxdbz=DEFAULT_INT, id_basedbz=DEFAULT_INT, id_dbz4km=DEFAULT_INT, id_dbztop=DEFAULT_INT, id_dbz_m10C=DEFAULT_INT, &
+           id_ctz=DEFAULT_INT, id_w1km=DEFAULT_INT, id_wmaxup=DEFAULT_INT, id_wmaxdn=DEFAULT_INT, id_cape=DEFAULT_INT, id_cin=DEFAULT_INT,id_diss=DEFAULT_INT
 
 ! Selected p-level fields from 3D variables:
- integer :: id_vort200, id_vort500, id_w500, id_w700
- integer :: id_vort850, id_w850, id_x850, id_srh25, &
-            id_uh03, id_uh25, id_theta_e,  &
-            id_w200, id_s200, id_sl12, id_sl13, id_w5km, id_rain5km, id_w2500m
- integer :: id_srh1, id_srh3, id_ustm, id_vstm
+ integer :: id_vort200=DEFAULT_INT, id_vort500=DEFAULT_INT, id_w500=DEFAULT_INT, id_w700
+ integer :: id_vort850=DEFAULT_INT, id_w850=DEFAULT_INT, id_x850=DEFAULT_INT, id_srh25=DEFAULT_INT, &
+            id_uh03=DEFAULT_INT, id_uh25=DEFAULT_INT, id_theta_e=DEFAULT_INT,  &
+            id_w200=DEFAULT_INT, id_s200=DEFAULT_INT, id_sl12=DEFAULT_INT, id_sl13=DEFAULT_INT, id_w5km=DEFAULT_INT, id_rain5km=DEFAULT_INT, id_w2500m=DEFAULT_INT
+ integer :: id_srh1=DEFAULT_INT, id_srh3=DEFAULT_INT, id_ustm=DEFAULT_INT, id_vstm=DEFAULT_INT
 ! NGGPS 31-level diag
- integer, allocatable :: id_u(:), id_v(:), id_t(:), id_h(:), id_q(:), id_omg(:)
+ integer=DEFAULT_INT, allocatable :: id_u(:), id_v(:), id_t(:), id_h(:), id_q(:), id_omg(:)
 
- integer:: id_u_plev, id_v_plev, id_t_plev, id_h_plev, id_q_plev, id_omg_plev
+ integer:: id_u_plev=DEFAULT_INT, id_v_plev=DEFAULT_INT, id_t_plev=DEFAULT_INT, id_h_plev=DEFAULT_INT, id_q_plev=DEFAULT_INT, id_omg_plev
 ! IPCC diag
- integer :: id_rh10,  id_rh50,  id_rh100, id_rh200,  id_rh250, id_rh300, &
-            id_rh500, id_rh700, id_rh850, id_rh925,  id_rh1000
- integer :: id_dp10,  id_dp50,  id_dp100, id_dp200,  id_dp250, id_dp300, &
-            id_dp500, id_dp700, id_dp850, id_dp925,  id_dp1000
+ integer :: id_rh10=DEFAULT_INT,  id_rh50=DEFAULT_INT,  id_rh100=DEFAULT_INT, id_rh200=DEFAULT_INT,  id_rh250=DEFAULT_INT, id_rh300=DEFAULT_INT, &
+            id_rh500=DEFAULT_INT, id_rh700=DEFAULT_INT, id_rh850=DEFAULT_INT, id_rh925=DEFAULT_INT,  id_rh1000=DEFAULT_INT
+ integer :: id_dp10=DEFAULT_INT,  id_dp50=DEFAULT_INT,  id_dp100=DEFAULT_INT, id_dp200=DEFAULT_INT,  id_dp250=DEFAULT_INT, id_dp300=DEFAULT_INT, &
+            id_dp500=DEFAULT_INT, id_dp700=DEFAULT_INT, id_dp850=DEFAULT_INT, id_dp925=DEFAULT_INT,  id_dp1000=DEFAULT_INT
 
- integer :: id_rh1000_cmip, id_rh925_cmip, id_rh850_cmip, id_rh700_cmip, id_rh500_cmip, &
-            id_rh300_cmip,  id_rh250_cmip, id_rh100_cmip, id_rh50_cmip,  id_rh10_cmip
+ integer :: id_rh1000_cmip=DEFAULT_INT, id_rh925_cmip=DEFAULT_INT, id_rh850_cmip=DEFAULT_INT, id_rh700_cmip=DEFAULT_INT, id_rh500_cmip=DEFAULT_INT, &
+            id_rh300_cmip=DEFAULT_INT,  id_rh250_cmip=DEFAULT_INT, id_rh100_cmip=DEFAULT_INT, id_rh50_cmip=DEFAULT_INT,  id_rh10_cmip=DEFAULT_INT
 
- integer :: id_hght
- integer :: id_u100m, id_v100m, id_w100m
+ integer :: id_hght=DEFAULT_INT=DEFAULT_INT
+ integer :: id_u100m=DEFAULT_INT, id_v100m=DEFAULT_INT, id_w100m=DEFAULT_INT
 
      ! For initial conditions:
-     integer ic_ps, ic_ua, ic_va, ic_ppt
-     integer ic_sphum
+     integer ic_ps=DEFAULT_INT, ic_ua=DEFAULT_INT, ic_va=DEFAULT_INT, ic_ppt=DEFAULT_INT
+     integer ic_sphum=DEFAULT_INT
      integer, allocatable :: id_tracer(:)
 ! ESM requested diagnostics  -  dry mass/volume mixing ratios
  integer, allocatable :: id_tracer_dmmr(:)
@@ -114,7 +117,7 @@ module fv_arrays_mod
      real  rainwat, snowwat, graupel
 
      real :: efx(max_step), efx_sum, efx_nest(max_step), efx_sum_nest, mtq(max_step), mtq_sum
-     integer :: steps
+     integer :: steps=DEFAULT_INT
 
   end type fv_diag_type
 
