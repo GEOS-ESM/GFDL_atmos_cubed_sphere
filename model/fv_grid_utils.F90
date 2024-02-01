@@ -84,7 +84,7 @@
  use mpp_parameter_mod, only: CORNER, SCALAR_PAIR
 
  use fv_arrays_mod,   only: fv_atmos_type, fv_grid_type, fv_grid_bounds_type, &
-                            R_GRID
+                            R_GRID, FVPRC, REAL4, REAL8 
  use fv_eta_mod,      only: set_eta
  use fv_mp_mod,       only: ng, is_master
  use fv_mp_mod,       only: mp_reduce_sum, mp_reduce_min, mp_reduce_max
@@ -108,12 +108,15 @@
 
  real, parameter:: ptop_min=1.d-8
 
+ logical, SAVE :: g_sum_initialized = .false.
+ real(kind=R_GRID), SAVE :: global_area
+
  public f_p 
  public ptop_min, big_number !CLEANUP: OK to keep since they are constants?
  public cos_angle
  public latlon2xyz, gnomonic_grids, gnomonic_grids_local, &
         global_mx, unit_vect_latlon,  &
-        cubed_to_latlon, c2l_ord2, g_sum, global_qsum, great_circle_dist,  &
+        cubed_to_latlon, c2l_ord2, g_sum, g_sum_r8, global_qsum, great_circle_dist,  &
         v_prod, get_unit_vect2, project_sphere_v
  public mid_pt_sphere,  mid_pt_cart, vect_cross, grid_utils_init, grid_utils_end, &
         spherical_angle, cell_center2, get_area, inner_prod, fill_ghost, direct_transform,  &
@@ -2900,18 +2903,16 @@
       integer, intent(IN) :: jfirst, jlast, ngc
       integer, intent(IN) :: mode  ! if ==1 divided by area
       logical, intent(in), optional :: reproduce
-      real, intent(IN) :: p(ifirst:ilast,jfirst:jlast)      ! field to be summed
+      real(kind=REAL4), intent(IN) :: p(ifirst:ilast,jfirst:jlast)      ! field to be summed
       real(kind=R_GRID), intent(IN) :: area(ifirst-ngc:ilast+ngc,jfirst-ngc:jlast+ngc)
       type(domain2d), intent(IN) :: domain
       integer :: i,j
-      real gsum
-      logical, SAVE :: g_sum_initialized = .false.
-      real(kind=R_GRID), SAVE :: global_area
+      real(kind=REAL8) gsum
       real :: tmp(ifirst:ilast,jfirst:jlast) 
       integer :: err
         
       if ( .not. g_sum_initialized ) then
-         global_area = mpp_global_sum(domain, area, flags=BITWISE_EFP_SUM)
+         global_area = mpp_global_sum(domain, area) !, flags=BITWISE_EFP_SUM)
          if ( is_master() ) write(*,*) 'Global Area=',global_area
          g_sum_initialized = .true.
       end if
@@ -2921,22 +2922,15 @@
 !-------------------------
       if ( present(reproduce) ) then
          if (reproduce) then
-            gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast), &
-                                  flags=BITWISE_EFP_SUM)
+            gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast)) !, flags=BITWISE_EFP_SUM)
          else
-            gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast))
+            gsum = global_qsum_r8(p(:,:)*area(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast)
          endif
       else
 !-------------------------
 ! Quick local sum algorithm
 !-------------------------
-         gsum = 0.
-         do j=jfirst,jlast
-            do i=ifirst,ilast
-               gsum = gsum + p(i,j)*area(i,j)
-            enddo
-         enddo
-         call mp_reduce_sum(gsum)
+         gsum = global_qsum_r8(p(:,:)*area(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast)
       endif
 
       if ( mode==1 ) then
@@ -2945,6 +2939,49 @@
            g_sum = gsum
       endif
  end function g_sum
+
+ !>@brief The function 'g_sum_r8' is the fast version of 'globalsum'. 
+ real(kind=REAL8) function g_sum_r8(domain, p, ifirst, ilast, jfirst, jlast, ngc, area, mode, reproduce)
+      integer, intent(IN) :: ifirst, ilast
+      integer, intent(IN) :: jfirst, jlast, ngc
+      integer, intent(IN) :: mode  ! if ==1 divided by area
+      logical, intent(in), optional :: reproduce
+      real(kind=REAL8), intent(IN) :: p(ifirst:ilast,jfirst:jlast)      ! field to be summed
+      real(kind=R_GRID), intent(IN) :: area(ifirst-ngc:ilast+ngc,jfirst-ngc:jlast+ngc)
+      type(domain2d), intent(IN) :: domain
+      integer :: i,j
+      real(kind=REAL8) :: gsum
+      real(kind=REAL8) :: tmp(ifirst:ilast,jfirst:jlast)
+      integer :: err
+
+      if ( .not. g_sum_initialized ) then
+         global_area = mpp_global_sum(domain, area) !, flags=BITWISE_EFP_SUM)
+         if ( is_master() ) write(*,*) 'Global Area=',global_area
+         g_sum_initialized = .true.
+      end if
+ 
+!-------------------------
+! FMS global sum algorithm: 
+!-------------------------
+      if ( present(reproduce) ) then
+         if (reproduce) then
+            gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast)) !, flags=BITWISE_EFP_SUM)
+         else
+            gsum = global_qsum_r8(p(:,:)*area(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast)
+         endif
+      else
+!-------------------------
+! Quick local sum algorithm
+!-------------------------
+         gsum = global_qsum_r8(p(:,:)*area(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast)
+      endif
+
+      if ( mode==1 ) then
+           g_sum_r8 = gsum / global_area
+      else
+           g_sum_r8 = gsum
+      endif
+ end function g_sum_r8
 
 !>@brief The function 'global_qsum' computes the quick global sum without area weighting.
  real function global_qsum(p, ifirst, ilast, jfirst, jlast)
@@ -2965,6 +3002,25 @@
       global_qsum  = gsum
 
  end function global_qsum
+
+ real(kind=8) function global_qsum_r8(p, ifirst, ilast, jfirst, jlast)
+      integer, intent(IN) :: ifirst, ilast
+      integer, intent(IN) :: jfirst, jlast
+      real(kind=8), intent(IN) :: p(ifirst:ilast,jfirst:jlast) !< field to be summed
+      integer :: i,j
+      real(kind=8) gsum
+
+      gsum = 0.
+      do j=jfirst,jlast
+         do i=ifirst,ilast
+            gsum = gsum + p(i,j)
+         enddo
+      enddo
+      call mp_reduce_sum(gsum)
+
+      global_qsum_r8  = gsum
+
+ end function global_qsum_r8
 
 
  subroutine global_mx(q, n_g, qmin, qmax, bd)
