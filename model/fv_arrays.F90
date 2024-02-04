@@ -56,10 +56,10 @@ module fv_arrays_mod
 #else
   real, parameter:: real_big = 1.e30   ! big enough to cause blowup if used
 #endif
+  integer, parameter :: DEFAULT_INT = -HUGE(1)
+  real, parameter :: DEFAULT_REAL = -HUGE(1.0) !ieee_value(0., IEEE_QUIET_NAN)
   type fv_diag_type
 
-     integer, parameter :: DEFAULT_INT = -HUGE(1)
-     integer, parameter :: DEFAULT_REAL = ieee_value(0., IEEE_QUIET_NAN)
 
  integer :: id_ps=DEFAULT_INT, id_slp=DEFAULT_INT, id_ua=DEFAULT_INT, id_va=DEFAULT_INT, id_pt=DEFAULT_INT, id_omga=DEFAULT_INT, id_vort=DEFAULT_INT,  &
            id_tm=DEFAULT_INT, id_pv=DEFAULT_INT, id_zsurf=DEFAULT_INT, id_oro=DEFAULT_INT, id_sgh=DEFAULT_INT, id_divg=DEFAULT_INT, id_w=DEFAULT_INT, &
@@ -82,7 +82,7 @@ module fv_arrays_mod
             id_w200=DEFAULT_INT, id_s200=DEFAULT_INT, id_sl12=DEFAULT_INT, id_sl13=DEFAULT_INT, id_w5km=DEFAULT_INT, id_rain5km=DEFAULT_INT, id_w2500m=DEFAULT_INT
  integer :: id_srh1=DEFAULT_INT, id_srh3=DEFAULT_INT, id_ustm=DEFAULT_INT, id_vstm=DEFAULT_INT
 ! NGGPS 31-level diag
- integer=DEFAULT_INT, allocatable :: id_u(:), id_v(:), id_t(:), id_h(:), id_q(:), id_omg(:)
+ integer, allocatable :: id_u(:), id_v(:), id_t(:), id_h(:), id_q(:), id_omg(:)
 
  integer:: id_u_plev=DEFAULT_INT, id_v_plev=DEFAULT_INT, id_t_plev=DEFAULT_INT, id_h_plev=DEFAULT_INT, id_q_plev=DEFAULT_INT, id_omg_plev
 ! IPCC diag
@@ -94,12 +94,12 @@ module fv_arrays_mod
  integer :: id_rh1000_cmip=DEFAULT_INT, id_rh925_cmip=DEFAULT_INT, id_rh850_cmip=DEFAULT_INT, id_rh700_cmip=DEFAULT_INT, id_rh500_cmip=DEFAULT_INT, &
             id_rh300_cmip=DEFAULT_INT,  id_rh250_cmip=DEFAULT_INT, id_rh100_cmip=DEFAULT_INT, id_rh50_cmip=DEFAULT_INT,  id_rh10_cmip=DEFAULT_INT
 
- integer :: id_hght=DEFAULT_INT=DEFAULT_INT
+ integer :: id_hght=DEFAULT_INT
  integer :: id_u100m=DEFAULT_INT, id_v100m=DEFAULT_INT, id_w100m=DEFAULT_INT
 
      ! For initial conditions:
-     integer ic_ps=DEFAULT_INT, ic_ua=DEFAULT_INT, ic_va=DEFAULT_INT, ic_ppt=DEFAULT_INT
-     integer ic_sphum=DEFAULT_INT
+     integer :: ic_ps=DEFAULT_INT, ic_ua=DEFAULT_INT, ic_va=DEFAULT_INT, ic_ppt=DEFAULT_INT
+     integer :: ic_sphum=DEFAULT_INT
      integer, allocatable :: id_tracer(:)
 ! ESM requested diagnostics  -  dry mass/volume mixing ratios
  integer, allocatable :: id_tracer_dmmr(:)
