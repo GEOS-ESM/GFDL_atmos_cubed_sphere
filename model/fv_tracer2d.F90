@@ -886,8 +886,6 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real  pe2(bd%is:bd%ie,npz+1)
       real  dp2(bd%is:bd%ie,bd%js:bd%je,npz)
       integer kord_tracers(nq)
-! Local mass conservation
-      real(REAL8) :: g_mass1, g_mass2
 
 ! Local indices
       integer     :: i,j,k,n,iq
@@ -998,7 +996,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
        !------------------------------------------------------
        do iq=1,nq
           scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), pleB, pleA, &
-                            g_mass1, g_mass2, npz, domain, gridstruct, bd)
+                            npz, domain, gridstruct, bd)
           ! Return tracers
           !---------------
           q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
@@ -1008,14 +1006,13 @@ end subroutine offline_tracer_advection
 
 !------------------------------------------------------------------------------------
 
-         function calcScalingFactor(q1, q2, ple1, ple2, g_mass1, g_mass2, npz, domain, gridstruct, bd) result(scaling)
+         function calcScalingFactor(q1, q2, ple1, ple2, npz, domain, gridstruct, bd) result(scaling)
          integer, intent(in) :: npz
          type(fv_grid_bounds_type), intent(IN   ) :: bd
          real, intent(in) :: q1(bd%is:bd%ie,bd%js:bd%je,npz)
          real, intent(in) :: q2(bd%is:bd%ie,bd%js:bd%je,npz)
          real, intent(in) :: ple1(bd%is:bd%ie,bd%js:bd%je,npz+1)
          real, intent(in) :: ple2(bd%is:bd%ie,bd%js:bd%je,npz+1)
-         real(REAL8), intent(in) :: g_mass1, g_mass2
          type(domain2D), intent(INOUT) :: domain
          type(fv_grid_type), intent(IN   ) :: gridstruct
          real :: scaling
@@ -1045,9 +1042,6 @@ end subroutine offline_tracer_advection
          ! denominator
          globalSums(2) = g_sum_r8(domain, qsum2, bd%is,bd%ie, bd%js,bd%je, 0, &
                                   gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, .true.)
-
-         if (g_mass1 > 0.0) globalSums(1) = globalSums(1)/g_mass1
-         if (g_mass2 > 0.0) globalSums(2) = globalSums(2)/g_mass2
 
          if (globalSums(2) > TINY_DENOMINATOR) then
             scalingR8 =  globalSums(1) / globalSums(2)
