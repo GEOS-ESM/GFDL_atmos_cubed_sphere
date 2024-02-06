@@ -159,7 +159,7 @@ contains
  
  subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, k_split, n_split, zvir, cp, akap, cappa, grav, hydrostatic,  &
                      u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
-                     uc, vc, mfx, mfy, cx, cy, pkz, peln, q_con, ak, bk, dpx, &
+                     dudt_rf, dvdt_rf, dwdt_rf, uc, vc, mfx, mfy, cx, cy, pkz, peln, q_con, ak, bk, dpx, &
                      ks, gridstruct, flagstruct, neststruct, idiag, bd, domain, &
                      init_step, i_pack, end_step, diss_est,time_total)
 
@@ -200,6 +200,11 @@ contains
     real, intent(inout):: peln(bd%is:bd%ie,npz+1,bd%js:bd%je)          !< ln(pe)
     real, intent(inout):: pk(bd%is:bd%ie,bd%js:bd%je, npz+1)        !< pe**kappa
     real(kind=8), intent(inout) :: dpx(bd%is:bd%ie,bd%js:bd%je,npz)
+
+! Rayleigh Friction tendencies
+    real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dudt_rf ! U-wind tendency from Rayleigh friction
+    real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dvdt_rf ! V-wind tendency from Rayleigh friction
+    real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dwdt_rf ! W      tendency from Rayleigh friction
 
 !-----------------------------------------------------------------------
 ! Others:
@@ -972,10 +977,17 @@ contains
    endif
                                        call timing_off('PG_D')
 
-! *** Inline Rayleigh friction here?
-   if( flagstruct%RF_fast .and. flagstruct%tau > 0. )  &
-   call Ray_fast(abs(dt), npx, npy, npz, pfull, flagstruct%tau, u, v, w,  &
-                      ks, dp_ref, ptop, hydrostatic, flagstruct%rf_cutoff, bd)
+! *** Inline Rayleigh friction here
+   if( flagstruct%RF_fast .and. flagstruct%tau > 0. )  then
+     dudt_rf =  u(is:ie,js:je,:)
+     dvdt_rf =  v(is:ie,js:je,:)
+     if (.not. hydrostatic) dwdt_rf =  w(is:ie,js:je,:)
+     call Ray_fast(abs(dt), npx, npy, npz, pfull, flagstruct%tau, u, v, w,  &
+                        ks, dp_ref, ptop, hydrostatic, flagstruct%rf_cutoff, bd)
+     dudt_rf = ( u(is:ie,js:je,:) - dudt_rf)/dt
+     dvdt_rf = ( v(is:ie,js:je,:) - dvdt_rf)/dt
+     if (.not. hydrostatic) dwdt_rf = ( w(is:ie,js:je,:) - dwdt_rf)/dt
+   endif
 
 ! *** Inline Beljaars turbulent-orographic-form-drag here
 ! pt is virtual potential temperature

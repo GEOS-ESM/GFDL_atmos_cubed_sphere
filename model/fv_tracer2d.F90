@@ -841,7 +841,7 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 
 subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                                     gridstruct, flagstruct, bd, domain, &
-                                    ak, bk, ptop, npx, npy, npz,   &
+                                    npx, npy, npz,   &
                                     nq, dt)
 
       use fv_mapz_mod,        only: mapn_tracer, map1_q2
@@ -864,9 +864,6 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real, intent(IN   ) :: mfx(bd%is:bd%ie,bd%js:bd%je,npz)        ! Mass Flux X-Dir
       real, intent(IN   ) :: mfy(bd%is:bd%ie,bd%js:bd%je,npz)        ! Mass Flux Y-Dir
       real, intent(INOUT) ::   q(bd%is:bd%ie,bd%js:bd%je,npz,nq)     ! Tracers
-      real, intent(IN   ) ::  ak(npz+1)                  ! AK for remapping
-      real, intent(IN   ) ::  bk(npz+1)                  ! BK for remapping
-      real, intent(IN   ) :: ptop
 ! Local Arrays
       real ::   xL(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz)  ! X-Dir for MPP Updates
       real ::   yL(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz)  ! Y-Dir for MPP Updates
@@ -877,7 +874,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real ::  dpL(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  ! Pressure Thickness
       real ::  dpA(bd%is :bd%ie   ,bd%js :bd%je   ,npz)  ! Pressure Thickness
 ! Local Tracer Arrays
-      real ::   q1(bd%is :bd%ie               , npz   )! 2D Tracers
+      real ::   q1(bd%is :bd%ie ,bd%js :bd%je , npz   )! 3D Tracers
       real ::   q3(bd%isd:bd%ied,bd%jsd:bd%jed, npz,nq)! 3D Tracers
 ! Local Buffer Arrarys
       real :: wbuffer(bd%js:bd%je,npz)
@@ -887,12 +884,10 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
 ! Local Remap Arrays
       real  pe1(bd%is:bd%ie,npz+1)
       real  pe2(bd%is:bd%ie,npz+1)
-      real  dp2(bd%is:bd%ie,npz)
-      real  ple1(bd%is:bd%ie,bd%js:bd%je,npz+1)
+      real  dp2(bd%is:bd%ie,bd%js:bd%je,npz)
       integer kord_tracers(nq)
 ! Local mass conservation
-      real(REAL8) :: qsum(bd%is:bd%ie,bd%js:bd%je)
-      real(REAL8) :: g_massB, g_massA
+      real(REAL8) :: g_mass1, g_mass2
 
 ! Local indices
       integer     :: i,j,k,n,iq
@@ -955,17 +950,6 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
     endif
 
-    
-   ! pressures mapping from (dpA is new delp after tracer_2d)
-    ple1(:,:,1) = ptop
-    do k=2,npz+1     
-       do j=js,je
-          do i=is,ie
-            ple1(i,j,k) = ple1(i,j,k-1) + dpA(i,j,k-1)      
-          enddo
-       enddo
-    enddo
-
 !------------------------------------------------------------------
 ! Re-Map constituents
 !------------------------------------------------------------------
@@ -974,45 +958,51 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
             kord_tracers(iq) = flagstruct%kord_tr
           enddo
           do j=js,je
-             do k=1,npz+1
-               pe1(:,k) = ple1(:,j,k)
-               pe2(:,k) = pleA(:,j,k)
+           ! pressures mapping from (dpA is new delp after tracer_2d)
+             pe1(:,1) = pleB(:,j,1)
+             do k=2,npz+1
+               pe1(:,k) = pe1(:,k-1) + dpA(:,j,k-1)
              enddo
+           ! pressures mapping to
+             pe2 = pleA(:,j,:)
              do k=1,npz
-                dp2(:,k) = pe2(:,k+1) - pe2(:,k)
+                dp2(:,j,k) = pe2(:,k+1) - pe2(:,k)
              enddo
-             call mapn_tracer(nq, npz, pe1, pe2, q3, dp2, kord_tracers, j,     &
+             call mapn_tracer(nq, npz, pe1, pe2, q3, dp2(:,j,:), kord_tracers, j,     &
                               is, ie, isd, ied, jsd, jed, 0., flagstruct%fill)
           enddo
       elseif ( nq > 0 ) then
        do iq=1,nq
           do j=js,je
-             do k=1,npz+1
-               pe1(:,k) = ple1(:,j,k)
-               pe2(:,k) = pleA(:,j,k)
+           ! pressures mapping from (dpA is new delp after tracer_2d)
+             pe1(:,1) = pleB(:,j,1)
+             do k=2,npz+1
+               pe1(:,k) = pe1(:,k-1) + dpA(:,j,k-1)
              enddo
+           ! pressures mapping to
+             pe2 = pleA(:,j,:)
              do k=1,npz
-                dp2(:,k) = pe2(:,k+1) - pe2(:,k)
+                dp2(:,j,k) = pe2(:,k+1) - pe2(:,k)
              enddo
              call map1_q2(npz, pe1, q3(isd,jsd,1,iq),      &
-                          npz, pe2, q1, dp2,               &
+                          npz, pe2, q1(:,j,:), dp2(:,j,:), &
                           is, ie, 0, flagstruct%kord_tr, j,&
                           isd, ied, jsd, jed, 0.) 
-             if (flagstruct%fill) call fillz(ie-is+1, npz, 1, q1, dp2)
-             do k=1,npz
-                do i=is,ie
-                   q3(i,j,k,iq) = q1(i,k)
-                enddo
-             enddo
+             if (flagstruct%fill) call fillz(ie-is+1, npz, 1, q1(:,j,:), dp2(:,j,:))
+             q3(is:ie,j,1:npz,iq) = q1(:,j,:)
           enddo
        enddo
       end if
 
-      ! Return advected tracers
-      !------------------------
-      do iq=1,nq
-         q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq)
-      enddo
+       ! Rescale tracers based on pleA at destination timestep
+       !------------------------------------------------------
+       do iq=1,nq
+          scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), pleB, pleA, &
+                            g_mass1, g_mass2, npz, domain, gridstruct, bd)
+          ! Return tracers
+          !---------------
+          q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+       enddo
 
 end subroutine offline_tracer_advection
 

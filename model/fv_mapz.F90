@@ -53,7 +53,7 @@ module fv_mapz_mod
 !   </tr>
 !   <tr>
 !     <td>fv_grid_utils_mod</td>
-!     <td>g_sum_r8, ptop_min</td>
+!     <td>g_sum, ptop_min</td>
 !   </tr>
 !   <tr>
 !     <td>fv_mp_mod</td>
@@ -84,9 +84,9 @@ module fv_mapz_mod
   use constants_mod,     only: radius, pi=>pi_8, rvgas, rdgas, grav, hlv, hlf, hls, cp_air, cp_vapor
   use tracer_manager_mod,only: get_tracer_index
   use field_manager_mod, only: MODEL_ATMOS
-  use fv_grid_utils_mod, only: ptop_min
+  use fv_grid_utils_mod, only: g_sum, ptop_min
   use fv_fill_mod,       only: fillz
-  use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum, BITWISE_EFP_SUM
+  use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum, BITWISE_EFP_SUM, BITWISE_EXACT_SUM
   use mpp_mod,           only: NOTE, mpp_error, get_unit, mpp_root_pe, mpp_pe
   use fv_arrays_mod,     only: fv_grid_type, fv_flags_type
   use fv_timing_mod,     only: timing_on, timing_off
@@ -990,17 +990,17 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
     enddo   ! j-loop
 
 !$OMP single
-     !tesum = g_sum_r8(domain, te_2d, is,ie, js,je, ng, gridstruct%area_64, 1, .true.) 
-      tesum = mpp_global_sum(domain, te_2d*gridstruct%area_64(is:ie,js:je))
+      tesum = mpp_global_sum(domain, te_2d*gridstruct%area_64(is:ie,js:je), &
+                             flags=BITWISE_EFP_SUM)
       E_Flux = DBLE(consv)*tesum / DBLE(grav*pdt*4.*pi*radius**2)    ! unit: W/m**2
                                                            ! Note pdt is "phys" time step
       if ( hydrostatic ) then
-          !zsum = g_sum_r8(domain, zsum0, is,ie, js,je, ng, gridstruct%area_64, 1, .true.)
-           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je))
+           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
+                                  flags=BITWISE_EFP_SUM)
            dtmp = tesum / DBLE(cp*zsum)
       else
-          !zsum = g_sum_r8(domain, zsum1, is,ie, js,je, ng, gridstruct%area_64, 1, .true.)
-           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je))
+           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
+                                  flags=BITWISE_EFP_SUM)
            dtmp = tesum / DBLE(cv_air*zsum)
       endif
 !$OMP end single
@@ -1027,12 +1027,12 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
       E_Flux = consv
 !$OMP single
       if ( hydrostatic ) then
-          !zsum = g_sum_r8(domain, zsum0, is,ie, js,je, ng, gridstruct%area_64, 1, .true.)
-           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je))
+           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
+                                  flags=BITWISE_EFP_SUM)
            dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cp*zsum)
       else
-          !zsum = g_sum_r8(domain, zsum1, is,ie, js,je, ng, gridstruct%area_64, 1, .true.)
-           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je))
+           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
+                                  flags=BITWISE_EFP_SUM)
            dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cv_air*zsum)
       endif
 !$OMP end single
@@ -1464,8 +1464,7 @@ endif        ! end last_step check
    real   q4(4,i1:i2,km)
    real    pl, pr, qsum, dp, esl
    integer i, k, l, m, k0
-   integer LM2,LM1,LP0,LP1 
-   real    am2,am1,ap0,ap1,P,PLP1,PLP0,PLM1,PLM2,DLP0,DLM1,DLM2
+   integer LM1,LP0,LP1 
 
    do k=1,km
       do i=i1,i2
@@ -1513,39 +1512,7 @@ endif        ! end last_step check
              q2(i,j,k) = q1(i,j,LP0) + ( q1(i,j,LM1)-q1(i,j,LP0) )*( pe2(i,k  )-pe1(i,LP0) ) &
                                                                   /( pe1(i,LM1)-pe1(i,LP0) )
       else
-
-#ifdef GMAO_CUBIC_REMAP
-
-! Interpolate between other model levels
-! ------------------------------------------------------
-              LP1 = LP0+1
-              LM2 = LM1-1
-             P    = pe2(i,k)
-             PLP1 = pe1(i,LP1)
-             PLP0 = pe1(i,LP0)
-             PLM1 = pe1(i,LM1)
-             PLM2 = pe1(i,LM2)
-             DLP0 = dp1(i,LP0)
-             DLM1 = dp1(i,LM1)
-             DLM2 = dp1(i,LM2)
- 
-           ! Cubic Coefficients
-           ! ------------------
-             ap1 = (P-PLP0)*(P-PLM1)*(P-PLM2)/( DLP0*(DLP0+DLM1)*(DLP0+DLM1+DLM2) )
-             ap0 = (PLP1-P)*(P-PLM1)*(P-PLM2)/( DLP0*      DLM1 *(     DLM1+DLM2) )
-             am1 = (PLP1-P)*(PLP0-P)*(P-PLM2)/( DLM1*      DLM2 *(DLP0+DLM1     ) )
-             am2 = (PLP1-P)*(PLP0-P)*(PLM1-P)/( DLM2*(DLM1+DLM2)*(DLP0+DLM1+DLM2) )
-             q2(i,j,k) = ap1*q1(i,j,LP1) + ap0*q1(i,j,LP0) + am1*q1(i,j,LM1) + am2*q1(i,j,LM2)
-
-           ! Quadratic Coefficients
-           ! ----------------------
-           ! ap1 = (P-PLP0)*(P-PLM1)/( (PLP1-PLP0)*(PLP1-PLM1) )
-           ! ap0 = (PLP1-P)*(P-PLM1)/( (PLP1-PLP0)*(PLP0-PLM1) )
-           ! am1 = (PLP1-P)*(PLP0-P)/( (PLP1-PLM1)*(PLP0-PLM1) )
-           ! q2(i,j,k) = ap1*q1(i,j,LP1) + ap0*q1(i,j,LP0) + am1*q1(i,j,LM1)
-
-#else
-
+         
       do l=k0,km
 ! locate the top edge: pe2(i,k)
       if( pe2(i,k) >= pe1(i,l) .and. pe2(i,k) <= pe1(i,l+1) ) then
@@ -1581,8 +1548,6 @@ endif        ! end last_step check
       endif
       enddo
 123   q2(i,j,k) = qsum / ( pe2(i,k+1) - pe2(i,k) )
-
-#endif
 
       endif
 555   continue

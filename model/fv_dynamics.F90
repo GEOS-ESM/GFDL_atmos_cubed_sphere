@@ -280,8 +280,7 @@ contains
       integer :: rainwat = -999, snowwat = -999, graupel = -999, cld_amt = -999
       integer :: theta_d = -999
       logical used, last_step, do_omega
-      integer, parameter :: max_packs=12
-      type(group_halo_update_type), save :: i_pack(max_packs)
+      type(group_halo_update_type), save :: i_pack(12)
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
       real :: dt2
@@ -294,6 +293,12 @@ contains
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
+
+! Clear Rayleigh Friction Tendencies
+      dudt_rf = 0.0
+      dvdt_rf = 0.0
+      dtdt_rf = 0.0
+      if (.not. hydrostatic) dwdt_rf = 0.0
 
 ! Empty the accumulated mass flux and courant numbers
       mfx = 0.0
@@ -636,7 +641,7 @@ contains
                                            call timing_on('DYN_CORE')
       call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
                     u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va,           & 
-                    uc, vc, &
+                    dudt_rf, dvdt_rf, dwdt_rf, uc, vc, &
 #ifdef SINGLE_FV
                     mfxR8, mfyR8, cxR8, cyR8, &
 #else
@@ -654,17 +659,6 @@ contains
       mfyL=mfyR8
        cxL= cxR8
        cyL= cyR8 
-! Accumulate the total Mass flux and Courant numbers for export
-      mfx = mfx + mfxR8
-      mfy = mfy + mfyR8
-       cx =  cx +  cxR8
-       cy =  cy +  cyR8
-#else
-! Accumulate the total Mass flux and Courant numbers for export
-      mfx = mfx + mfxL
-      mfy = mfy + mfyL
-       cx =  cx +  cxL
-       cy =  cy +  cyL
 #endif
       
 !DryMassRoundoffControl
@@ -774,7 +768,7 @@ contains
                      flagstruct%do_sat_adj, hydrostatic, hybrid_z, do_omega,     &
                      flagstruct%adiabatic, do_adiabatic_init, &
                      flagstruct%remap_option, flagstruct%gmao_remap)
-!!!!!!!!!!           mfx=mfxL, mfy=mfyL, cx=cxL, cy=cyL)
+!!!                  mfx=mfxL, mfy=mfyL, cx=cxL, cy=cyL)
 
 #ifdef AVEC_TIMERS
                                                   call avec_timer_stop(6)
@@ -787,6 +781,12 @@ contains
                  neststruct%cappa_BC, bctype=neststruct%nestbctype  )
          endif
 #endif
+
+! Accumulate the total Mass flux and Courant numbers for export
+         mfx = mfx + mfxL
+         mfy = mfy + mfyL
+          cx =  cx +  cxL
+          cy =  cy +  cyL
 
          if( last_step )  then
             if( .not. hydrostatic ) then
@@ -809,7 +809,6 @@ contains
 #endif
   enddo    ! n_map loop
                                                   call timing_off('FV_DYN_LOOP')
-  
   if ( idiag%id_mdt > 0 .and. (.not.do_adiabatic_init) ) then
 ! Output temperature tendency due to inline moist physics:
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,dtdt_m,bdt)
