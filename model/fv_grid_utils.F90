@@ -2908,7 +2908,6 @@
       type(domain2d), intent(IN) :: domain
       integer :: i,j
       real(kind=REAL8) gsum
-      real :: tmp(ifirst:ilast,jfirst:jlast) 
       integer :: err
         
       if ( .not. g_sum_initialized ) then
@@ -2951,7 +2950,6 @@
       type(domain2d), intent(IN) :: domain
       integer :: i,j
       real(kind=REAL8) :: gsum
-      real(kind=REAL8) :: tmp(ifirst:ilast,jfirst:jlast)
       integer :: err
 
       if ( .not. g_sum_initialized ) then

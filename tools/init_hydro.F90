@@ -324,7 +324,7 @@ contains
             if(is_master()) then
                write(*,*) 'Total surface pressure (mb) = ', 0.01*psmo
                if ( moist_phys ) then
-                   write(*,*) 'mean dry surface pressure = ', 0.01*psdry
+                   write(*,*) 'mean dry surface pressure (mb) = ', 0.01*psdry
                    write(*,*) 'Total Water (kg/m**2) =', real(psmo-psdry,4)/GRAV
                endif
                write(*,*) 'dry mass to be added (pascals) =', dpd

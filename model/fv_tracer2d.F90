@@ -842,7 +842,7 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                                     gridstruct, flagstruct, bd, domain, &
                                     npx, npy, npz,   &
-                                    nq, dt)
+                                    nq, dt, scaled)
 
       use fv_mapz_mod,        only: mapn_tracer, map1_q2
       use fv_fill_mod,        only: fillz
@@ -864,6 +864,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real, intent(IN   ) :: mfx(bd%is:bd%ie,bd%js:bd%je,npz)        ! Mass Flux X-Dir
       real, intent(IN   ) :: mfy(bd%is:bd%ie,bd%js:bd%je,npz)        ! Mass Flux Y-Dir
       real, intent(INOUT) ::   q(bd%is:bd%ie,bd%js:bd%je,npz,nq)     ! Tracers
+      logical, intent(IN) :: scaled(nq)
 ! Local Arrays
       real ::   xL(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz)  ! X-Dir for MPP Updates
       real ::   yL(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz)  ! Y-Dir for MPP Updates
@@ -995,11 +996,17 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
        ! Rescale tracers based on pleA at destination timestep
        !------------------------------------------------------
        do iq=1,nq
-          scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), pleB, pleA, &
-                            npz, domain, gridstruct, bd)
-          ! Return tracers
-          !---------------
-          q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+          if (scaled(iq)) then
+            ! Scale tracers
+            !---------------
+            scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), pleB, pleA, &
+                              npz, domain, gridstruct, bd)
+            q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+          else
+            ! Return tracers
+            !---------------
+            q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq)
+          endif
        enddo
 
 end subroutine offline_tracer_advection
@@ -1038,10 +1045,10 @@ end subroutine offline_tracer_advection
 
          ! numerator
          globalSums(1) = g_sum_r8(domain, qsum1, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, .true.)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 0, .true.)
          ! denominator
          globalSums(2) = g_sum_r8(domain, qsum2, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, .true.)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 0, .true.)
 
          if (globalSums(2) > TINY_DENOMINATOR) then
             scalingR8 =  globalSums(1) / globalSums(2)
