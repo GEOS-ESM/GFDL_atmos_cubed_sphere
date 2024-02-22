@@ -87,7 +87,7 @@ module fv_mapz_mod
   use fv_grid_utils_mod, only: g_sum, ptop_min
   use fv_fill_mod,       only: fillz
   use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum, BITWISE_EFP_SUM, BITWISE_EXACT_SUM
-  use mpp_mod,           only: NOTE, mpp_error, get_unit, mpp_root_pe, mpp_pe
+  use mpp_mod,           only: NOTE, FATAL, mpp_error, get_unit, mpp_root_pe, mpp_pe
   use fv_arrays_mod,     only: fv_grid_type, fv_flags_type
   use fv_timing_mod,     only: timing_on, timing_off
   use fv_mp_mod,         only: is_master
@@ -116,7 +116,7 @@ module fv_mapz_mod
   private
 
   public compute_total_energy, Lagrangian_to_Eulerian, moist_cv, moist_cp,   &
-         rst_remap, mappm, E_Flux, mapn_tracer, map1_q2
+         rst_remap, mappm, E_Flux, mapn_tracer, map1_q2, map1_gmao, map_scalar
 
 !---- version number -----
   character(len=128) :: version = '$Id$'
@@ -505,7 +505,7 @@ contains
                          km,  pe2,  te,       &
                          is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, P_MAP=1, conserv=.true.)
       else
-         call map_scalar(km,  pn1,  te, gz,   &
+         call map_scalar(km,  pn1,  te,       &
                          km,  pn2,  te,       &
                          is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), te_min)
       endif
@@ -518,7 +518,7 @@ contains
                          km,  pe2,  pt,       &
                          is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, P_MAP=1, conserv=.false.)
       else
-         call map_scalar(km,  pn1,  pt, gz,   &
+         call map_scalar(km,  pn1,  pt,       &
                          km,  pn2,  pt,       &
                          is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), t_min)
       endif
@@ -1433,9 +1433,9 @@ endif        ! end last_step check
 
  end subroutine remap_z
 
- subroutine map_scalar( km,   pe1,    q1,   qs,           &
+ subroutine map_scalar( km,   pe1,    q1,                 &
                         kn,   pe2,    q2,   i1, i2,       &
-                         j,  ibeg, iend, jbeg, jend, iv,  kord, q_min)
+                         j,  ibeg, iend, jbeg, jend, iv,  kord, q_min, q_bot)
 ! iv=1
  integer, intent(in) :: i1                !< Starting longitude
  integer, intent(in) :: i2                !< Finishing longitude
@@ -1445,13 +1445,14 @@ endif        ! end last_step check
  integer, intent(in) :: ibeg, iend, jbeg, jend
  integer, intent(in) :: km                !< Original vertical dimension
  integer, intent(in) :: kn                !< Target vertical dimension
- real, intent(in) ::   qs(i1:i2)       !< bottom BC
  real, intent(in) ::  pe1(i1:i2,km+1)  !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
  real, intent(in) ::  pe2(i1:i2,kn+1)  !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
  real, intent(in) ::    q1(ibeg:iend,jbeg:jend,km) !< Field input
 ! INPUT/OUTPUT PARAMETERS:
  real, intent(inout)::  q2(ibeg:iend,jbeg:jend,kn) !< Field output
- real, intent(in):: q_min
+ real, intent(in):: q_min              !< minimum for scheme
+! Optional aruguments:
+ real, optional, intent(in):: q_bot(i1:i2)       !< bottom BC
 
 ! DESCRIPTION:
 ! IV = 0: constituents
@@ -1475,7 +1476,7 @@ endif        ! end last_step check
 
 ! Compute vertical subgrid distribution
    if ( kord >  7 ) then
-        call scalar_profile( qs, q4, dp1, km, i1, i2, iv, kord, q_min )
+        call scalar_profile( q4, dp1, km, i1, i2, iv, kord, q_min, qs=q_bot )
    else
         call ppm_profile( q4, dp1, km, i1, i2, iv, kord )
    endif
@@ -1679,7 +1680,7 @@ endif        ! end last_step check
                q4(1,i,k,iq) = q1(i,j,k,iq)
             enddo
          enddo
-         call scalar_profile( qs, q4(1,i1,1,iq), dp1, km, i1, i2, 0, kord(iq), q_min )
+         call scalar_profile( q4(1,i1,1,iq), dp1, km, i1, i2, 0, kord(iq), q_min, qs=qs)
       enddo
 
 ! Mapping
@@ -1796,7 +1797,7 @@ endif        ! end last_step check
 
 ! Compute vertical subgrid distribution
    if ( kord >7 ) then
-        call  scalar_profile( qs, q4, dp1, km, i1, i2, iv, kord, q_min )
+        call  scalar_profile( q4, dp1, km, i1, i2, iv, kord, q_min, qs=qs )
    else
         call ppm_profile( q4, dp1, km, i1, i2, iv, kord )
    endif
@@ -1940,17 +1941,17 @@ endif        ! end last_step check
 
 !>@brief Optimized vertical profile reconstruction:
 !> Latest: Apr 2008 S.-J. Lin, NOAA/GFDL
- subroutine scalar_profile(qs, a4, delp, km, i1, i2, iv, kord, qmin)
+ subroutine scalar_profile(a4, delp, km, i1, i2, iv, kord, qmin, qs)
 ! Optimized vertical profile reconstruction:
 ! Latest: Apr 2008 S.-J. Lin, NOAA/GFDL
  integer, intent(in):: i1, i2
  integer, intent(in):: km      !< vertical dimension
  integer, intent(in):: iv      !< iv =-1: winds iv = 0: positive definite scalars iv = 1: others
  integer, intent(in):: kord
- real, intent(in)   ::   qs(i1:i2)
  real, intent(in)   :: delp(i1:i2,km)     !< Layer pressure thickness
  real, intent(inout):: a4(4,i1:i2,km)     !< Interpolated values
  real, intent(in):: qmin
+ real, optional, intent(in) ::   qs(i1:i2)
 !-----------------------------------------------------------------------
  logical, dimension(i1:i2,km):: extm, ext5, ext6
  real  gam(i1:i2,km)
@@ -1961,6 +1962,7 @@ endif        ! end last_step check
  integer i, k, im
 
  if ( iv .eq. -2 ) then
+      if (.not. present(qs)) call mpp_error (FATAL, 'fv_mapz::scalar_profile - qs is not present')
       do i=i1,i2
          gam(i,2) = 0.5
            q(i,1) = 1.5*a4(1,i,1)
@@ -3567,11 +3569,7 @@ endif        ! end last_step check
             q2(i,k) = q1(i,1)
          elseif(pe2(i,k) .ge. pe1(i,km+1)) then
 ! Entire grid below old ps
-#ifdef NGGPS_SUBMITTED
-            q2(i,k) = a4(3,i,km)   ! this is not good.
-#else
             q2(i,k) = q1(i,km)
-#endif
          else
 
          do 45 L=k0,km

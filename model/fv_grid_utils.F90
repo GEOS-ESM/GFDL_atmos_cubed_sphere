@@ -921,20 +921,23 @@
     real(kind=R_GRID), intent(inout), dimension(i1:i2,j1:j2):: lon, lat
 !
     real(f_p):: lat_t, sin_p, cos_p, sin_lat, cos_lat, sin_o, p2, two_pi
-    real(f_p):: c2p1, c2m1, one, near_zero, f_p_lon, f_p_lat
+    real(f_p):: c2p1, c2m1, one, two, onehalf, near_zero, zero, f_p_lon, f_p_lat
     integer:: i, j
 
-    one = 1.d0
+    zero = real(0.,kind=f_p)
+    one = real(1.,kind=f_p)
+    two = real(2.,kind=f_p)
+    onehalf = one/two
     near_zero = tiny(near_zero)
-    p2 = 0.5d0*pi
-    two_pi = 2.d0*pi
+    p2 = onehalf*real(pi,kind=f_p)
+    two_pi = two*real(pi,kind=f_p)
 
     if( is_master() .and. n==1 ) then
         write(*,*) n, 'Schmidt transformation: stretching factor=', c, ' center=', lon_p, lat_p
     endif
 
-    c2p1 = 1.d0 + c*c
-    c2m1 = 1.d0 - c*c
+    c2p1 = one + c*c
+    c2m1 = one - c*c
 
     sin_p = sin(lat_p)
     cos_p = cos(lat_p)
@@ -953,13 +956,13 @@
           cos_lat = cos(lat_t) 
             sin_o = -(sin_p*sin_lat + cos_p*cos_lat*cos(f_p_lon))
           if ( (one-abs(sin_o)) < near_zero ) then    ! poles
-               f_p_lon = 0.d0
+               f_p_lon = zero
                f_p_lat = sign( p2, sin_o )
           else
                f_p_lat = asin( sin_o )
                f_p_lon = lon_p + atan2( -cos_lat*sin(f_p_lon),   &
                           -sin_lat*cos_p+cos_lat*sin_p*cos(f_p_lon))
-               if ( f_p_lon < 0.d0 ) then
+               if ( f_p_lon < zero ) then
                     f_p_lon = f_p_lon + two_pi
                elseif( f_p_lon >= two_pi ) then
                     f_p_lon = f_p_lon - two_pi
@@ -1320,15 +1323,20 @@
  real(kind=R_GRID) p1(2), p2(2)
  real(f_p):: rsq3, alpha, delx, dely
  integer i, j, k
+ real(f_p):: one, two, three
 
-  rsq3 = 1.d0/sqrt(3.d0) 
+ one   = real(1.,kind=f_p)
+ two   = real(2.,kind=f_p)
+ three = real(3.,kind=f_p)
+
+  rsq3 = one/sqrt(three) 
  alpha = asin( rsq3 )
 
 ! Ranges:
 ! lamda = [0.75*pi, 1.25*pi]
 ! theta = [-alpha, alpha]
 
-    dely = 2.d0*alpha / real(im,kind=f_p)
+    dely = two*alpha / real(im,kind=f_p)
 
 ! Define East-West edges:
  do j=1,im+1
@@ -1722,10 +1730,14 @@
   real(kind=R_GRID), intent(inout):: q(3,np)
   real(kind=R_GRID), intent(inout):: xs(np), ys(np)
 ! local
-  real(kind=R_GRID), parameter:: esl=1.d-10
   real (f_p):: p(3)
   real (f_p):: dist, lat, lon
+  real (f_p):: two, zero, near_zero
   integer i,k
+
+  two = real(2.,kind=f_p)
+  zero = real(0.,kind=f_p)
+  near_zero = tiny(near_zero)
 
   do i=1,np
      do k=1,3
@@ -1736,13 +1748,13 @@
         p(k) = p(k) / dist
      enddo
 
-     if ( (abs(p(1))+abs(p(2)))  < esl ) then
-          lon = real(0.,kind=f_p)
+     if ( (abs(p(1))+abs(p(2))) < near_zero ) then
+          lon = zero
      else
           lon = atan2( p(2), p(1) )   ! range [-pi,pi]
      endif
 
-     if ( lon < 0.) lon = real(2.,kind=f_p)*pi + lon
+     if ( lon < zero) lon = two*pi + lon
 ! RIGHT_HAND system:
      lat = asin(p(3))
      
@@ -2020,16 +2032,20 @@
       real(kind=R_GRID), intent(IN), optional :: radius
  
       real (f_p):: p1(2), p2(2)
-      real (f_p):: beta
+      real (f_p):: beta, one, two, onehalf
       integer n
+
+      one = real(1.,kind=f_p)
+      two = real(2.,kind=f_p)
+      onehalf = one/two
 
       do n=1,2
          p1(n) = q1(n)
          p2(n) = q2(n)
       enddo
 
-      beta = asin( sqrt( sin((p1(2)-p2(2))/2.)**2 + cos(p1(2))*cos(p2(2))*   &
-                         sin((p1(1)-p2(1))/2.)**2 ) ) * 2.
+      beta = asin( sqrt( sin((p1(2)-p2(2))*onehalf)**2 + cos(p1(2))*cos(p2(2))*   &
+                         sin((p1(1)-p2(1))*onehalf)**2 ) ) * two
 
       if ( present(radius) ) then
            great_circle_dist = radius * beta
@@ -2814,6 +2830,12 @@
  real (f_p):: qx, qy, qz
  real (f_p):: angle, ddd
  integer n
+ real (f_p):: zero, one, two, four
+
+ zero = real(0.,kind=f_p) 
+ one  = real(1.,kind=f_p) 
+ two  = real(2.,kind=f_p)
+ four = real(4.,kind=f_p)
 
   do n=1,3
      e1(n) = p1(n)
@@ -2835,17 +2857,17 @@
 
    ddd = (px*px+py*py+pz*pz)*(qx*qx+qy*qy+qz*qz)
 
-   if ( ddd <= 0.0d0 ) then
-        angle = 0.d0
+   if ( ddd <= zero ) then
+        angle = zero
    else
         ddd = (px*qx+py*qy+pz*qz) / sqrt(ddd)
-        if ( abs(ddd)>1.d0) then
-             angle = 2.d0*atan(1.0)    ! 0.5*pi
+        if ( abs(ddd)>one) then
+             angle = two*atan(one)    ! 0.5*pi
            !FIX (lmh) to correctly handle co-linear points (angle near pi or 0)
-           if (ddd < 0.d0) then
-              angle = 4.d0*atan(1.0d0) !should be pi
+           if (ddd < zero) then
+              angle = four*atan(one) !should be pi
            else
-              angle = 0.d0 
+              angle = zero 
            end if
         else
              angle = acos( ddd )
@@ -2872,6 +2894,10 @@
  real (f_p):: qx, qy, qz
  real (f_p):: angle, ddd
  integer n
+ real (f_p):: zero, one
+
+ zero = real(0.,kind=f_p)
+ one  = real(1.,kind=f_p) 
 
   do n=1,3
      e1(n) = p1(n)
@@ -2894,10 +2920,10 @@
 
 ! ddd = sqrt[ (P*P) (Q*Q) ]
    ddd = sqrt( (px**2+py**2+pz**2)*(qx**2+qy**2+qz**2) )
-   if ( ddd > 0.d0 ) then
+   if ( ddd > zero ) then
         angle = (px*qx+py*qy+pz*qz) / ddd 
    else
-        angle = 1.d0
+        angle = one
    endif
    cos_angle = angle
 

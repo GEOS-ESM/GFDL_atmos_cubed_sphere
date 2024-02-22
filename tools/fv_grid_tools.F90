@@ -893,7 +893,7 @@ contains
            call sorted_intb(isd, ied, jsd, jed, is, ie, js, je, npx, npy, &
                             cubed_sphere, agrid, iintb, jintb)
 
-       call grid_area( npx, npy, ndims, nregions, Atm%neststruct%nested, Atm%gridstruct, Atm%domain, Atm%bd )
+       call grid_area( npx, npy, ndims, nregions, Atm%neststruct%nested, Atm%gridstruct, Atm%domain, Atm%bd, Atm%tile )
 !      stretched_grid = .false.
 
 !----------------------------------
@@ -1087,7 +1087,6 @@ contains
        angM = -missing
        aspN =  missing
        aspM = -missing
-       if (tile == 1) then
           do j=js, je
              do i=is, ie
                 if(i>ceiling(npx/2.) .OR. j>ceiling(npy/2.)) cycle
@@ -1117,7 +1116,6 @@ contains
                 aspN  = MIN(aspN,asp)
              enddo
           enddo
-       endif
        call mpp_sum(angAv)
        call mpp_sum(dxAV)
        call mpp_sum(aspAV)
@@ -1130,9 +1128,9 @@ contains
 
        if( is_master() ) then
 
-          angAV = angAV / ( (ceiling(npy/2.0))*(ceiling(npx/2.0)) - 1 )
-          dxAV  = dxAV  / ( (ceiling(npy/2.0))*(ceiling(npx/2.0)) )
-          aspAV = aspAV / ( (ceiling(npy/2.0))*(ceiling(npx/2.0)) )
+          angAV = angAV / ( nregions * ( (ceiling(npy/2.0))*(ceiling(npx/2.0)) - 1 ) )
+          dxAV  = dxAV  / ( nregions * ( (ceiling(npy/2.0))*(ceiling(npx/2.0)) ) )
+          aspAV = aspAV / ( nregions * ( (ceiling(npy/2.0))*(ceiling(npx/2.0)) ) )
           write(*,*  ) ''
 #ifdef SMALL_EARTH
           write(*,*) ' REDUCED EARTH: Radius is ', radius, ', omega is ', omega
@@ -2052,9 +2050,9 @@ contains
 !>@brief The subroutine 'grid_area' gets the surface area on a grid in lat/lon or xyz coordinates.
 !>@details Determined by 'ndims' argument: 2=lat/lon, 3=xyz)
 !! The area is returned in m^2 on a unit sphere.
-      subroutine grid_area(nx, ny, ndims, nregions, nested, gridstruct, domain, bd )
+      subroutine grid_area(nx, ny, ndims, nregions, nested, gridstruct, domain, bd, tile )
         type(fv_grid_bounds_type), intent(IN) :: bd
-        integer, intent(IN) :: nx, ny, ndims, nregions
+        integer, intent(IN) :: nx, ny, ndims, nregions, tile
         logical, intent(IN) :: nested
         type(fv_grid_type), intent(IN), target :: gridstruct
         type(domain2d), intent(INOUT) :: domain
@@ -2124,6 +2122,15 @@ contains
 
            ! Spherical Excess Formula
               area(i,j) = get_area(p_lL, p_uL, p_lR, p_uR, radius)
+
+              if (area(i,j) < 0.0) then
+                write(*,*) area(i,j), i, j, tile
+                write(*,*) p_lL
+                write(*,*) p_uL
+                write(*,*) p_lR
+                write(*,*) p_uR
+              endif
+
               !maxarea=MAX(area(i,j),maxarea)
               !minarea=MIN(area(i,j),minarea)
               !globalarea = globalarea + area(i,j)
@@ -2163,7 +2170,7 @@ contains
 
         if (is_master()) write(*,208) 'RADIUS (m):', radius
         if (is_master()) write(*,208) 'PI:', pi
-        if (is_master()) write(*,209) 'MAX    AREA (m*m):', maxarea,            '          MIN AREA (m*m):', minarea
+        if (is_master()) write(*,209) 'MAX    AREA (m*m):', maxarea,    '          MIN AREA (m*m):', minarea
         if (is_master()) write(*,209) 'GLOBAL AREA (m*m):', globalarea, ' IDEAL GLOBAL AREA (m*m):', 4.0*pi*radius**2
  208  format(A,e21.14)
  209  format(A,e21.14,A,e21.14)

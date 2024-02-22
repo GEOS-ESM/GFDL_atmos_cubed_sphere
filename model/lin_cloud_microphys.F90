@@ -151,8 +151,9 @@ module gfdl_lin_cloud_microphys_mod
     logical :: do_sedi_heat = .false. !< transport of heat in sedimentation
     logical :: prog_ccn = .false. !< do prognostic ccn (yi ming's method)
     logical :: do_bigg = .false. !< do bigg mechanism freezing of supercooled liquid on aerosol nuclei
-    logical :: do_evap = .false. !< do evaporation
-    logical :: do_subl = .false. !< do sublimation
+    logical :: do_evap = .true. !< do evaporation
+    logical :: do_subl = .true. !< do sublimation
+    logical :: in_cloud = .false. !< in-cloud autoconversion
     logical :: do_qa = .false. !< do inline cloud fraction (WMP: in FV3 dynamics)
     logical :: preciprad = .true. !< consider precipitates in cloud fraciton calculation
     logical :: fix_negative = .false. !< fix negative water species
@@ -325,7 +326,7 @@ module gfdl_lin_cloud_microphys_mod
         sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v, tau_i2v, &
         tau_i2s, tau_l2r, qi_lim, ql_gen, c_paut, c_psaci, c_pgacs, c_pgaci,  &
         z_slope_liq, z_slope_ice, prog_ccn, c_cracw, alin, clin, tice,        &
-        preciprad, cld_min, use_ppm, mono_prof,         &
+        preciprad, cld_min, use_ppm, mono_prof, in_cloud,        &
         do_sedi_heat, sedi_transport, do_sedi_w, dt_fr, de_ice, icloud_f, irain_f, mp_print
 
     public                                                                    &
@@ -339,7 +340,7 @@ module gfdl_lin_cloud_microphys_mod
         sat_adj0, c_piacr, tau_imlt, tau_v2l, tau_l2v, tau_i2v, &
         tau_i2s, tau_l2r, qi_lim, ql_gen, c_paut, c_psaci, c_pgacs, c_pgaci,  &
         z_slope_liq, z_slope_ice, prog_ccn, c_cracw, alin, clin, tice,        &
-        preciprad, cld_min, use_ppm, mono_prof,         &
+        preciprad, cld_min, use_ppm, mono_prof, in_cloud,        &
         do_sedi_heat, sedi_transport, do_sedi_w, dt_fr, de_ice, icloud_f, irain_f, mp_print
 
 contains
@@ -2108,21 +2109,21 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! -----------------------------------------------------------------------
         ! cloud water < -- > vapor adjustment:
         ! -----------------------------------------------------------------------
-        if (do_qa) then 
-        qsw = wqs2 (tz (k), den (k), dwsdt)
-        dq0 = qsw - qv (k)
+        if (do_evap) then 
+          qsw = wqs2 (tz (k), den (k), dwsdt)
+          dq0 = qsw - qv (k)
           if (dq0 > 0.) then
               factor = min (1., fac_l2v * (10. * dq0 / qsw)) ! the rh dependent factor = 1 at 90%
               evap = min (ql (k), factor * dq0 / (1. + tcp3 (k) * dwsdt))
-        else
+          else
             evap = 0.0
-        endif
+          endif
           qa(k) = max(0.,min(1.,qa(k) * max(qi(k) + ql(k)-evap,0.0) / max(qi(k)+ql(k),qrmin)))     ! new total condensate / old condensate 
-        qv (k) = qv (k) + evap
-        ql (k) = ql (k) - evap
-        q_liq (k) = q_liq (k) - evap
-        cvm (k) = c_air + qv (k) * c_vap + q_liq (k) * c_liq + q_sol (k) * c_ice
-        tz (k) = tz (k) - evap * lhl (k) / cvm (k)
+          qv (k) = qv (k) + evap
+          ql (k) = ql (k) - evap
+          q_liq (k) = q_liq (k) - evap
+          cvm (k) = c_air + qv (k) * c_vap + q_liq (k) * c_liq + q_sol (k) * c_ice
+          tz (k) = tz (k) - evap * lhl (k) / cvm (k)
           evapc(k) = evap
         endif
 
@@ -2160,7 +2161,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! -----------------------------------------------------------------------
         
         tc = tice - tz (k)
-        if (ql (k) > qrmin .and. tc > 0.) then
+        if ( (do_bigg) .and. (ql (k) > qrmin .and. tc > 0.) ) then
             newqi = new_ice_condensate(tz (k), ql (k), qi (k))
             sink = 3.3333e-10 * dts * (exp (0.66 * tc) - 1.) * den (k) * ql (k) * ql (k)
             sink = max(0.0,min (newqi, fac_frz * tc / icpk (k), sink))
@@ -2186,7 +2187,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! sublimation / deposition of ice
         ! -----------------------------------------------------------------------
 
-        if (tz (k) < tice) then
+        if ( (do_subl) .and. (tz (k) < tice) ) then
             qsi = iqs2 (tz (k), den (k), dqsdt)
             dq = qv (k) - qsi
             sink = fac_i2v * dq / (1. + tcpk (k) * dqsdt)

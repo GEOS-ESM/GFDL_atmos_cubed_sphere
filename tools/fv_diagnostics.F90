@@ -3265,7 +3265,7 @@ contains
 !     gmean = g_sum(domain, q(is,js,km), is, ie, js, je, 3, area, 1) 
       gmean = g_sum(domain, q(is:ie,js:je,km), is, ie, js, je, 3, area, 1) 
 
-      if(master) write(6,*) qname, gn, qmax*fac, qmin*fac, gmean*fac
+      if(master) write(6,*) qname//trim(gn), qmax*fac, qmin*fac, gmean*fac
 
  end subroutine prt_mxm
 

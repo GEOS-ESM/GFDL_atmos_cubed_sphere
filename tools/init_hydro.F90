@@ -79,12 +79,7 @@ contains
  subroutine p_var(km, ifirst, ilast, jfirst, jlast, ptop, ptop_min,    &
                   delp, delz, pt, ps,  pe, peln, pk, pkz, cappa, q, ng, nq, area,   &
                   dry_mass, adjust_dry_mass, mountain, moist_phys,      &
-                  hydrostatic, nwat, domain, make_nh &
-#ifdef MAPL_MODE
-                  ,do_pkz)
-#else
-                  )
-#endif
+                  hydrostatic, nwat, domain, make_nh, nh_pkz)
 ! Given (ptop, delp) computes (ps, pk, pe, peln, pkz)
 ! Input:
    integer,  intent(in):: km
@@ -99,10 +94,8 @@ contains
    real, intent(inout):: delp(ifirst-ng:ilast+ng,jfirst-ng:jlast+ng, km)
    real, intent(inout)::    q(ifirst-ng:ilast+ng,jfirst-ng:jlast+ng, km, nq)
    real(kind=R_GRID), intent(IN)   :: area(ifirst-ng:ilast+ng,jfirst-ng:jlast+ng)
-   logical, optional:: make_nh
-#ifdef MAPL_MODE
-   logical, intent(in), optional :: do_pkz
-#endif
+   logical, intent(in), optional :: make_nh
+   logical, intent(in), optional :: nh_pkz
 ! Output:
    real, intent(out) ::   ps(ifirst-ng:ilast+ng, jfirst-ng:jlast+ng)
    real, intent(out) ::   pk(ifirst:ilast, jfirst:jlast, km+1)
@@ -112,20 +105,17 @@ contains
    type(domain2d), intent(IN) :: domain
 
 ! Local
-   integer  sphum, liq_wat, ice_wat
-   integer  rainwat, snowwat, graupel          ! GFDL Cloud Microphysics
+   integer  sphum
    real ratio(ifirst:ilast)
    real pek, lnp, ak1, rdg, dpd, zvir
    integer i, j, k
-#ifdef MAPL_MODE
-   logical :: do_pkz_
 
-   if (present(do_pkz)) then
-      do_pkz_ = do_pkz
+   logical :: nh_pkz_
+   if (present(nh_pkz)) then
+      nh_pkz_ = nh_pkz
    else
-      do_pkz_ = .true.
+      nh_pkz_ = .true.
    end if
-#endif
 
 ! Check dry air mass & compute the adjustment amount:
    if ( adjust_dry_mass )      &
@@ -136,7 +126,7 @@ contains
 
 !$OMP parallel do default(none) shared(ifirst,ilast,jfirst,jlast,km,ptop,pek,pe,pk, &
 !$OMP                                  ps,adjust_dry_mass,dpd,delp,peln,cappa,      &
-!$OMP                                  ptop_min,hydrostatic,pkz )                   &
+!$OMP                                  ptop_min,hydrostatic,pkz,nh_pkz_)            &
 !$OMP                          private(ratio, ak1, lnp)
    do j=jfirst,jlast
       do i=ifirst,ilast
@@ -180,7 +170,7 @@ contains
           enddo
       endif
 
-      if ( hydrostatic ) then
+      if (hydrostatic .or. (.not.nh_pkz_) ) then
          do k=1,km
             do i=ifirst,ilast
                pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k))/(cappa*(peln(i,k+1,j)-peln(i,k,j)))
@@ -190,7 +180,7 @@ contains
    enddo
 
 
-   if ( .not.hydrostatic ) then
+   if ((.not.hydrostatic) .and. nh_pkz_ ) then
 
       rdg = -rdgas / grav
       if ( present(make_nh) ) then
@@ -208,9 +198,6 @@ contains
           endif
       endif
 
-#ifdef MAPL_MODE
-     if (do_pkz_) then
-#endif
      if ( moist_phys ) then
 !------------------------------------------------------------------
 ! The following form is the same as in "fv_update_phys.F90"
@@ -242,9 +229,6 @@ contains
           enddo
        enddo
      endif
-#ifdef MAPL_MODE
-     end if
-#endif
 
    endif
 
