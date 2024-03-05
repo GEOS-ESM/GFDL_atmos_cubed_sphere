@@ -86,7 +86,7 @@ module fv_mapz_mod
   use field_manager_mod, only: MODEL_ATMOS
   use fv_grid_utils_mod, only: g_sum, ptop_min
   use fv_fill_mod,       only: fillz
-  use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum, BITWISE_EFP_SUM, BITWISE_EXACT_SUM
+  use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum, BITWISE_EFP_SUM
   use mpp_mod,           only: NOTE, FATAL, mpp_error, get_unit, mpp_root_pe, mpp_pe
   use fv_arrays_mod,     only: fv_grid_type, fv_flags_type
   use fv_timing_mod,     only: timing_on, timing_off
@@ -116,7 +116,7 @@ module fv_mapz_mod
   private
 
   public compute_total_energy, Lagrangian_to_Eulerian, moist_cv, moist_cp,   &
-         rst_remap, mappm, E_Flux, mapn_tracer, map1_q2, map1_gmao, map_scalar
+         rst_remap, mappm, E_Flux, mapn_tracer, map1_q2, map1_gmao, map_scalar, map1_ppm
 
 !---- version number -----
   character(len=128) :: version = '$Id$'
@@ -547,17 +547,17 @@ contains
 
    if ( .not. hydrostatic ) then
 ! Remap vertical wind:
-        call map1_ppm (km,   pe1,  w,  ws(is,j),   &
+        call map1_ppm (km,   pe1,  w,              &
                        km,   pe2,  w,              &
-                       is, ie, j, isd, ied, jsd, jed, -2, kord_wz)
+                       is, ie, j, isd, ied, jsd, jed, -2, kord_wz, qs=ws(is,j))
 ! Remap delz for hybrid sigma-p coordinate
         do k=1,km
            do i=is,ie
               delz(i,j,k) = -delz(i,j,k) / delp(i,j,k) ! ="specific volume"/grav
            enddo
         enddo
-        call map1_ppm (km,   pe1, delz,  gz,   &
-                       km,   pe2, delz,              &
+        call map1_ppm (km,   pe1, delz,            &
+                       km,   pe2, delz,            &
                        is, ie, j, isd,  ied,  jsd,  jed,  1, abs(kord_wz))
         do k=1,km
            do i=is,ie
@@ -643,16 +643,16 @@ contains
          enddo
       enddo
 
-      call map1_ppm( km, pe0(is:ie,:),   u,   gz,   &
+      call map1_ppm( km, pe0(is:ie,:),   u,         &
                      km, pe3(is:ie,:),   u,               &
                      is, ie, j, isd, ied, jsd, jed+1, -1, kord_mt)
       if (present(mfy)) then
-         call map1_ppm( km, pe0(is:ie,:), mfy,  gz,  &
+         call map1_ppm( km, pe0(is:ie,:), mfy,       &
                         km, pe3(is:ie,:), mfy,       &
                         is, ie, j, is, ie, js, je+1, -1, kord_mt)
       endif
       if (present(cy)) then
-         call map1_ppm( km, pe0(is:ie,:), cy,  gz,  &
+         call map1_ppm( km, pe0(is:ie,:), cy,       &
                         km, pe3(is:ie,:), cy,       &
                         is, ie, j, isd, ied, js, je+1, -1, kord_mt)
       endif
@@ -674,16 +674,16 @@ contains
          enddo
       enddo
 
-      call map1_ppm (km, pe0,  v, gz,    &
+      call map1_ppm (km, pe0,  v,        &
                      km, pe3,  v, is, ie+1,    &
                      j, isd, ied+1, jsd, jed, -1, kord_mt)
       if (present(mfx)) then
-         call map1_ppm (km, pe0, mfx,  gz,         &
+         call map1_ppm (km, pe0, mfx,              &
                         km, pe3, mfx, is, ie+1,    &
                         j, is, ie+1, js, je, -1, kord_mt)
       endif
       if (present(cx)) then
-         call map1_ppm (km, pe0, cx,  gz,         &
+         call map1_ppm (km, pe0, cx,              &
                         km, pe3, cx, is, ie+1,    &
                         j, is, ie+1, jsd, jed, -1, kord_mt)
       endif
@@ -990,17 +990,17 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
     enddo   ! j-loop
 
 !$OMP single
-      tesum = mpp_global_sum(domain, te_2d*gridstruct%area_64(is:ie,js:je), &
-                             flags=BITWISE_EFP_SUM)
+      tesum = mpp_global_sum(domain, te_2d*gridstruct%area_64(is:ie,js:je))
+                           ! flags=BITWISE_EFP_SUM)
       E_Flux = DBLE(consv)*tesum / DBLE(grav*pdt*4.*pi*radius**2)    ! unit: W/m**2
                                                            ! Note pdt is "phys" time step
       if ( hydrostatic ) then
-           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je))
+                           !      flags=BITWISE_EFP_SUM)
            dtmp = tesum / DBLE(cp*zsum)
       else
-           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je))
+                           !      flags=BITWISE_EFP_SUM)
            dtmp = tesum / DBLE(cv_air*zsum)
       endif
 !$OMP end single
@@ -1027,12 +1027,12 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
       E_Flux = consv
 !$OMP single
       if ( hydrostatic ) then
-           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+           zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je))
+                                ! flags=BITWISE_EFP_SUM)
            dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cp*zsum)
       else
-           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+           zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je))
+                                ! flags=BITWISE_EFP_SUM)
            dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cv_air*zsum)
       endif
 !$OMP end single
@@ -1351,7 +1351,7 @@ endif        ! end last_step check
 
 
 
- subroutine remap_z(km, pe1, q1, kn, pe2, q2, i1, i2, iv, kord)
+ subroutine remap_z(km, pe1, q1, kn, pe2, q2, i1, i2, iv, kord, qs)
 
 ! INPUT PARAMETERS:
       integer, intent(in) :: i1                !< Starting longitude
@@ -1365,11 +1365,12 @@ endif        ! end last_step check
       real, intent(in) ::  pe2(i1:i2,kn+1)     !< height at layer edges from model top to bottom surface
       real, intent(in) ::  q1(i1:i2,km)        !< Field input
 
+      real, optional, intent(in) ::   qs(i1:i2)
+
 ! INPUT/OUTPUT PARAMETERS:
       real, intent(inout)::  q2(i1:i2,kn)      !< Field output
 
 ! LOCAL VARIABLES:
-      real   qs(i1:i2)
       real  dp1(  i1:i2,km)
       real   q4(4,i1:i2,km)
       real   pl, pr, qsum, delp, esl
@@ -1384,7 +1385,7 @@ endif        ! end last_step check
 
 ! Compute vertical subgrid distribution
    if ( kord >7 ) then
-        call  cs_profile( qs, q4, dp1, km, i1, i2, iv, kord )
+        call  cs_profile( q4, dp1, km, i1, i2, iv, kord, qs=qs )
    else
         call ppm_profile( q4, dp1, km, i1, i2, iv, kord )
    endif
@@ -1557,9 +1558,9 @@ endif        ! end last_step check
  end subroutine map_scalar
 
 
- subroutine map1_ppm( km,   pe1,    q1,   qs,           &
+ subroutine map1_ppm( km,   pe1,    q1,                 &
                       kn,   pe2,    q2,   i1, i2,       &
-                      j,    ibeg, iend, jbeg, jend, iv,  kord)
+                      j,    ibeg, iend, jbeg, jend, iv,  kord, qs)
  integer, intent(in) :: i1                !< Starting longitude
  integer, intent(in) :: i2                !< Finishing longitude
  integer, intent(in) :: iv                !< Mode: 0 == constituents 1 == ??? 2 == remap temp with cs scheme
@@ -1568,10 +1569,12 @@ endif        ! end last_step check
  integer, intent(in) :: ibeg, iend, jbeg, jend
  integer, intent(in) :: km                !< Original vertical dimension
  integer, intent(in) :: kn                !< Target vertical dimension
- real, intent(in) ::   qs(i1:i2)       !< bottom BC
  real, intent(in) ::  pe1(i1:i2,km+1)  !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
  real, intent(in) ::  pe2(i1:i2,kn+1)  !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
  real, intent(in) ::    q1(ibeg:iend,jbeg:jend,km) !< Field input
+
+ real, optional, intent(in) ::   qs(i1:i2)
+
 ! INPUT/OUTPUT PARAMETERS:
  real, intent(inout)::  q2(ibeg:iend,jbeg:jend,kn) !< Field output
 
@@ -1597,7 +1600,7 @@ endif        ! end last_step check
 
 ! Compute vertical subgrid distribution
    if ( kord >7 ) then
-        call  cs_profile( qs, q4, dp1, km, i1, i2, iv, kord )
+        call  cs_profile( q4, dp1, km, i1, i2, iv, kord, qs=qs )
    else
         call ppm_profile( q4, dp1, km, i1, i2, iv, kord )
    endif
@@ -1647,7 +1650,7 @@ endif        ! end last_step check
 
 
  subroutine mapn_tracer(nq, km, pe1, pe2, q1, dp2, kord, j,     &
-                        i1, i2, isd, ied, jsd, jed, q_min, fill)
+                        i1, i2, isd, ied, jsd, jed, q_min, fill, qs)
 ! INPUT PARAMETERS:
       integer, intent(in):: km                !< vertical dimension
       integer, intent(in):: j, nq, i1, i2
@@ -1659,12 +1662,14 @@ endif        ! end last_step check
       real, intent(in)::  q_min
       logical, intent(in):: fill
       real, intent(inout):: q1(isd:ied,jsd:jed,km,nq) ! Field input
+
+      real, optional, intent(in) ::   qs(i1:i2)
+
 ! LOCAL VARIABLES:
       real:: q4(4,i1:i2,km,nq)
       real:: q2(i1:i2,km,nq) !< Field output
       real:: qsum(nq)
       real:: dp1(i1:i2,km)
-      real:: qs(i1:i2)
       real:: pl, pr, dp, esl, fac1, fac2
       integer:: i, k, l, m, k0, iq
 
@@ -1761,7 +1766,7 @@ endif        ! end last_step check
  subroutine map1_q2(km,   pe1,   q1,            &
                     kn,   pe2,   q2,   dp2,     &
                     i1,   i2,    iv,   kord, j, &
-                    ibeg, iend, jbeg, jend, q_min )
+                    ibeg, iend, jbeg, jend, q_min, qs )
 
 
 ! INPUT PARAMETERS:
@@ -1778,10 +1783,12 @@ endif        ! end last_step check
       real, intent(in) ::  q1(ibeg:iend,jbeg:jend,km) !< Field input
       real, intent(in) ::  dp2(i1:i2,kn)
       real, intent(in) ::  q_min
+
+      real, optional, intent(in) ::   qs(i1:i2)
+
 ! INPUT/OUTPUT PARAMETERS:
       real, intent(inout):: q2(i1:i2,kn) !< Field output
 ! LOCAL VARIABLES:
-      real   qs(i1:i2)
       real   dp1(i1:i2,km)
       real   q4(4,i1:i2,km)
       real   pl, pr, qsum, dp, esl
@@ -1850,7 +1857,7 @@ endif        ! end last_step check
 
  subroutine remap_2d(km,   pe1,   q1,        &
                      kn,   pe2,   q2,        &
-                     i1,   i2,    iv,   kord)
+                     i1,   i2,    iv,   kord, qs)
    integer, intent(in):: i1, i2
    integer, intent(in):: iv               !< Mode: 0 ==  constituents 1 ==others
    integer, intent(in):: kord
@@ -1860,8 +1867,10 @@ endif        ! end last_step check
    real, intent(in):: pe2(i1:i2,kn+1)     !< Pressure at layer edges from model top to bottom surface in the new vertical coordinate
    real, intent(in) :: q1(i1:i2,km) !< Field input
    real, intent(out):: q2(i1:i2,kn) !< Field output
+
+   real, optional, intent(in) ::   qs(i1:i2)
+
 ! LOCAL VARIABLES:
-   real   qs(i1:i2)
    real   dp1(i1:i2,km)
    real   q4(4,i1:i2,km)
    real   pl, pr, qsum, dp, esl
@@ -1876,7 +1885,7 @@ endif        ! end last_step check
 
 ! Compute vertical subgrid distribution
    if ( kord >7 ) then
-        call  cs_profile( qs, q4, dp1, km, i1, i2, iv, kord )
+        call  cs_profile( q4, dp1, km, i1, i2, iv, kord, qs )
    else
         call ppm_profile( q4, dp1, km, i1, i2, iv, kord )
    endif
@@ -2353,7 +2362,7 @@ endif        ! end last_step check
 !>@brief The subroutine 'cs_profile' performs the optimized vertical profile reconstruction:
 !>@date April 2008
 !>@author S. J. Lin, NOAA/GFDL
- subroutine cs_profile(qs, a4, delp, km, i1, i2, iv, kord)
+ subroutine cs_profile( a4, delp, km, i1, i2, iv, kord, qs )
 ! Optimized vertical profile reconstruction:
 ! Latest: Apr 2008 S.-J. Lin, NOAA/GFDL
  integer, intent(in):: i1, i2
@@ -2362,9 +2371,11 @@ endif        ! end last_step check
                                !< iv = 0: positive definite scalars
                                !< iv = 1: others
  integer, intent(in):: kord
- real, intent(in)   ::   qs(i1:i2)
  real, intent(in)   :: delp(i1:i2,km)     !< layer pressure thickness
  real, intent(inout):: a4(4,i1:i2,km)     !< Interpolated values
+
+ real, optional, intent(in) ::   qs(i1:i2)
+
 !-----------------------------------------------------------------------
  logical, dimension(i1:i2,km):: extm, ext5, ext6
  real  gam(i1:i2,km)
@@ -2375,6 +2386,7 @@ endif        ! end last_step check
  integer i, k, im
 
  if ( iv .eq. -2 ) then
+      if (.not. present(qs)) call mpp_error (FATAL, 'fv_mapz::scalar_profile - qs is not present')
       do i=i1,i2
          gam(i,2) = 0.5
            q(i,1) = 1.5*a4(1,i,1)
@@ -3506,7 +3518,7 @@ endif        ! end last_step check
 
 !>@brief The subroutine 'mappm' is a general-purpose routine for remapping
 !! one set of vertical levels to another.
- subroutine mappm(km, pe1, q1, kn, pe2, q2, i1, i2, iv, kord, ptop)
+ subroutine mappm(km, pe1, q1, kn, pe2, q2, i1, i2, iv, kord, ptop, qs)
 
 ! IV = 0: constituents
 ! IV = 1: potential temp
@@ -3528,8 +3540,8 @@ endif        ! end last_step check
  real, intent(in )::  q1(i1:i2,km)
  real, intent(out)::  q2(i1:i2,kn)
  real, intent(IN) :: ptop
+ real, intent(in ), optional :: qs(i1:i2)
 ! local
-      real  qs(i1:i2)
       real dp1(i1:i2,km)
       real a4(4,i1:i2,km)
       integer i, k, l
@@ -3544,7 +3556,7 @@ endif        ! end last_step check
       enddo
 
       if ( kord >7 ) then
-           call  cs_profile( qs, a4, dp1, km, i1, i2, iv, kord )
+           call  cs_profile( a4, dp1, km, i1, i2, iv, kord, qs=qs )
       else
            call ppm_profile( a4, dp1, km, i1, i2, iv, kord )
       endif
