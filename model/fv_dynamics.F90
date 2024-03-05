@@ -232,11 +232,11 @@ contains
     real, intent(in),    dimension(npz+1):: ak, bk
 
 ! Accumulated Mass flux arrays: the "Flux Capacitor"
-    real, intent(inout) ::  mfx(bd%is:bd%ie+1, bd%js:bd%je,   npz)
-    real, intent(inout) ::  mfy(bd%is:bd%ie  , bd%js:bd%je+1, npz)
+    real(kind=8), intent(inout) ::  mfx(bd%is:bd%ie+1, bd%js:bd%je,   npz)
+    real(kind=8), intent(inout) ::  mfy(bd%is:bd%ie  , bd%js:bd%je+1, npz)
 ! Accumulated Courant number arrays
-    real, intent(inout) ::  cx(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
-    real, intent(inout) ::  cy(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
+    real(kind=8), intent(inout) ::  cx(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
+    real(kind=8), intent(inout) ::  cy(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
 
     type(fv_grid_type),  intent(inout), target :: gridstruct
     type(fv_flags_type), intent(INOUT) :: flagstruct
@@ -293,6 +293,12 @@ contains
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
+
+! Clear Rayleigh Friction Tendencies
+      dudt_rf = 0.0
+      dvdt_rf = 0.0
+      dtdt_rf = 0.0
+      if (.not. hydrostatic) dwdt_rf = 0.0
 
 ! Empty the accumulated mass flux and courant numbers
       mfx = 0.0
@@ -635,7 +641,7 @@ contains
                                            call timing_on('DYN_CORE')
       call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
                     u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va,           & 
-                    uc, vc, &
+                    dudt_rf, dvdt_rf, dwdt_rf, uc, vc, &
 #ifdef SINGLE_FV
                     mfxR8, mfyR8, cxR8, cyR8, &
 #else
@@ -761,7 +767,8 @@ contains
                      idiag%id_mdt>0, dtdt_m, ptop, ak, bk, pfull, flagstruct, gridstruct, domain,   &
                      flagstruct%do_sat_adj, hydrostatic, hybrid_z, do_omega,     &
                      flagstruct%adiabatic, do_adiabatic_init, &
-                     mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap)
+                     flagstruct%remap_option, flagstruct%gmao_remap)
+!!!                  mfx=mfxL, mfy=mfyL, cx=cxL, cy=cyL)
 
 #ifdef AVEC_TIMERS
                                                   call avec_timer_stop(6)

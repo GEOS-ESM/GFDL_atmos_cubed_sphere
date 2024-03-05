@@ -84,7 +84,7 @@
  use mpp_parameter_mod, only: CORNER, SCALAR_PAIR
 
  use fv_arrays_mod,   only: fv_atmos_type, fv_grid_type, fv_grid_bounds_type, &
-                            R_GRID
+                            R_GRID, FVPRC, REAL4, REAL8 
  use fv_eta_mod,      only: set_eta
  use fv_mp_mod,       only: ng, is_master
  use fv_mp_mod,       only: mp_reduce_sum, mp_reduce_min, mp_reduce_max
@@ -108,12 +108,15 @@
 
  real, parameter:: ptop_min=1.d-8
 
+ logical, SAVE :: g_sum_initialized = .false.
+ real(kind=R_GRID), SAVE :: global_area
+
  public f_p 
  public ptop_min, big_number !CLEANUP: OK to keep since they are constants?
  public cos_angle
  public latlon2xyz, gnomonic_grids, gnomonic_grids_local, &
         global_mx, unit_vect_latlon,  &
-        cubed_to_latlon, c2l_ord2, g_sum, global_qsum, great_circle_dist,  &
+        cubed_to_latlon, c2l_ord2, g_sum, g_sum_r8, global_qsum, great_circle_dist,  &
         v_prod, get_unit_vect2, project_sphere_v
  public mid_pt_sphere,  mid_pt_cart, vect_cross, grid_utils_init, grid_utils_end, &
         spherical_angle, cell_center2, get_area, inner_prod, fill_ghost, direct_transform,  &
@@ -918,46 +921,55 @@
     real(kind=R_GRID), intent(inout), dimension(i1:i2,j1:j2):: lon, lat
 !
     real(f_p):: lat_t, sin_p, cos_p, sin_lat, cos_lat, sin_o, p2, two_pi
-    real(f_p):: c2p1, c2m1
+    real(f_p):: c2p1, c2m1, one, two, onehalf, near_zero, zero, f_p_lon, f_p_lat
     integer:: i, j
 
-    p2 = 0.5d0*pi
-    two_pi = 2.d0*pi
+    zero = real(0.,kind=f_p)
+    one = real(1.,kind=f_p)
+    two = real(2.,kind=f_p)
+    onehalf = one/two
+    near_zero = tiny(near_zero)
+    p2 = onehalf*real(pi,kind=f_p)
+    two_pi = two*real(pi,kind=f_p)
 
     if( is_master() .and. n==1 ) then
         write(*,*) n, 'Schmidt transformation: stretching factor=', c, ' center=', lon_p, lat_p
     endif
 
-    c2p1 = 1.d0 + c*c
-    c2m1 = 1.d0 - c*c
+    c2p1 = one + c*c
+    c2m1 = one - c*c
 
     sin_p = sin(lat_p)
     cos_p = cos(lat_p)
 
     do j=j1,j2
        do i=i1,i2
-          if ( abs(c2m1) > 1.d-7 ) then
-               sin_lat = sin(lat(i,j)) 
+          f_p_lon = lon(i,j)
+          f_p_lat = lat(i,j)
+          if ( abs(c2m1) > near_zero ) then
+               sin_lat = sin(f_p_lat) 
                lat_t = asin( (c2m1+c2p1*sin_lat)/(c2p1+c2m1*sin_lat) )
           else         ! no stretching
-               lat_t = lat(i,j)
+               lat_t = f_p_lat
           endif
           sin_lat = sin(lat_t) 
           cos_lat = cos(lat_t) 
-            sin_o = -(sin_p*sin_lat + cos_p*cos_lat*cos(lon(i,j)))
-          if ( (1.-abs(sin_o)) < 1.d-7 ) then    ! poles
-               lon(i,j) = 0.d0
-               lat(i,j) = sign( p2, sin_o )
+            sin_o = -(sin_p*sin_lat + cos_p*cos_lat*cos(f_p_lon))
+          if ( (one-abs(sin_o)) < near_zero ) then    ! poles
+               f_p_lon = zero
+               f_p_lat = sign( p2, sin_o )
           else
-               lat(i,j) = asin( sin_o )
-               lon(i,j) = lon_p + atan2( -cos_lat*sin(lon(i,j)),   &
-                          -sin_lat*cos_p+cos_lat*sin_p*cos(lon(i,j)))
-               if ( lon(i,j) < 0.d0 ) then
-                    lon(i,j) = lon(i,j) + two_pi
-               elseif( lon(i,j) >= two_pi ) then
-                    lon(i,j) = lon(i,j) - two_pi
+               f_p_lat = asin( sin_o )
+               f_p_lon = lon_p + atan2( -cos_lat*sin(f_p_lon),   &
+                          -sin_lat*cos_p+cos_lat*sin_p*cos(f_p_lon))
+               if ( f_p_lon < zero ) then
+                    f_p_lon = f_p_lon + two_pi
+               elseif( f_p_lon >= two_pi ) then
+                    f_p_lon = f_p_lon - two_pi
                endif
           endif
+          lon(i,j) = f_p_lon
+          lat(i,j) = f_p_lat
        enddo
     enddo
 
@@ -2900,14 +2912,11 @@
       integer, intent(IN) :: jfirst, jlast, ngc
       integer, intent(IN) :: mode  ! if ==1 divided by area
       logical, intent(in), optional :: reproduce
-      real, intent(IN) :: p(ifirst:ilast,jfirst:jlast)      ! field to be summed
+      real(kind=REAL4), intent(IN) :: p(ifirst:ilast,jfirst:jlast)      ! field to be summed
       real(kind=R_GRID), intent(IN) :: area(ifirst-ngc:ilast+ngc,jfirst-ngc:jlast+ngc)
       type(domain2d), intent(IN) :: domain
       integer :: i,j
       real gsum
-      logical, SAVE :: g_sum_initialized = .false.
-      real(kind=R_GRID), SAVE :: global_area
-      real :: tmp(ifirst:ilast,jfirst:jlast) 
       integer :: err
         
       if ( .not. g_sum_initialized ) then
@@ -2946,6 +2955,48 @@
       endif
  end function g_sum
 
+ !>@brief The function 'g_sum_r8' is the fast version of 'globalsum'. 
+ real(kind=REAL8) function g_sum_r8(domain, p, ifirst, ilast, jfirst, jlast, ngc, area, mode, reproduce)
+      integer, intent(IN) :: ifirst, ilast
+      integer, intent(IN) :: jfirst, jlast, ngc
+      integer, intent(IN) :: mode  ! if ==1 divided by area
+      logical, intent(in), optional :: reproduce
+      real(kind=REAL8), intent(IN) :: p(ifirst:ilast,jfirst:jlast)      ! field to be summed
+      real(kind=R_GRID), intent(IN) :: area(ifirst-ngc:ilast+ngc,jfirst-ngc:jlast+ngc)
+      type(domain2d), intent(IN) :: domain
+      integer :: i,j
+      real(kind=REAL8) :: gsum
+      integer :: err
+
+      if ( .not. g_sum_initialized ) then
+         global_area = mpp_global_sum(domain, area) !, flags=BITWISE_EFP_SUM)
+         if ( is_master() ) write(*,*) 'Global Area=',global_area
+         g_sum_initialized = .true.
+      end if
+ 
+!-------------------------
+! FMS global sum algorithm: 
+!-------------------------
+      if ( present(reproduce) ) then
+         if (reproduce) then
+            gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast)) !, flags=BITWISE_EFP_SUM)
+         else
+            gsum = global_qsum_r8(p(:,:)*area(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast)
+         endif
+      else
+!-------------------------
+! Quick local sum algorithm
+!-------------------------
+         gsum = global_qsum_r8(p(:,:)*area(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast)
+      endif
+
+      if ( mode==1 ) then
+           g_sum_r8 = gsum / global_area
+      else
+           g_sum_r8 = gsum
+      endif
+ end function g_sum_r8
+
 !>@brief The function 'global_qsum' computes the quick global sum without area weighting.
  real function global_qsum(p, ifirst, ilast, jfirst, jlast)
       integer, intent(IN) :: ifirst, ilast
@@ -2965,6 +3016,25 @@
       global_qsum  = gsum
 
  end function global_qsum
+
+ real(kind=8) function global_qsum_r8(p, ifirst, ilast, jfirst, jlast)
+      integer, intent(IN) :: ifirst, ilast
+      integer, intent(IN) :: jfirst, jlast
+      real(kind=8), intent(IN) :: p(ifirst:ilast,jfirst:jlast) !< field to be summed
+      integer :: i,j
+      real(kind=8) gsum
+
+      gsum = 0.
+      do j=jfirst,jlast
+         do i=ifirst,ilast
+            gsum = gsum + p(i,j)
+         enddo
+      enddo
+      call mp_reduce_sum(gsum)
+
+      global_qsum_r8  = gsum
+
+ end function global_qsum_r8
 
 
  subroutine global_mx(q, n_g, qmin, qmax, bd)

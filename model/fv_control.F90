@@ -1072,13 +1072,13 @@ module fv_control_mod
 
       allocate(Atm(ngrids))
     
-      allocate(grids_on_this_pe(ngrids))
+      if (.not. allocated(grids_on_this_pe)) allocate(grids_on_this_pe(ngrids))
       grids_on_this_pe = .false. !initialization
 
       npes = mpp_npes()
 
       ! Need to get a global pelist to send data around later?
-      allocate( pelist_all(npes) )
+      if (.not. allocated(pelist_all)) allocate( pelist_all(npes) )
       pelist_all = (/ (i,i=0,npes-1) /)
       pelist_all = pelist_all + mpp_root_pe()
 
