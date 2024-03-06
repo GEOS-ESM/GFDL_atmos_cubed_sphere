@@ -180,7 +180,7 @@ contains
    enddo
 
 
-   if ((.not.hydrostatic) .and. nh_pkz_ ) then
+   if (.not.hydrostatic) then
 
       rdg = -rdgas / grav
       if ( present(make_nh) ) then
@@ -198,6 +198,7 @@ contains
           endif
       endif
 
+     if ( nh_pkz_ ) then
      if ( moist_phys ) then
 !------------------------------------------------------------------
 ! The following form is the same as in "fv_update_phys.F90"
@@ -228,6 +229,7 @@ contains
              enddo
           enddo
        enddo
+     endif
      endif
 
    endif
