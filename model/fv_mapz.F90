@@ -1498,13 +1498,18 @@ endif        ! end last_step check
       enddo
       LM1 = max(LP0-1,1)
       LP0 = min(LP0, km)
+
+! Entire grid below old ps
+! ----------------------------------------------------
+      if( pe2(i,k) .ge. pe1(i,km+1)) then
+            q2(i,j,k) = q1(i,j,km)
 ! Extrapolate Linearly above first model level
 ! ----------------------------------------------------
-      if( LM1.eq.1 .and. LP0.eq.1 ) then
+      else if( LM1.eq.1 .and. LP0.eq.1 ) then
              q2(i,j,k) = q1(i,j,1) + ( q1(i,j,2)-q1(i,j,1) )*( pe2(i,k)-pe1(i,1) ) &
                                                             /( pe1(i,2)-pe1(i,1) )
 ! Extrapolate Linearly below last model level
-! ---------------------------------------------------
+! ----------------------------------------------------
       else if( LM1.eq.km .and. LP0.eq.km ) then
              q2(i,j,k) = q1(i,j,km) + ( q1(i,j,km)-q1(i,j,km-1) )*( pe2(i,k )-pe1(i,km  ) ) &
                                                                  /( pe1(i,km)-pe1(i,km-1) )
