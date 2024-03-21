@@ -562,8 +562,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, te0
         ! -----------------------------------------------------------------------
         ! sublimation / deposition between water vapor and cloud ice
         ! -----------------------------------------------------------------------
-        
-        do i = is, ie
+          do i = is, ie
             src (i) = 0.
             if (pt1 (i) < t_sub) then ! too cold to be accurate; freeze qv as a fix
                 src (i) = dim (qv (i, j), 1.e-6)
@@ -582,8 +581,12 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, te0
                     qi_crt = qi_gen * min (qi_lim, 0.1 * tmp) / den (i)
                     src (i) = min (sink (i), max (qi_crt - qi (i, j), pidep), tmp / tcp2 (i))
                 else
+                  if (do_subl) then 
                     pidep = pidep * min (1., dim (pt1 (i), t_sub) * 0.2)
                     src (i) = max (pidep, sink (i), - qi (i, j))
+                  else 
+                    src (i) = 0.0
+                  endif
                 endif
             endif
             qv (i, j) = qv (i, j) - src (i)
@@ -591,7 +594,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, te0
             q_sol (i) = q_sol (i) + src (i)
             cvm (i) = mc_air (i) + qv (i, j) * c_vap + q_liq (i) * c_liq + q_sol (i) * c_ice
             pt1 (i) = pt1 (i) + src (i) * (lhl (i) + lhi (i)) / cvm (i)
-        enddo
+          enddo
         
         ! -----------------------------------------------------------------------
         ! virtual temp updated

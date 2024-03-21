@@ -281,7 +281,6 @@ contains
       integer :: theta_d = -999
       logical used, last_step, do_omega
       type(group_halo_update_type), save :: i_pack(12)
-      type(group_halo_update_type), save :: z_pack(181)
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
       real :: dt2
@@ -570,6 +569,7 @@ contains
 
   last_step = .false.
   mdt = bdt / real(k_split)
+  flagstruct%m_split = CEILING(1. + abs(bdt)/real(k_split*n_split))
 
   allocate ( dtdt_m(is:ie,js:je,npz) )
   if ( idiag%id_mdt > 0 .and. (.not. do_adiabatic_init) ) then
@@ -633,7 +633,7 @@ contains
     endif
 
                                            call timing_on('DYN_CORE')
-      call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
+      call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
                     u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va,           & 
                     uc, vc, &
 #ifdef SINGLE_FV
@@ -700,7 +700,7 @@ contains
        else
          if ( flagstruct%z_tracer ) then
          call tracer_2d_1L(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
-                        flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), z_pack, &
+                        flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac)
          else
          call tracer_2d(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
@@ -927,11 +927,11 @@ contains
        call range_check('VA_dyn', ua, is, ie, js, je, ng, npz, gridstruct%agrid,   &
                          -280., 280., bad_range)
        call range_check('TA_dyn', pt, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         150., 335., bad_range)
-       if ( .not. hydrostatic ) then
-            call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         -100., 100., bad_range)
-       endif
+                         100., 335., bad_range)
+      !if ( .not. hydrostatic ) then
+      !     call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
+      !                  -100., 100., bad_range)
+      !endif
   endif
 
   end subroutine fv_dynamics

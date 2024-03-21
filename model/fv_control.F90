@@ -222,6 +222,7 @@ module fv_control_mod
    logical , pointer :: reset_eta 
    real    , pointer :: p_fac
    real    , pointer :: a_imp
+   real    , pointer :: dz_min
    integer , pointer :: n_split 
                              ! Default 
    integer , pointer :: m_split 
@@ -319,6 +320,8 @@ module fv_control_mod
   real(kind=R_GRID), pointer :: deglon_start, deglon_stop, &  ! boundaries of latlon patch
           deglat_start, deglat_stop
   real(kind=R_GRID), pointer :: deglat
+
+  logical, pointer :: compute_coords_locally
 
   logical, pointer :: nested, twowaynest
   integer, pointer :: parent_tile, refinement, nestbctype, nestupdate, nsponge, ioffset, joffset
@@ -640,7 +643,7 @@ module fv_control_mod
    real :: dt0  = 1800.          !< base time step
    real :: ns0  = 5.             !< base nsplit for base dimension 
                                  !< For cubed sphere 5 is better
-   !real :: umax = 350.           ! max wave speed for grid_type>3 ! Now defined above
+   real :: offset = 0.49         !< base to help round up n_split
    real :: dimx, dl, dp, dxmin, dymin, d_fac
 
    integer :: n0split
@@ -656,7 +659,7 @@ module fv_control_mod
 
    namelist /fv_grid_nml/ grid_name, grid_file
    namelist /fv_core_nml/npx, npy, ntiles, npz, npz_rst, layout, io_layout, ncnst, nwat,  &
-                         use_logp, p_fac, a_imp, k_split, n_split, m_split, q_split, print_freq, write_3d_diags, do_schmidt,  &
+                         use_logp, p_fac, a_imp, dz_min, k_split, n_split, m_split, q_split, print_freq, write_3d_diags, do_schmidt,  &
                          hord_mt, hord_vt, hord_tm, hord_dp, hord_tr, shift_fac, stretch_fac, target_lat, target_lon, &
                          kord_mt, kord_wz, kord_tm, kord_tr, fv_debug, fv_land, nudge, do_sat_adj, do_f3d, &
                          external_ic, read_increment, ncep_ic, nggps_ic, ecmwf_ic, use_new_ncep, use_ncep_phy, fv_diag_ic, &
@@ -675,7 +678,8 @@ module fv_control_mod
                          nested, twowaynest, parent_grid_num, parent_tile, nudge_qv, &
                          refinement, nestbctype, nestupdate, nsponge, s_weight, &
                          ioffset, joffset, check_negative, nudge_ic, halo_update_type, gfs_phil, agrid_vel_rst,     &
-                         do_uni_zfull, adj_mass_vmr
+                         do_uni_zfull, adj_mass_vmr, &
+                         compute_coords_locally
 
    namelist /test_case_nml/test_case, bubble_do, alpha, nsolitons, soliton_Umax, soliton_size
 
@@ -766,14 +770,18 @@ module fv_control_mod
 
       ! Define n_split if not in namelist
       if (ntiles==6) then
-         dimx = 4.0*(npx-1)
+         offset = 0.49
 #ifdef MAPL_MODE
-         if (.not. hydrostatic ) then
+         dimx = stretch_fac*4.0*(npx-1)
+                              ns0 = 4
+         if (npx >= 90)       ns0 = 5
+         if (stretch_fac > 1) then
                               ns0 = 6
-            if ( npx >=  90 ) ns0 = 7
-            if ( npx >= 360 ) ns0 = 8
+            if (npx >= 1500)  ns0 = 7
          endif
 #else
+         offset = 0.49
+         dimx = 4.0*(npx-1)
          if ( hydrostatic ) then
             if ( npx >= 120 ) ns0 = 6
          else
@@ -791,9 +799,9 @@ module fv_control_mod
       endif
           
       if (grid_type < 4) then
-         n0split = nint ( ns0*abs(dt_atmos)*dimx/(dt0*dim0) + 0.49 )
+         n0split = nint ( ns0*abs(dt_atmos)*dimx/(dt0*dim0) + offset )
       elseif (grid_type == 4 .or. grid_type == 7) then
-         n0split = nint ( 2.*umax*dt_atmos/sqrt(dx_const**2 + dy_const**2) + 0.49 )
+         n0split = nint ( 2.*umax*dt_atmos/sqrt(dx_const**2 + dy_const**2) + offset )
       elseif (grid_type == 5 .or. grid_type == 6) then
          if (grid_type == 6) then
             deglon_start = 0.; deglon_stop  = 360.
@@ -804,13 +812,13 @@ module fv_control_mod
          dxmin=dl*radius*min(cos(deglat_start*pi/180.-ng*dp),   &
                              cos(deglat_stop *pi/180.+ng*dp))
          dymin=dp*radius
-         n0split = nint ( 2.*umax*dt_atmos/sqrt(dxmin**2 + dymin**2) + 0.49 )
+         n0split = nint ( 2.*umax*dt_atmos/sqrt(dxmin**2 + dymin**2) + offset )
       endif
       n0split = max ( 1, n0split )
 
       if ( n_split == 0 ) then
 #ifdef MAPL_MODE
-           n_split = ceiling( real(n0split)/real(k_split*abs(p_split)) * stretch_fac + 0.5 )
+           n_split = ceiling( real(n0split)/real(k_split*abs(p_split)) + 0.5 )
 #else
            n_split = nint( real(n0split)/real(k_split*abs(p_split)) * stretch_fac + 0.5 )
 #endif
@@ -914,6 +922,7 @@ module fv_control_mod
          if(is_master()) then
             write(*,*) 'Off center implicit scheme param=', a_imp
             write(*,*) ' p_fac=', p_fac
+            write(*,*) ' dz_min=', dz_min
          endif
       endif
 
@@ -1218,6 +1227,7 @@ module fv_control_mod
      reset_eta                     => Atm%flagstruct%reset_eta
      p_fac                         => Atm%flagstruct%p_fac
      a_imp                         => Atm%flagstruct%a_imp
+     dz_min                        => Atm%flagstruct%dz_min
      n_split                       => Atm%flagstruct%n_split
      m_split                       => Atm%flagstruct%m_split
      k_split                       => Atm%flagstruct%k_split
@@ -1322,6 +1332,7 @@ module fv_control_mod
 
      layout                        => Atm%layout
      io_layout                     => Atm%io_layout
+     compute_coords_locally        => Atm%flagstruct%compute_coords_locally
   end subroutine setup_pointers
 
        
