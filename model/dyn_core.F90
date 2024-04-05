@@ -421,7 +421,9 @@ contains
 
      if ( .not. hydrostatic ) then
                              call timing_on('COMM_TOTAL')
+                                        call timing_on('COMM_NH')
          call start_group_halo_update(i_pack(7), w, domain)
+                                       call timing_off('COMM_NH')
                              call timing_off('COMM_TOTAL')
 
       if ( it==1 ) then
@@ -451,7 +453,9 @@ contains
          enddo
          endif
                              call timing_on('COMM_TOTAL')
+                                        call timing_on('COMM_NH')
          call start_group_halo_update(i_pack(5), gz,  domain)
+                                       call timing_off('COMM_NH')
                              call timing_off('COMM_TOTAL')
       endif
 
@@ -496,8 +500,10 @@ contains
        
                                                      call timing_on('COMM_TOTAL')
      call complete_group_halo_update(i_pack(8), domain)
+                                        call timing_on('COMM_NH')
      if( .not. hydrostatic )  &
           call complete_group_halo_update(i_pack(7), domain)
+                                        call timing_off('COMM_NH')
                                                      call timing_off('COMM_TOTAL')
 
                                                      call timing_on('c_sw')
@@ -516,7 +522,9 @@ contains
                                                      call timing_off('c_sw')
       if ( flagstruct%nord > 0 ) then
                                                    call timing_on('COMM_TOTAL')
+                                        call timing_on('COMM_DIVGD')
           call start_group_halo_update(i_pack(3), divgd, domain, position=CORNER)
+                                        call timing_off('COMM_DIVGD')
                                                   call timing_off('COMM_TOTAL')
       endif
 
@@ -538,7 +546,9 @@ contains
            if ( it == 1 ) then
 
                                       call timing_on('COMM_TOTAL')
+                                        call timing_on('COMM_NH')
               call complete_group_halo_update(i_pack(5), domain)
+                                        call timing_off('COMM_NH')
                                      call timing_off('COMM_TOTAL')
 
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,npz,zh,gz)
@@ -602,8 +612,10 @@ contains
       call p_grad_c(dt2, npz, delpc, pkc, gz, uc, vc, bd, gridstruct%rdxc, gridstruct%rdyc, hydrostatic)
 
                                                                    call timing_on('COMM_TOTAL')
+                                        call timing_on('COMM_UCVC')
       call start_group_halo_update(i_pack(9), uc, vc, domain, gridtype=CGRID_NE)
-                                                     call timing_off('COMM_TOTAL')
+                                        call timing_off('COMM_UCVC')
+                                                                   call timing_off('COMM_TOTAL')
 #ifdef SW_DYNAMICS
 #ifdef USE_OLD
       if (test_case==9) call case9_forcing2(phis)
@@ -613,8 +625,12 @@ contains
 
                                                                    call timing_on('COMM_TOTAL')
     if (flagstruct%inline_q .and. nq>0) call complete_group_halo_update(i_pack(10), domain)
+                                        call timing_on('COMM_DIVGD')
     if (flagstruct%nord > 0) call complete_group_halo_update(i_pack(3), domain)
+                                        call timing_off('COMM_DIVGD')
+                                        call timing_on('COMM_UCVC')
                              call complete_group_halo_update(i_pack(9), domain)
+                                        call timing_off('COMM_UCVC')
 
                                                                    call timing_off('COMM_TOTAL')
       if (gridstruct%nested) then
@@ -772,7 +788,6 @@ contains
             enddo
        endif
        if ( flagstruct%d_con > 1.0E-5 .OR. flagstruct%do_skeb ) then
-!       if ( flagstruct%d_con > 1.0E-5 ) then
 ! Average horizontal "convergence" to cell center
             do j=js,je
                do i=is,ie
@@ -790,11 +805,13 @@ contains
     if( flagstruct%fill_dp ) call mix_dp(hydrostatic, w, delp, pt, npz, ak, bk, .false., flagstruct%fv_debug, bd)
 
                                                              call timing_on('COMM_TOTAL')
+                                                             call timing_on('COMM_DSW')
     call start_group_halo_update(i_pack(1), delp, domain, complete=.false.)
     call start_group_halo_update(i_pack(1), pt,   domain, complete=.true.)
 #ifdef USE_COND
     call start_group_halo_update(i_pack(11), q_con, domain)
 #endif
+                                                             call timing_off('COMM_DSW')
                                                              call timing_off('COMM_TOTAL')
 
     if ( flagstruct%d_ext > 0. ) then
@@ -820,10 +837,12 @@ contains
     endif
 
                                        call timing_on('COMM_TOTAL')
+                                                             call timing_on('COMM_DSW')
      call complete_group_halo_update(i_pack(1), domain)
 #ifdef USE_COND
      call complete_group_halo_update(i_pack(11), domain)
 #endif
+                                                             call timing_off('COMM_DSW')
                                        call timing_off('COMM_TOTAL')
 
      !Want to move this block into the hydro/nonhydro branch above and merge the two if structures
@@ -869,6 +888,7 @@ contains
         call prt_mxm('W_riem', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
 
                                        call timing_on('COMM_TOTAL')
+                                                             call timing_on('COMM_RIEM')
         if ( gridstruct%square_domain ) then
           call start_group_halo_update(i_pack(4), zh ,  domain)
           call start_group_halo_update(i_pack(5), pkc,  domain, whalo=2, ehalo=2, shalo=2, nhalo=2)
@@ -876,6 +896,7 @@ contains
           call start_group_halo_update(i_pack(4), zh ,  domain, complete=.false.)
           call start_group_halo_update(i_pack(4), pkc,  domain, complete=.true.)
         endif
+                                                             call timing_off('COMM_RIEM')
                                        call timing_off('COMM_TOTAL')
 
         if ( remap_step )  &
@@ -904,7 +925,9 @@ contains
 
         endif
         call timing_on('COMM_TOTAL')
+                                                             call timing_on('COMM_RIEM')
         call complete_group_halo_update(i_pack(4), domain)
+                                                             call timing_off('COMM_RIEM')
         call timing_off('COMM_TOTAL')
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,gz,zh,grav)
         do k=1,npz+1
@@ -916,8 +939,10 @@ contains
         enddo
         if ( gridstruct%square_domain ) then
            call timing_on('COMM_TOTAL')
+                                                             call timing_on('COMM_RIEM')
            call complete_group_halo_update(i_pack(5), domain)
-                                       call timing_off('COMM_TOTAL')
+                                                             call timing_off('COMM_RIEM')
+           call timing_off('COMM_TOTAL')
         endif
 #endif SW_DYNAMICS
      endif    ! end hydro check

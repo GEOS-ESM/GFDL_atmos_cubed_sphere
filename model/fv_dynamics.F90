@@ -160,7 +160,7 @@ contains
 !-----------------------------------------------------------------------
  
   subroutine fv_dynamics(npx, npy, npz, nq_tot,  ng, bdt, consv_te, fill,    &
-                        reproduce_sum, kappa, cp_air, zvir, ptop, ks, ncnst, &
+                        kappa, cp_air, zvir, ptop, ks, ncnst, &
                         k_split, n_split,                                    &
                         q_split, u, v, w, delz, hydrostatic, pt, delp, q,    &
                         ps, pe, pk, peln, pkz, phis, varflt, q_con, omga, ua, va, uc, vc,          &
@@ -187,7 +187,6 @@ contains
     integer, intent(IN) :: n_split        !< small-step horizontal dynamics
     integer, intent(IN) :: q_split        !< tracer
     logical, intent(IN) :: fill
-    logical, intent(IN) :: reproduce_sum
     logical, intent(IN) :: hydrostatic
     logical, intent(IN) :: hybrid_z       !< Using hybrid_z for remapping
 
@@ -763,7 +762,7 @@ contains
                      nq, nwat, sphum, q_con, u,  v, w, delz, pt, q, phis,    &
                      zvir, cp_air, akap, cappa, flagstruct%kord_mt, flagstruct%kord_wz, &
                      kord_tracer, flagstruct%kord_tm, peln, te_2d,               &
-                     ng, ua, va, omga, dp1, ws, fill, reproduce_sum,             &
+                     ng, ua, va, omga, dp1, ws, fill,              &
                      idiag%id_mdt>0, dtdt_m, ptop, ak, bk, pfull, flagstruct, gridstruct, domain,   &
                      flagstruct%do_sat_adj, hydrostatic, hybrid_z, do_omega,     &
                      flagstruct%adiabatic, do_adiabatic_init, &
@@ -881,8 +880,8 @@ contains
       if( idiag%id_amdt>0 ) used = send_data(idiag%id_amdt, aam/bdt, fv_time)
 
       if ( flagstruct%consv_am .or. prt_minmax ) then
-         amdt = g_sum( domain, aam, is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=.true.) 
-         u0 = -radius*amdt/g_sum( domain, m_fac, is, ie, js, je, ng, gridstruct%area_64, 0,reproduce=.true.)
+         amdt = g_sum( domain, aam, is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=flagstruct%exact_sum) 
+         u0 = -radius*amdt/g_sum( domain, m_fac, is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=flagstruct%exact_sum)
          if(is_master() .and. prt_minmax)         &
          write(6,*) 'Dynamic AM tendency (Hadleys)=', amdt/(bdt*1.e18), 'del-u (per day)=', u0*86400./bdt
       endif

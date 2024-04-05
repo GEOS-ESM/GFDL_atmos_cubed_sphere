@@ -448,7 +448,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
          enddo
       endif
       nsplt = int(1. + c_global)
-      if ( is_master() .and. nsplt > 4 )  write(*,*) 'Tracer_2d_split=', nsplt, c_global
+      if ( is_master() )  write(*,*) 'Tracer_2d_split=', nsplt, c_global
    else
       nsplt = q_split
    endif
@@ -937,21 +937,21 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     q3(is:ie,js:je,:,:) = q(is:ie,js:je,:,:)
     call start_group_halo_update(i_pack, q3, domain)
 
-    if ( flagstruct%z_tracer ) then
-         call tracer_2d_1L(q3, dpL, mfxL, mfyL, cxL, cyL, &
-                         gridstruct, bd, domain, npx, npy, npz, nq,    &
-                         flagstruct%hord_tr, flagstruct%q_split, dt, 0, i_pack, &
-                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
-    else
+   !if ( flagstruct%z_tracer ) then
+   !     call tracer_2d_1L(q3, dpL, mfxL, mfyL, cxL, cyL, &
+   !                     gridstruct, bd, domain, npx, npy, npz, nq,    &
+   !                     flagstruct%hord_tr, flagstruct%q_split, dt, 0, i_pack, &
+   !                     flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
+   !else
          call tracer_2d(q3, dpL, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, flagstruct%q_split, dt, 0, i_pack, &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
-    endif
+   !endif
 
 !------------------------------------------------------------------
 ! Re-Map constituents
 !------------------------------------------------------------------
-      if( nq > 5 ) then
+      if( nq > 10 ) then
           do iq=1,nq
             kord_tracers(iq) = flagstruct%kord_tr
           enddo
@@ -1038,10 +1038,10 @@ end subroutine offline_tracer_advection
 
          ! numerator
          globalSums(1) = g_sum_r8(domain, qsum1, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, .true.)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
          ! denominator
          globalSums(2) = g_sum_r8(domain, qsum2, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, .true.)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
 
          if (globalSums(2) > TINY_DENOMINATOR) then
             scalingR8 =  globalSums(1) / globalSums(2)

@@ -86,9 +86,9 @@ module fv_nesting_mod
 !   </tr>
 !   <tr>
 !     <td>mpp_domains_mod/td>
-!     <td>mpp_update_domains, mpp_global_field,mpp_get_data_domain, mpp_get_compute_domain, 
-!         mpp_get_global_domain, DGRID_NE, mpp_update_domains, domain2D, mpp_global_sum, 
-!         BITWISE_EFP_SUM, BITWISE_EXACT_SUM</td>
+!     <td>mpp_update_domains, mpp_get_data_domain, mpp_get_compute_domain, 
+!         mpp_get_global_domain, DGRID_NE, mpp_update_domains, domain2D
+!     </td>
 !   </tr>
 !   <tr>
 !    <td>sw_core_mod</td>
@@ -101,7 +101,6 @@ module fv_nesting_mod
 ! </table>
 
    use mpp_domains_mod,     only: mpp_update_domains
-   use mpp_domains_mod,     only: mpp_global_field
    use field_manager_mod,   only: MODEL_ATMOS
    use tracer_manager_mod,  only: get_tracer_index
    use fv_sg_mod,           only: neg_adj3
@@ -109,7 +108,6 @@ module fv_nesting_mod
    use mpp_domains_mod,     only: DGRID_NE, mpp_update_domains, domain2D
    use fv_restart_mod,      only: d2a_setup, d2c_setup
    use mpp_mod,             only: mpp_sync_self, mpp_sync, mpp_send, mpp_recv, mpp_error, FATAL
-   use mpp_domains_mod,     only: mpp_global_sum, BITWISE_EFP_SUM, BITWISE_EXACT_SUM
    use boundary_mod,        only: update_coarse_grid
    use boundary_mod,        only: nested_grid_BC_send, nested_grid_BC_recv, nested_grid_BC_save_proc
    use fv_mp_mod,           only: is, ie, js, je, isd, ied, jsd, jed, isc, iec, jsc, jec
@@ -1537,8 +1535,6 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
        enddo
        call mp_reduce_sum(qA)
        L_sum(k) = qA
-!       L_sum(k) = mpp_global_sum(domain, qA, flags=BITWISE_EXACT_SUM)
-!       L_sum(k) = mpp_global_sum(domain, qA, flags=BITWISE_EFP_SUM) ! doesn't work??
     enddo
 
  end subroutine level_sum

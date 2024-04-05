@@ -86,7 +86,7 @@ module fv_mapz_mod
   use field_manager_mod, only: MODEL_ATMOS
   use fv_grid_utils_mod, only: g_sum, ptop_min
   use fv_fill_mod,       only: fillz
-  use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum, BITWISE_EFP_SUM
+  use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum
   use mpp_mod,           only: NOTE, FATAL, mpp_error, get_unit, mpp_root_pe, mpp_pe
   use fv_arrays_mod,     only: fv_grid_type, fv_flags_type
   use fv_timing_mod,     only: timing_on, timing_off
@@ -130,7 +130,7 @@ contains
                                    mdt, pdt, km, is,ie,js,je, isd,ied,jsd,jed,       &
                       nq, nwat, sphum, q_con, u, v, w, delz, pt, q, hs, r_vir, cp,  &
                       akap, cappa, kord_mt, kord_wz, kord_tr, kord_tm,  peln, te0_2d,        &
-                      ng, ua, va, omga, te, ws, fill, reproduce_sum, out_dt, dtdt,      &
+                      ng, ua, va, omga, te, ws, fill, out_dt, dtdt,      &
                       ptop, ak, bk, pfull, flagstruct, gridstruct, domain, do_sat_adj, &
                       hydrostatic, hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
                       remap_option, gmao_remap, mfx, mfy, cx, cy)
@@ -159,7 +159,6 @@ contains
 
   logical, intent(in):: do_sat_adj
   logical, intent(in):: fill                  !< fill negative tracers
-  logical, intent(in):: reproduce_sum
   logical, intent(in):: do_omega, adiabatic, do_adiabatic_init
   real, intent(in) :: ptop
   real, intent(in) :: ak(km+1)
@@ -527,7 +526,7 @@ contains
 !----------------
 ! Map constituents
 !----------------
-      if( nq > 5 ) then
+      if( nq > 10 ) then
            call mapn_tracer(nq, km, pe1, pe2, q, dp2, kord_tr, j,     &
                             is, ie, isd, ied, jsd, jed, 0., fill)
       elseif ( nq > 0 ) then
@@ -910,7 +909,7 @@ contains
 !$OMP                               cp,delz,nwat,rainwat,liq_wat,ice_wat,snowwat,       &
 !$OMP                               graupel,q_con,r_vir,sphum,w,pk,pkz,last_step,consv, &
 !$OMP                               do_adiabatic_init,zsum1,zsum0,te0_2d,domain,        &
-!$OMP                               ng,gridstruct,E_Flux,pdt,dtmp,reproduce_sum,q,      &
+!$OMP                               ng,flagstruct,gridstruct,E_Flux,pdt,dtmp,q,      &
 !$OMP                               mdt,cld_amt,cappa,dtdt,out_dt,rrg,akap,do_sat_adj,  &
 !$OMP                               fast_mp_consv,kord_tm) &
 !$OMP                       private(pe0,pe1,pe2,pe3,cvm,gz,phis,tesum,zsum,dpln,dlnp,tmp)
@@ -991,16 +990,16 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
 
 !$OMP single
       tesum = mpp_global_sum(domain, te_2d*gridstruct%area_64(is:ie,js:je), &
-                             flags=BITWISE_EFP_SUM)
+                             flags=flagstruct%exact_sum)
       E_Flux = DBLE(consv)*tesum / DBLE(grav*pdt*4.*pi*radius**2)    ! unit: W/m**2
                                                            ! Note pdt is "phys" time step
       if ( hydrostatic ) then
            zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+                                  flags=flagstruct%exact_sum)
            dtmp = tesum / DBLE(cp*zsum)
       else
            zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+                                  flags=flagstruct%exact_sum)
            dtmp = tesum / DBLE(cv_air*zsum)
       endif
 !$OMP end single
@@ -1028,11 +1027,11 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
 !$OMP single
       if ( hydrostatic ) then
            zsum = mpp_global_sum(domain, zsum0*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+                                  flags=flagstruct%exact_sum)
            dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cp*zsum)
       else
            zsum = mpp_global_sum(domain, zsum1*gridstruct%area_64(is:ie,js:je), &
-                                  flags=BITWISE_EFP_SUM)
+                                  flags=flagstruct%exact_sum)
            dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cv_air*zsum)
       endif
 !$OMP end single

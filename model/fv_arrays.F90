@@ -219,7 +219,6 @@ module fv_arrays_mod
      integer :: npx_g, npy_g, ntiles_g ! global domain
 
      real(kind=R_GRID) :: global_area
-     logical :: g_sum_initialized = .false. !< Not currently used but can be useful
      logical:: sw_corner, se_corner, ne_corner, nw_corner
 
      real(kind=R_GRID) :: da_min, da_max, da_min_c, da_max_c
@@ -804,6 +803,11 @@ module fv_arrays_mod
                                      !< adds computational, overhead so we only recommend using
                                      !< this when debugging.
 
+!  integer :: exact_sum = 0    !< NON_BITWISE_EXACT_SUM=0
+   integer :: exact_sum = 1    !< BITWISE_EXACT_SUM=1
+!  integer :: exact_sum = 2    !< BITWISE_EFP_SUM=2
+
+
    logical :: fill = .false.   !< Fills in negative tracer values by taking positive tracers from
                                !< the cells above and below. This option is useful when the physical
                                !< parameterizations produced negatives. The default is .false.
@@ -824,12 +828,6 @@ module fv_arrays_mod
                                          !< effect if not running solo_core.
    logical :: do_reed_physics = .false.
    logical :: reed_cond_only = .false.
-   logical :: reproduce_sum = .true.   !< uses an exactly-reproducible global sum operation performed 
-                                       !< when computing the global energy for consv_te. This is used 
-                                       !< because the FMS routine mpp_sum() is not bit-wise reproducible
-                                       !< due to its handling of floating-point arithmetic, and so can 
-                                       !< return different answers for (say) different processor layouts. 
-                                       !< The default is .true.
 
    logical :: adjust_dry_mass = .false.    !< Whether to adjust the global dry-air mass to the
                                            !< value set by dry_mass. This is only done in an initialization step, 

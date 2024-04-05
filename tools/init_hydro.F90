@@ -293,15 +293,9 @@ contains
       enddo
 
 ! Check global maximum/minimum
-#ifndef QUICK_SUM
-      psdry = g_sum(domain, psd, ifirst, ilast, jfirst, jlast, ng, area, 1, .true.) 
-       psmo = g_sum(domain, ps(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast,  &
-                     ng, area, 1, .true.) 
-#else
       psdry = g_sum(domain, psd, ifirst, ilast, jfirst, jlast, ng, area, 1) 
        psmo = g_sum(domain, ps(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast,  &
                      ng, area, 1) 
-#endif
 
 #ifdef MAPL_MODE
       if( adjust_dry_mass ) Then
@@ -394,7 +388,7 @@ contains
            ps(i,j) = mslp*( c0/(hs(i,j)+c0))**(1./(a0*rdgas))
         enddo
      enddo
-     psm = g_sum(domain, ps(is:ie,js:je), is, ie, js, je, ng, area, 1, .true.)
+     psm = g_sum(domain, ps(is:ie,js:je), is, ie, js, je, ng, area, 1)
      dps = drym - psm
      if(is_master()) write(*,*) 'Computed mean ps=', psm
      if(is_master()) write(*,*) 'Correction delta-ps=', dps

@@ -262,7 +262,8 @@ module fv_control_mod
    logical , pointer :: filter_phys 
    logical , pointer :: dwind_2d 
    logical , pointer :: breed_vortex_inline 
-   logical , pointer :: range_warn 
+   logical , pointer :: range_warn
+   integer , pointer :: exact_sum 
    logical , pointer :: fill 
    logical , pointer :: fill_dp 
    logical , pointer :: fill_wz 
@@ -273,7 +274,6 @@ module fv_control_mod
    logical , pointer :: do_Held_Suarez 
    logical , pointer :: do_reed_physics
    logical , pointer :: reed_cond_only
-   logical , pointer :: reproduce_sum 
    logical , pointer :: adjust_dry_mass 
    logical , pointer :: fv_debug  
    logical , pointer :: srf_init  
@@ -667,8 +667,8 @@ module fv_control_mod
                          dddmp, d2_bg, d4_bg, vtdm4, trdm2, d_ext, delt_max, beta, non_ortho, n_sponge, n_zfilter, &
                          warm_start, adjust_dry_mass, mountain, d_con, ke_bg, nord, nord_tr, convert_ke, use_old_omega, &
                          dry_mass, grid_type, do_Held_Suarez, do_reed_physics, reed_cond_only, &
-                         consv_te, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, Beljaars_TOFD, &
-                         range_warn, dwind_2d, inline_q, z_tracer, reproduce_sum, adiabatic, do_vort_damp, no_dycore,   &
+                         consv_te, exact_sum, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, Beljaars_TOFD, &
+                         range_warn, dwind_2d, inline_q, z_tracer, adiabatic, do_vort_damp, no_dycore,   &
                          tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, fv_sg_adj, breed_vortex_inline,  &
                          na_init, nudge_dz, hybrid_z, Make_NH, n_zs_filter, nord_zs_filter, full_zs_filter, reset_eta,         &
                          pnats, dnats, a2b_ord, remap_option, gmao_remap, p_ref, d2_bg_k1, d2_bg_k2,  &
@@ -1262,6 +1262,7 @@ module fv_control_mod
      dwind_2d                      => Atm%flagstruct%dwind_2d
      breed_vortex_inline           => Atm%flagstruct%breed_vortex_inline
      range_warn                    => Atm%flagstruct%range_warn
+     exact_sum                     => Atm%flagstruct%exact_sum
      fill                          => Atm%flagstruct%fill
      fill_dp                       => Atm%flagstruct%fill_dp
      fill_wz                       => Atm%flagstruct%fill_wz
@@ -1272,7 +1273,6 @@ module fv_control_mod
      do_Held_Suarez                => Atm%flagstruct%do_Held_Suarez
      do_reed_physics               => Atm%flagstruct%do_reed_physics
      reed_cond_only                => Atm%flagstruct%reed_cond_only
-     reproduce_sum                 => Atm%flagstruct%reproduce_sum
      adjust_dry_mass               => Atm%flagstruct%adjust_dry_mass
      fv_debug                      => Atm%flagstruct%fv_debug
      srf_init                      => Atm%flagstruct%srf_init
