@@ -998,7 +998,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
             ! Scale tracers
             !---------------
             scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), pleB, pleA, &
-                              npz, domain, gridstruct, bd)
+                              npz, domain, gridstruct, flagstruct, bd)
             q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
        enddo
 
@@ -1006,7 +1006,7 @@ end subroutine offline_tracer_advection
 
 !------------------------------------------------------------------------------------
 
-         function calcScalingFactor(q1, q2, ple1, ple2, npz, domain, gridstruct, bd) result(scaling)
+         function calcScalingFactor(q1, q2, ple1, ple2, npz, domain, gridstruct, flagstruct, bd) result(scaling)
          integer, intent(in) :: npz
          type(fv_grid_bounds_type), intent(IN   ) :: bd
          real, intent(in) :: q1(bd%is:bd%ie,bd%js:bd%je,npz)
@@ -1015,6 +1015,7 @@ end subroutine offline_tracer_advection
          real, intent(in) :: ple2(bd%is:bd%ie,bd%js:bd%je,npz+1)
          type(domain2D), intent(INOUT) :: domain
          type(fv_grid_type), intent(IN   ) :: gridstruct
+         type(fv_flags_type), intent(INOUT) :: flagstruct
          real :: scaling
 
          integer :: k
@@ -1038,10 +1039,12 @@ end subroutine offline_tracer_advection
 
          ! numerator
          globalSums(1) = g_sum_r8(domain, qsum1, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, &
+                                  reproduce=flagstruct%exact_sum)
          ! denominator
          globalSums(2) = g_sum_r8(domain, qsum2, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, &
+                                  reproduce=flagstruct%exact_sum)
 
          if (globalSums(2) > TINY_DENOMINATOR) then
             scalingR8 =  globalSums(1) / globalSums(2)
