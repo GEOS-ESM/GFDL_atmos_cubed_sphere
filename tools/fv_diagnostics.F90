@@ -3328,7 +3328,7 @@ contains
     kstrat = k
  enddo
  call z_sum(is, ie, js, je, kstrat, n_g, delp, q(is-n_g,js-n_g,1,sphum), q_strat(is,js)) 
- psmo = g_sum(domain, q_strat(is,js), is, ie, js, je, n_g, area, 1, quicksum=.true.) * 1.e6 &
+ psmo = g_sum(domain, q_strat, is, ie, js, je, n_g, area, 1, quicksum=.true.) * 1.e6 &
       / p_sum(is, ie, js, je, kstrat, n_g, delp, area, domain)
  if(master) write(*,*) 'Mean specific humidity (mg/kg) above 75 mb', trim(gn), '=', psmo
  endif
@@ -3340,7 +3340,7 @@ contains
  psmo = g_sum(domain, ps(is:ie,js:je), is, ie, js, je, n_g, area, 1, quicksum=.true.) 
 
  do n=1,nwat
-    qtot(n) = g_sum(domain, psq(is,js,n), is, ie, js, je, n_g, area, 1, quicksum=.true.) 
+    qtot(n) = g_sum(domain, psq(is:ie,js:je,n), is, ie, js, je, n_g, area, 1, quicksum=.true.) 
  enddo
 
  totw  = sum(qtot(1:nwat))

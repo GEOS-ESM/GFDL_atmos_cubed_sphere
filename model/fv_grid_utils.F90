@@ -131,6 +131,14 @@
    MODULE PROCEDURE fill_ghost_r8
  END INTERFACE
 
+ interface g_sum
+    module procedure g_sum_r4_, g_sum_r8_
+ end interface
+
+ interface g_sum_r8
+    module procedure g_sum_r4_, g_sum_r8_
+ end interface
+
  contains
 
    subroutine grid_utils_init(Atm, npx, npy, npz, non_ortho, grid_type, c2l_order)
@@ -2906,8 +2914,8 @@
 
  end function cos_angle
 
- !>@brief The function 'g_sum' is the fast version of 'globalsum'. 
- real function g_sum(domain, p, ifirst, ilast, jfirst, jlast, ngc, area, mode, reproduce, quicksum)
+ !>@brief The function 'g_sum_r4_' is the fast version of 'globalsum'. 
+ real(kind=REAL4) function g_sum_r4_(domain, p, ifirst, ilast, jfirst, jlast, ngc, area, mode, reproduce, quicksum)
       integer, intent(IN) :: ifirst, ilast
       integer, intent(IN) :: jfirst, jlast, ngc
       integer, intent(IN) :: mode  ! if ==1 divided by area
@@ -2916,7 +2924,7 @@
       real(kind=REAL4), intent(IN) :: p(ifirst:ilast,jfirst:jlast)      ! field to be summed
       real(kind=R_GRID), intent(IN) :: area(ifirst-ngc:ilast+ngc,jfirst-ngc:jlast+ngc)
       type(domain2d), intent(IN) :: domain
-      real gsum
+      real(kind=REAL4) :: gsum
       integer :: err
       integer :: sflag
        
@@ -2947,14 +2955,14 @@
       endif
 
       if ( mode==1 ) then
-           g_sum = gsum / global_area
+           g_sum_r4_ = gsum / global_area
       else
-           g_sum = gsum
+           g_sum_r4_ = gsum
       endif
- end function g_sum
+ end function g_sum_r4_
 
- !>@brief The function 'g_sum_r8' is the fast version of 'globalsum'. 
- real(kind=REAL8) function g_sum_r8(domain, p, ifirst, ilast, jfirst, jlast, ngc, area, mode, reproduce, quicksum)
+ !>@brief The function 'g_sum_r8_' is the fast version of 'globalsum'. 
+ real(kind=REAL8) function g_sum_r8_(domain, p, ifirst, ilast, jfirst, jlast, ngc, area, mode, reproduce, quicksum)
       integer, intent(IN) :: ifirst, ilast
       integer, intent(IN) :: jfirst, jlast, ngc
       integer, intent(IN) :: mode  ! if ==1 divided by area
@@ -2993,11 +3001,11 @@
       endif
 
       if ( mode==1 ) then
-           g_sum_r8 = gsum / global_area
+           g_sum_r8_ = gsum / global_area
       else
-           g_sum_r8 = gsum
+           g_sum_r8_ = gsum
       endif
- end function g_sum_r8
+ end function g_sum_r8_
 
 !>@brief The function 'global_qsum' computes the quick global sum without area weighting.
  real function global_qsum(p, ifirst, ilast, jfirst, jlast)

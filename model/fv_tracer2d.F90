@@ -1039,12 +1039,10 @@ end subroutine offline_tracer_advection
 
          ! numerator
          globalSums(1) = g_sum_r8(domain, qsum1, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, &
-                                  reproduce=flagstruct%exact_sum)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
          ! denominator
          globalSums(2) = g_sum_r8(domain, qsum2, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, &
-                                  reproduce=flagstruct%exact_sum)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
 
          if (globalSums(2) > TINY_DENOMINATOR) then
             scalingR8 =  globalSums(1) / globalSums(2)
