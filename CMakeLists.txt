@@ -47,7 +47,7 @@ set (srcs
 
 esma_add_library (${this}
   SRCS ${srcs}
-  DEPENDENCIES MAPL GFTL_SHARED::gftl-shared esmf)
+  DEPENDENCIES MAPL GFTL_SHARED::gftl-shared-v2 esmf)
 
 if (FV_PRECISION STREQUAL R4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
