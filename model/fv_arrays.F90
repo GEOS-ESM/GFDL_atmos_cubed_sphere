@@ -76,7 +76,7 @@ module fv_arrays_mod
            id_ctz=DEFAULT_INT, id_w1km=DEFAULT_INT, id_wmaxup=DEFAULT_INT, id_wmaxdn=DEFAULT_INT, id_cape=DEFAULT_INT, id_cin=DEFAULT_INT,id_diss=DEFAULT_INT
 
 ! Selected p-level fields from 3D variables:
- integer :: id_vort200=DEFAULT_INT, id_vort500=DEFAULT_INT, id_w500=DEFAULT_INT, id_w700
+ integer :: id_vort200=DEFAULT_INT, id_vort500=DEFAULT_INT, id_w500=DEFAULT_INT, id_w700=DEFAULT_INT
  integer :: id_vort850=DEFAULT_INT, id_w850=DEFAULT_INT, id_x850=DEFAULT_INT, id_srh25=DEFAULT_INT, &
             id_uh03=DEFAULT_INT, id_uh25=DEFAULT_INT, id_theta_e=DEFAULT_INT,  &
             id_w200=DEFAULT_INT, id_s200=DEFAULT_INT, id_sl12=DEFAULT_INT, id_sl13=DEFAULT_INT, id_w5km=DEFAULT_INT, id_rain5km=DEFAULT_INT, id_w2500m=DEFAULT_INT
@@ -84,7 +84,7 @@ module fv_arrays_mod
 ! NGGPS 31-level diag
  integer, allocatable :: id_u(:), id_v(:), id_t(:), id_h(:), id_q(:), id_omg(:)
 
- integer:: id_u_plev=DEFAULT_INT, id_v_plev=DEFAULT_INT, id_t_plev=DEFAULT_INT, id_h_plev=DEFAULT_INT, id_q_plev=DEFAULT_INT, id_omg_plev
+ integer:: id_u_plev=DEFAULT_INT, id_v_plev=DEFAULT_INT, id_t_plev=DEFAULT_INT, id_h_plev=DEFAULT_INT, id_q_plev=DEFAULT_INT, id_omg_plev=DEFAULT_INT
 ! IPCC diag
  integer :: id_rh10=DEFAULT_INT,  id_rh50=DEFAULT_INT,  id_rh100=DEFAULT_INT, id_rh200=DEFAULT_INT,  id_rh250=DEFAULT_INT, id_rh300=DEFAULT_INT, &
             id_rh500=DEFAULT_INT, id_rh700=DEFAULT_INT, id_rh850=DEFAULT_INT, id_rh925=DEFAULT_INT,  id_rh1000=DEFAULT_INT
