@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 !>@brief The module 'fv_arrays' contains the 'fv_atmos_type' and associated
@@ -31,6 +31,7 @@ module fv_arrays_mod
   use mpp_mod,               only: mpp_broadcast
   use platform_mod,          only: r8_kind
   use, intrinsic :: iso_fortran_env, only: REAL64, REAL32
+  use, intrinsic :: ieee_arithmetic, only: ieee_value, IEEE_QUIET_NAN
   public
 
   integer, public, parameter :: R_GRID = r8_kind
@@ -55,48 +56,50 @@ module fv_arrays_mod
 #else
   real, parameter:: real_big = 1.e30   ! big enough to cause blowup if used
 #endif
+  integer, parameter :: DEFAULT_INT = -HUGE(1)
+  real, parameter :: DEFAULT_REAL = -HUGE(1.0) !ieee_value(0., IEEE_QUIET_NAN)
   type fv_diag_type
 
 
- integer ::id_ps, id_slp, id_ua, id_va, id_pt, id_omga, id_vort,  &
-           id_tm, id_pv, id_zsurf, id_oro, id_sgh, id_divg, id_w, &
-           id_ke, id_te, id_zs, id_ze, id_mq, id_vorts, id_us, id_vs,    &
-           id_tq, id_rh, id_c15, id_c25, id_c35, id_c45,          &
-                         id_f15, id_f25, id_f35, id_f45, id_ctp,  &
-           id_ppt, id_ts, id_tb, id_ctt, id_pmask, id_pmaskv2,    &
-           id_delp, id_delz, id_zratio, id_ws, id_iw, id_lw,      &
-           id_pfhy, id_pfnh,                                      &
-           id_qn, id_qn200, id_qn500, id_qn850, id_qp, id_mdt,    &
-           id_qdt, id_aam, id_amdt,                               &
-           id_acly, id_acl, id_acl2,                              &
-           id_dbz, id_maxdbz, id_basedbz, id_dbz4km, id_dbztop, id_dbz_m10C, &
-           id_ctz, id_w1km, id_wmaxup, id_wmaxdn, id_cape, id_cin,id_diss
+ integer :: id_ps=DEFAULT_INT, id_slp=DEFAULT_INT, id_ua=DEFAULT_INT, id_va=DEFAULT_INT, id_pt=DEFAULT_INT, id_omga=DEFAULT_INT, id_vort=DEFAULT_INT,  &
+           id_tm=DEFAULT_INT, id_pv=DEFAULT_INT, id_zsurf=DEFAULT_INT, id_oro=DEFAULT_INT, id_sgh=DEFAULT_INT, id_divg=DEFAULT_INT, id_w=DEFAULT_INT, &
+           id_ke=DEFAULT_INT, id_te=DEFAULT_INT, id_zs=DEFAULT_INT, id_ze=DEFAULT_INT, id_mq=DEFAULT_INT, id_vorts=DEFAULT_INT, id_us=DEFAULT_INT, id_vs=DEFAULT_INT,    &
+           id_tq=DEFAULT_INT, id_rh=DEFAULT_INT, id_c15=DEFAULT_INT, id_c25=DEFAULT_INT, id_c35=DEFAULT_INT, id_c45=DEFAULT_INT,          &
+                         id_f15=DEFAULT_INT, id_f25=DEFAULT_INT, id_f35=DEFAULT_INT, id_f45=DEFAULT_INT, id_ctp=DEFAULT_INT,  &
+           id_ppt=DEFAULT_INT, id_ts=DEFAULT_INT, id_tb=DEFAULT_INT, id_ctt=DEFAULT_INT, id_pmask=DEFAULT_INT, id_pmaskv2=DEFAULT_INT,    &
+           id_delp=DEFAULT_INT, id_delz=DEFAULT_INT, id_zratio=DEFAULT_INT, id_ws=DEFAULT_INT, id_iw=DEFAULT_INT, id_lw=DEFAULT_INT,      &
+           id_pfhy=DEFAULT_INT, id_pfnh=DEFAULT_INT,                                      &
+           id_qn=DEFAULT_INT, id_qn200=DEFAULT_INT, id_qn500=DEFAULT_INT, id_qn850=DEFAULT_INT, id_qp=DEFAULT_INT, id_mdt=DEFAULT_INT,    &
+           id_qdt=DEFAULT_INT, id_aam=DEFAULT_INT, id_amdt=DEFAULT_INT,                               &
+           id_acly=DEFAULT_INT, id_acl=DEFAULT_INT, id_acl2=DEFAULT_INT,                              &
+           id_dbz=DEFAULT_INT, id_maxdbz=DEFAULT_INT, id_basedbz=DEFAULT_INT, id_dbz4km=DEFAULT_INT, id_dbztop=DEFAULT_INT, id_dbz_m10C=DEFAULT_INT, &
+           id_ctz=DEFAULT_INT, id_w1km=DEFAULT_INT, id_wmaxup=DEFAULT_INT, id_wmaxdn=DEFAULT_INT, id_cape=DEFAULT_INT, id_cin=DEFAULT_INT,id_diss=DEFAULT_INT
 
 ! Selected p-level fields from 3D variables:
- integer :: id_vort200, id_vort500, id_w500, id_w700
- integer :: id_vort850, id_w850, id_x850, id_srh25, &
-            id_uh03, id_uh25, id_theta_e,  &
-            id_w200, id_s200, id_sl12, id_sl13, id_w5km, id_rain5km, id_w2500m
- integer :: id_srh1, id_srh3, id_ustm, id_vstm
+ integer :: id_vort200=DEFAULT_INT, id_vort500=DEFAULT_INT, id_w500=DEFAULT_INT, id_w700=DEFAULT_INT
+ integer :: id_vort850=DEFAULT_INT, id_w850=DEFAULT_INT, id_x850=DEFAULT_INT, id_srh25=DEFAULT_INT, &
+            id_uh03=DEFAULT_INT, id_uh25=DEFAULT_INT, id_theta_e=DEFAULT_INT,  &
+            id_w200=DEFAULT_INT, id_s200=DEFAULT_INT, id_sl12=DEFAULT_INT, id_sl13=DEFAULT_INT, id_w5km=DEFAULT_INT, id_rain5km=DEFAULT_INT, id_w2500m=DEFAULT_INT
+ integer :: id_srh1=DEFAULT_INT, id_srh3=DEFAULT_INT, id_ustm=DEFAULT_INT, id_vstm=DEFAULT_INT
 ! NGGPS 31-level diag
  integer, allocatable :: id_u(:), id_v(:), id_t(:), id_h(:), id_q(:), id_omg(:)
 
- integer:: id_u_plev, id_v_plev, id_t_plev, id_h_plev, id_q_plev, id_omg_plev
+ integer:: id_u_plev=DEFAULT_INT, id_v_plev=DEFAULT_INT, id_t_plev=DEFAULT_INT, id_h_plev=DEFAULT_INT, id_q_plev=DEFAULT_INT, id_omg_plev=DEFAULT_INT
 ! IPCC diag
- integer :: id_rh10,  id_rh50,  id_rh100, id_rh200,  id_rh250, id_rh300, &
-            id_rh500, id_rh700, id_rh850, id_rh925,  id_rh1000
- integer :: id_dp10,  id_dp50,  id_dp100, id_dp200,  id_dp250, id_dp300, &
-            id_dp500, id_dp700, id_dp850, id_dp925,  id_dp1000
+ integer :: id_rh10=DEFAULT_INT,  id_rh50=DEFAULT_INT,  id_rh100=DEFAULT_INT, id_rh200=DEFAULT_INT,  id_rh250=DEFAULT_INT, id_rh300=DEFAULT_INT, &
+            id_rh500=DEFAULT_INT, id_rh700=DEFAULT_INT, id_rh850=DEFAULT_INT, id_rh925=DEFAULT_INT,  id_rh1000=DEFAULT_INT
+ integer :: id_dp10=DEFAULT_INT,  id_dp50=DEFAULT_INT,  id_dp100=DEFAULT_INT, id_dp200=DEFAULT_INT,  id_dp250=DEFAULT_INT, id_dp300=DEFAULT_INT, &
+            id_dp500=DEFAULT_INT, id_dp700=DEFAULT_INT, id_dp850=DEFAULT_INT, id_dp925=DEFAULT_INT,  id_dp1000=DEFAULT_INT
 
- integer :: id_rh1000_cmip, id_rh925_cmip, id_rh850_cmip, id_rh700_cmip, id_rh500_cmip, &
-            id_rh300_cmip,  id_rh250_cmip, id_rh100_cmip, id_rh50_cmip,  id_rh10_cmip
+ integer :: id_rh1000_cmip=DEFAULT_INT, id_rh925_cmip=DEFAULT_INT, id_rh850_cmip=DEFAULT_INT, id_rh700_cmip=DEFAULT_INT, id_rh500_cmip=DEFAULT_INT, &
+            id_rh300_cmip=DEFAULT_INT,  id_rh250_cmip=DEFAULT_INT, id_rh100_cmip=DEFAULT_INT, id_rh50_cmip=DEFAULT_INT,  id_rh10_cmip=DEFAULT_INT
 
- integer :: id_hght
- integer :: id_u100m, id_v100m, id_w100m
+ integer :: id_hght=DEFAULT_INT
+ integer :: id_u100m=DEFAULT_INT, id_v100m=DEFAULT_INT, id_w100m=DEFAULT_INT
 
      ! For initial conditions:
-     integer ic_ps, ic_ua, ic_va, ic_ppt
-     integer ic_sphum
+     integer :: ic_ps=DEFAULT_INT, ic_ua=DEFAULT_INT, ic_va=DEFAULT_INT, ic_ppt=DEFAULT_INT
+     integer :: ic_sphum=DEFAULT_INT
      integer, allocatable :: id_tracer(:)
 ! ESM requested diagnostics  -  dry mass/volume mixing ratios
  integer, allocatable :: id_tracer_dmmr(:)
@@ -114,7 +117,7 @@ module fv_arrays_mod
      real  rainwat, snowwat, graupel
 
      real :: efx(max_step), efx_sum, efx_nest(max_step), efx_sum_nest, mtq(max_step), mtq_sum
-     integer :: steps
+     integer :: steps=DEFAULT_INT
 
   end type fv_diag_type
 
@@ -132,7 +135,7 @@ module fv_arrays_mod
 
      real, allocatable, dimension(:,:,:) :: grid, agrid
      real, allocatable, dimension(:,:) :: area, area_c
-     real, allocatable, dimension(:,:) :: rarea, rarea_c     
+     real, allocatable, dimension(:,:) :: rarea, rarea_c
 
      real, allocatable, dimension(:,:) :: sina, cosa
      real, allocatable, dimension(:,:,:) :: e1,e2
@@ -213,9 +216,9 @@ module fv_arrays_mod
      real, allocatable :: fC(:,:), f0(:,:)
 
      integer, dimension(:,:,:), allocatable :: iinta, jinta, iintb, jintb
-  
+
      !Scalar data
-     
+
      integer :: npx_g, npy_g, ntiles_g ! global domain
 
      real(kind=R_GRID) :: global_area
@@ -226,7 +229,7 @@ module fv_arrays_mod
 
      real  :: acapN, acapS
      real  :: globalarea  !< total Global Area
-     
+
      logical :: latlon = .false.
      logical :: cubed_sphere = .false.
      logical :: have_south_pole = .false.
@@ -237,8 +240,8 @@ module fv_arrays_mod
 
      integer, pointer :: grid_type !< Which type of grid to use. If 0, the equidistant gnomonic
                                    !< cubed-sphere will be used. If 4, a doubly-periodic
-                                   !< f-plane cartesian grid will be used. If -1, the grid is read 
-                                   !< from INPUT/grid_spec.nc. Values 2, 3, 5, 6, and 7 are not 
+                                   !< f-plane cartesian grid will be used. If -1, the grid is read
+                                   !< from INPUT/grid_spec.nc. Values 2, 3, 5, 6, and 7 are not
                                    !< supported and will likely not run. The default value is 0.
 
      logical, pointer :: nested   !< Whether this is a nested grid. .false. by default.
@@ -275,29 +278,29 @@ module fv_arrays_mod
 
 ! Momentum (or KE) options:
    integer :: hord_mt = 9   !< Horizontal advection scheme for momentum fluxes. A
-                            !< complete list of kord options is given in the 
-                            !< corresponding table in Appendix A of the 
+                            !< complete list of kord options is given in the
+                            !< corresponding table in Appendix A of the
                             !< FV3 technical document. The default value is 9, which
                             !< uses the third-order piecewise-parabolic method with the
-                            !< monotonicity constraint of Huynh, which is less diffusive 
-                            !< than other constraints. For hydrostatic simulation, 8 
-                            !< (the L04 monotonicity constraint) is recommended; for 
-                            !< nonhydrostatic simulation, the completely unlimited (“linear” 
-                            !< or non-monotone) PPM scheme is recommended. If no monotonicity 
-                            !< constraint is applied, enabling the flux damping 
+                            !< monotonicity constraint of Huynh, which is less diffusive
+                            !< than other constraints. For hydrostatic simulation, 8
+                            !< (the L04 monotonicity constraint) is recommended; for
+                            !< nonhydrostatic simulation, the completely unlimited (“linear”
+                            !< or non-monotone) PPM scheme is recommended. If no monotonicity
+                            !< constraint is applied, enabling the flux damping
                             !< (do_vort_damp = .true.) is highly recommended to control grid-scale
                             !< noise. It is also recommended that hord_mt, hord_vt, hord_tm, and
-                            !< hord_dp use the same value, to ensure consistent transport of all 
+                            !< hord_dp use the same value, to ensure consistent transport of all
                             !< dynamical fields, unless a positivity constraint on mass advection
                             !< (hord_dp) is desired.
 
-   integer :: kord_mt = 8   !< Vertical remapping scheme for the winds. 8 by default; 9 is recommended as 
-                            !< the safest option, although 10, and 11 can also be useful. See 
+   integer :: kord_mt = 8   !< Vertical remapping scheme for the winds. 8 by default; 9 is recommended as
+                            !< the safest option, although 10, and 11 can also be useful. See
                             !< corresponding table in Appendix A of the FV3
                             !< technical document for a complete list of kord options.
 
-   integer :: kord_wz = 8   !< Vertical remapping scheme for vertical velocity in nonhydrostatic simulations. 
-                            !< 8 by default; 9 recommended. It is also recommended to use the same value 
+   integer :: kord_wz = 8   !< Vertical remapping scheme for vertical velocity in nonhydrostatic simulations.
+                            !< 8 by default; 9 recommended. It is also recommended to use the same value
                             !< for 'kord_wz' as for 'kord_mt'.
 
    !> Vorticity & w transport options:
@@ -309,13 +312,13 @@ module fv_arrays_mod
    integer :: hord_tm = 9   !< Horizontal advection scheme for potential temperature and
                             !< layer thickness in nonhydrostatic simulations. 9 by default.
 
-   integer :: hord_dp = 9   !< Horizontal advection scheme for mass. A positivity 
-                            !< constraint may be warranted for hord_dp but not strictly 
+   integer :: hord_dp = 9   !< Horizontal advection scheme for mass. A positivity
+                            !< constraint may be warranted for hord_dp but not strictly
                             !< necessary. 9 by default.
 
    integer :: kord_tm = 8   !< Vertical remapping scheme for temperature. If positive
-                            !< (not recommended), then vertical remapping is performed on 
-                            !< total energy instead of temperature (see 'remap_t'). 
+                            !< (not recommended), then vertical remapping is performed on
+                            !< total energy instead of temperature (see 'remap_t').
                             !< The default value is -8.
                             !< NOTE: WMP-NASA-GMAO added remap_option in place of remap_t
                             !<       to support the GMAO use of TE remapping,
@@ -323,62 +326,62 @@ module fv_arrays_mod
 !> Tracer transport options:
    integer :: hord_tr = 12   !< Horizontal advection scheme for tracers. The default is 12.
                              !< This value can differ from the other hord options since
-                             !< tracers are subcycled (if inline_q == .false.) and require 
-                             !< positive-definite advection to control the appearance of 
+                             !< tracers are subcycled (if inline_q == .false.) and require
+                             !< positive-definite advection to control the appearance of
                              !< non-physical negative masses. 8 (fastest) or 10 (least diffusive)
                              !< are typically recommended.
 
-   integer :: kord_tr = 8   !< The vertical remapping scheme for tracers. The default is 8. 
-                            !< 9 or 11 recommended. It is often recommended to use the same 
+   integer :: kord_tr = 8   !< The vertical remapping scheme for tracers. The default is 8.
+                            !< 9 or 11 recommended. It is often recommended to use the same
                             !< value for 'kord_tr' as for 'kord_tm'.
- 
+
    real :: scale_z = 0.   !< diff_z = scale_z**2 * 0.25
-   real :: w_max = 75.    !< max w (m/s) threshold for hydostatiic adjustment 
+   real :: w_max = 75.    !< max w (m/s) threshold for hydostatiic adjustment
    real :: z_min = 0.05   !< min ratio of dz_nonhydrostatic/dz_hydrostatic
    real :: lim_fac = 1.0  !< linear scheme limiting factor, 1: hord = 5, 3: hord = 6
 
-   integer :: nord = 1   !< Order of divergence damping: 0 for second-order; 1 for fourth-order 
+   integer :: nord = 1   !< Order of divergence damping: 0 for second-order; 1 for fourth-order
                          !< (default); 2 for sixth-order; 3 for eighth-order. Sixth-order may
-                         !< yield a better solution for low resolutions (one degree or coarser) 
+                         !< yield a better solution for low resolutions (one degree or coarser)
                          !< by virtue of it being more scale-selective and will not damp moderately
                          !< well-resolved disturbances as much as does lower-order damping.
 
-   integer :: nord_tr = 0   !< Order of tracer damping; values mean the same as for 'nord'. 
+   integer :: nord_tr = 0   !< Order of tracer damping; values mean the same as for 'nord'.
                             !< The default value is 0.
 
-   real :: dddmp = 0.0   !< Dimensionless coefficient for the second-order Smagorinsky-type 
-                         !< divergence damping. The default is value is 0.0. 0.2 
+   real :: dddmp = 0.0   !< Dimensionless coefficient for the second-order Smagorinsky-type
+                         !< divergence damping. The default is value is 0.0. 0.2
                          !< (the Smagorinsky constant) is recommended if ICs are noisy.
 
    real :: d2_bg = 0.0   !< Coefficient for background second-order divergence damping.
                          !< This option remains active even if nord is nonzero. The default
                          !< value is 0.0. The proper range is 0 to 0.02.
 
-   real :: d4_bg = 0.16   !< Dimensionless coefficient for background higher-order divergence damping. 
-                          !< 0.0 by default. If no second-order divergence damping is used, then values 
-                          !< between 0.1 and 0.16 are recommended. Requires 'nord' > 0. Note that the 
-                          !< scaling for 'd4_bg' differs from that of 'd2_bg'; 'nord' >= 1 and 
+   real :: d4_bg = 0.16   !< Dimensionless coefficient for background higher-order divergence damping.
+                          !< 0.0 by default. If no second-order divergence damping is used, then values
+                          !< between 0.1 and 0.16 are recommended. Requires 'nord' > 0. Note that the
+                          !< scaling for 'd4_bg' differs from that of 'd2_bg'; 'nord' >= 1 and
                           !< 'd4_bg' = 0.16 will be less diffusive than 'nord' = 0 and 'd2_bg' = 0.02.
 
-   real :: vtdm4 = 0.0   !< Coefficient for background other-variable damping. The value of 'vtdm4' 
+   real :: vtdm4 = 0.0   !< Coefficient for background other-variable damping. The value of 'vtdm4'
                          !< should be less than that of 'd4_bg'. A good first guess for 'vtdm4' is
-                         !< about one-third the value of d4_bg. Requires 'do_vort_damp' 
+                         !< about one-third the value of d4_bg. Requires 'do_vort_damp'
                          !< to be .true. Disabled for values less than 1.e-3. Other-
                          !< variable damping should not be used if a monotonic horizontal advection
                          !< scheme is used. The default value is 0.0.
 
    real :: trdm2 = 0.0   !< Coefficient for del-2 tracer damping
    real :: d2_bg_k1 = 4.   !< Strength of second-order diffusion in the top sponge layer.
-                           !< Value must be specified. This value, and d2_bg_k2, will be changed 
-                           !< appropriately in the model (depending on the height of model 
-                           !< top), so the actual damping may be very reduced. See 
-                           !< atmos_cubed_sphere/model/dyncore.F90 for details. Recommended 
-                           !< range is 0. to 0.2. Note that since diffusion is converted to 
-                           !< heat if d_con > 0 larger amounts of sponge-layer diffusion may 
+                           !< Value must be specified. This value, and d2_bg_k2, will be changed
+                           !< appropriately in the model (depending on the height of model
+                           !< top), so the actual damping may be very reduced. See
+                           !< atmos_cubed_sphere/model/dyncore.F90 for details. Recommended
+                           !< range is 0. to 0.2. Note that since diffusion is converted to
+                           !< heat if d_con > 0 larger amounts of sponge-layer diffusion may
                            !< be less stable.
 
    real :: d2_bg_k2 = 2.   !< Strength of second-order diffusion in the second sponge
-                           !< layer from the model top. This value must be specified, and 
+                           !< layer from the model top. This value must be specified, and
                            !< should be less than 'd2_bg_k1'.
 
    real :: d2_divg_max_k1 = 0.15 !< d2_divg max value (k=1)
@@ -400,11 +403,11 @@ module fv_arrays_mod
                                    !< other values do no filtering. 0 by default. This should not be set to a
                                    !< non-zero value on multiple successive simulations; the filter is applied
                                    !< every time the model restarts. This option is useful for testing the
-                                   !< terrain filter, and SHOULD NOT BE USED FOR REGULAR RUNS.  
+                                   !< terrain filter, and SHOULD NOT BE USED FOR REGULAR RUNS.
                                    !< use del-2 (2) OR del-4 (4)
 
    logical :: full_zs_filter = .false.   !< Whether to apply the on-line topography filter during
-                                         !< initialization. Only active if get_nggps_ic = .true. This is so 
+                                         !< initialization. Only active if get_nggps_ic = .true. This is so
                                          !< topography filtering can be performed on the initial conditions output by the
                                          !< pre-processing tools, which currently do not support topography filter-
                                          !< ing for some configurations (such as the nested grid); this also allows
@@ -413,60 +416,60 @@ module fv_arrays_mod
                                          !< = .true.) the on-line topography filter will be applied automatically
                                          !< during the initialization of the topography. The default value is .false.
 
-   logical :: RF_fast = .false.   !< Option controlling whether to apply Rayleigh damping (for tau > 0) 
+   logical :: RF_fast = .false.   !< Option controlling whether to apply Rayleigh damping (for tau > 0)
                                   !< on the dynamic/acoustic timestep rather than on the physics timestep.
-                                  !< This can help stabilize the model by applying the damping more weakly 
-                                  !< more frequently, so the instantaneous amount of damping (and thereby 
+                                  !< This can help stabilize the model by applying the damping more weakly
+                                  !< more frequently, so the instantaneous amount of damping (and thereby
                                   !< heat added) is reduced. The default is .false., which applies the Rayleigh
                                   !< drag every physics timestep.
 
    logical :: Beljaars_TOFD = .false. !< Option controlling whether to apply Beljaars turbulent-orographic-form-drag
                                       !< on the dynamic/acoustic timestep rather than on the physics timestep.
-                                      !< This can help stabilize the model by applying the damping more weakly 
-                                      !< more frequently, so the instantaneous amount of damping (and thereby 
+                                      !< This can help stabilize the model by applying the damping more weakly
+                                      !< more frequently, so the instantaneous amount of damping (and thereby
                                       !< heat added) is reduced.
 
    logical :: consv_am  = .false.   !< Whether to enable Angular momentum fixer. The default is .false.
 
 
-   logical :: do_sat_adj= .false.   ! 
-   logical :: do_f3d = .false.   ! 
+   logical :: do_sat_adj= .false.   !
+   logical :: do_f3d = .false.   !
    logical :: no_dycore = .false.   !< Disables execution of the dynamical core, only running
-                                    !< the initialization, diagnostic, and I/O routines, and 
-                                    !< any physics that may be enabled. Essentially turns the 
+                                    !< the initialization, diagnostic, and I/O routines, and
+                                    !< any physics that may be enabled. Essentially turns the
                                     !< model into a column physics model. The default is .false.
 
    logical :: convert_ke = .false.   !< If .true., adds energy dissipated through mechanical
-                                     !< damping to heat throughout the entire depth of the domain; 
+                                     !< damping to heat throughout the entire depth of the domain;
                                      !< if .false. (default) this is only done in the sponge layer
                                      !< at the top of the domain. This option is only enabled if
                                      !< d_con > 1.e-5.
- 
+
    logical :: do_vort_damp = .false.   !< Whether to apply flux damping (of strength governed by 'vtdm4')
                                        !< to the fluxes of vorticity, air mass, and nonhydrostatic
-                                       !< vertical velocity (there is no dynamically correct way to add 
-                                       !< explicit diffusion to the tracer fluxes). The form is the same 
-                                       !< as is used for the divergence damping, including the same order 
-                                       !< (from 'nord') damping, unless 'nord' = 0, in which case this 
-                                       !< damping is fourth-order, or if 'nord' = 3,in which case this 
-                                       !< damping is sixth-order (instead of eighth-order). We recommend 
+                                       !< vertical velocity (there is no dynamically correct way to add
+                                       !< explicit diffusion to the tracer fluxes). The form is the same
+                                       !< as is used for the divergence damping, including the same order
+                                       !< (from 'nord') damping, unless 'nord' = 0, in which case this
+                                       !< damping is fourth-order, or if 'nord' = 3,in which case this
+                                       !< damping is sixth-order (instead of eighth-order). We recommend
                                        !< enabling this damping when the linear or non-monotonic
-                                       !< horizontal advection schemes are enabled, but is unnecessary and 
+                                       !< horizontal advection schemes are enabled, but is unnecessary and
                                        !< not recommended when using monotonic advection. The default is .false.
 
-   logical :: use_old_omega = .true. 
+   logical :: use_old_omega = .true.
 ! PG off centering:
    real :: beta = 0.0   !< Parameter specifying fraction of time-off-centering for backwards
-                        !< evaluation of the pressure gradient force. The default is 0.0, which 
+                        !< evaluation of the pressure gradient force. The default is 0.0, which
                         !< produces a fully backwards evaluation of the pressure gradient force
-                        !< that is entirely evaluated using the updated (time n+1) dynamical fields. 
+                        !< that is entirely evaluated using the updated (time n+1) dynamical fields.
                         !< A value of 0.5 will equally weight the PGF determined at times n and
                         !< n+1, but may not be stable; values larger than 0.45 are not recommended.
-                        !< A value of 0.4 is recommended for most hydrostatic simulations, which 
-                        !< allows an improved representation of inertia-gravity waves in the tropics. 
+                        !< A value of 0.4 is recommended for most hydrostatic simulations, which
+                        !< allows an improved representation of inertia-gravity waves in the tropics.
                         !< In non-hydrostatic simulations using the semi-implicit solver (a_imp > 0.5)
                         !< the values of 'a_imp' and 'beta' should add to 1, so that the time-centering is
-                        !< consistent between the PGF and the nonhydrostatic solver. 
+                        !< consistent between the PGF and the nonhydrostatic solver.
                         !< The proper range is 0 to 0.45.
 
 #ifdef SW_DYNAMICS
@@ -476,12 +479,12 @@ module fv_arrays_mod
                              !< which the 2Dx filter is applied. This does not control the sponge layer.
                              !< The default value is 0.
 
-   real :: d_ext = 0.   !< Coefficient for external (barotropic) mode damping. The 
-                        !< default value is 0.02. The proper range is 0 to 0.02. A value 
-                        !< of 0.01 or 0.02 may help improve the models maximum stable 
-                        !< time step in low-resolution (2-degree or lower) simulations; 
+   real :: d_ext = 0.   !< Coefficient for external (barotropic) mode damping. The
+                        !< default value is 0.02. The proper range is 0 to 0.02. A value
+                        !< of 0.01 or 0.02 may help improve the models maximum stable
+                        !< time step in low-resolution (2-degree or lower) simulations;
                         !< otherwise a value of 0 is recommended.
-   
+
    integer :: nwat  = 0   !< Number of water species to be included in condensate and
                           !< water vapor loading. The masses of the first nwat tracer species will be
                           !< added to the dry air mass, so that p is the mass of dry air, water vapor,
@@ -489,12 +492,12 @@ module fv_arrays_mod
                           !< microphysics in the physics package you are using. For GFS physics
                           !< with only a single condensate species, set to 2. For schemes with
                           !< prognostic cloud water and cloud ice, such as GFDL AM2/AM3/AM4
-                          !< Rotsteyn-Klein or Morrison-Gettlean microphysics, set to 3. For 
+                          !< Rotsteyn-Klein or Morrison-Gettlean microphysics, set to 3. For
                           !< warm-rain (Kessler) microphysics set to 4 (with an inactive ice tracer),
                           !< which only handles three species but uses 4 to avoid interference with the
-                          !< R-K physics. For schemes such as WSM5 or Ferrier that have prognostic rain 
+                          !< R-K physics. For schemes such as WSM5 or Ferrier that have prognostic rain
                           !< and snow but not hail, set to 5 (not yet implemented). For six-category
-                          !< schemes that also have prognostic hail or graupel, such as the GFDL, Thompson, 
+                          !< schemes that also have prognostic hail or graupel, such as the GFDL, Thompson,
                           !< or WSM6 microphysics, set to 6. A value of 0 turns off condensate loading.
                           !< The default value is 3.
 
@@ -508,17 +511,17 @@ module fv_arrays_mod
                                    !< temperature. False by default; if true, q_split and z_tracer are ignored.
 
    logical :: adiabatic = .true.   !< Whether to skip any physics. If true, the physics is not
-                                   !< called at all and there is no virtual temperature effect. 
+                                   !< called at all and there is no virtual temperature effect.
                                    !< False by default; this option has no effect if not running solo_core.
 #else
    integer :: n_zfilter = 0  !< Number of layers at the top of the atmosphere for dz subgrid mixing
                              !< in fv_subgrid_z
-   integer :: n_sponge = 1   !< Controls the number of layers at the upper boundary on which the 2Dx filter 
+   integer :: n_sponge = 1   !< Controls the number of layers at the upper boundary on which the 2Dx filter
                              !< is applied. This does not control the sponge layer. The default value is 0.
 
-   real    :: d_ext = 0.02   !< Coefficient for external (barotropic) mode damping. Proper range is 0 to 0.02. 
-                             !< A value of 0.01 or 0.02 may help improve the models maximum stable time 
-                             !< step in low-resolution (2-degree or lower) simulations; otherwise a 
+   real    :: d_ext = 0.02   !< Coefficient for external (barotropic) mode damping. Proper range is 0 to 0.02.
+                             !< A value of 0.01 or 0.02 may help improve the models maximum stable time
+                             !< step in low-resolution (2-degree or lower) simulations; otherwise a
                              !< value of 0 is recommended. The default value is 0.02.
 
    integer :: nwat  = 3   !< Number of water species to be included in condensate and
@@ -528,12 +531,12 @@ module fv_arrays_mod
                           !< microphysics in the physics package you are using. For GFS physics
                           !< with only a single condensate species, set to 2. For schemes with
                           !< prognostic cloud water and cloud ice, such as GFDL AM2/AM3/AM4
-                          !< Rotsteyn-Klein or Morrison-Gettlean microphysics, set to 3. For 
+                          !< Rotsteyn-Klein or Morrison-Gettlean microphysics, set to 3. For
                           !< warm-rain (Kessler) microphysics set to 4 (with an inactive ice tracer),
                           !< which only handles three species but uses 4 to avoid interference with the
-                          !< R-K physics. For schemes such as WSM5 or Ferrier that have prognostic rain 
+                          !< R-K physics. For schemes such as WSM5 or Ferrier that have prognostic rain
                           !< and snow but not hail, set to 5 (not yet implemented). For six-category
-                          !< schemes that also have prognostic hail or graupel, such as the GFDL, Thompson, 
+                          !< schemes that also have prognostic hail or graupel, such as the GFDL, Thompson,
                           !< or WSM6 microphysics, set to 6. A value of 0 turns off condensate loading.
                           !< The default value is 3.
 
@@ -556,30 +559,30 @@ module fv_arrays_mod
                              !< does not move the poles. By default this is set to 18, shifting the grid
                              !< westward 180/18=10 degrees, so that the edges of the cube do not run
                              !< through the mountains of Japan; all standard CM2.x, AM3, CM3, and
-                             !< HiRAM simulations use this orientation of the grid. 
+                             !< HiRAM simulations use this orientation of the grid.
                              !< Requires do_schmidt = .false.
- 
+
 ! Defaults for Schmidt transformation:
    logical :: do_schmidt = .false.   !< Whether to enable grid stretching and rotation using
-                                     !< stretch_fac, target_lat, and target_lon. 
+                                     !< stretch_fac, target_lat, and target_lon.
                                      !< The default value is .false.
    real(kind=R_GRID) :: stretch_fac = 1.   !< Stretching factor for the Schmidt transformation. This
-                                           !< is the factor by which tile 6 of the cubed sphere will 
-                                           !< be shrunk, with the grid size shrinking accordingly. 
-                                           !< The default value is 1, which performs no grid stretching. 
-                                           !< Requires do_schmidt =.true. 
+                                           !< is the factor by which tile 6 of the cubed sphere will
+                                           !< be shrunk, with the grid size shrinking accordingly.
+                                           !< The default value is 1, which performs no grid stretching.
+                                           !< Requires do_schmidt =.true.
                                            !< THE MODEL WILL CRASH IF stretch_fac IS SET TO ZERO.
-                                           !< Values of up to 40 have been found useful and stable 
+                                           !< Values of up to 40 have been found useful and stable
                                            !< for short-term cloud-scale integrations.
 
    real(kind=R_GRID) :: target_lat = -90.   !< Latitude (in degrees) to which the center of tile 6 will be
-                                            !< rotated; if stretching is done with stretch_fac the center of 
-                                            !< the high-resolution part of the grid will be at this latitude. 
+                                            !< rotated; if stretching is done with stretch_fac the center of
+                                            !< the high-resolution part of the grid will be at this latitude.
                                             !< -90 by default, which does no grid rotation (the Schmidt transformation
                                             !< rotates the south pole to the appropriate target).
-                                            !< Requires do_schmidt = .true. 
+                                            !< Requires do_schmidt = .true.
 
-   real(kind=R_GRID) :: target_lon = 0.   !< Longitude to which the center of tile 6 will be rotated. 
+   real(kind=R_GRID) :: target_lon = 0.   !< Longitude to which the center of tile 6 will be rotated.
                                           !< 0 by default. Requires do_schmidt = .true.
 
    !-----------------------------------------------------------------------------------------------
@@ -592,43 +595,43 @@ module fv_arrays_mod
    !              stretching factor: 5-10
    !-----------------------------------------------------------------------------------------------
 
-   logical :: reset_eta = .false. 
+   logical :: reset_eta = .false.
    real :: p_fac = 0.05   !< Safety factor for minimum nonhydrostatic pressures, which
-                          !< will be limited so the full pressure is no less than p_fac 
-                          !< times the hydrostatic pressure. This is only of concern in mid-top 
-                          !< or high-top models with very low pressures near the model top, and 
-                          !< has no effect in most simulations. The pressure limiting activates 
-                          !< only when model is in danger of blowup due to unphysical negative 
-                          !< total pressures. Only used if 'hydrostatic' = .false.and the 
-                          !< semi-implicit solver is used. The proper range is 0 to 0.25. 
-                          !< The default value is 0.05. 
+                          !< will be limited so the full pressure is no less than p_fac
+                          !< times the hydrostatic pressure. This is only of concern in mid-top
+                          !< or high-top models with very low pressures near the model top, and
+                          !< has no effect in most simulations. The pressure limiting activates
+                          !< only when model is in danger of blowup due to unphysical negative
+                          !< total pressures. Only used if 'hydrostatic' = .false.and the
+                          !< semi-implicit solver is used. The proper range is 0 to 0.25.
+                          !< The default value is 0.05.
 
    real :: a_imp = 0.75   !< Controls behavior of the non-hydrostatic solver. Values > 0.5
-                          !< enable the semi-implicit solver, in which the value of 'a_imp' 
-                          !< controls the time-off-centering: use a_imp = 1.0 for a fully 
-                          !< backward time stepping. For consistency, the sum of 'beta' and 
-                          !< 'a_imp' should be 1 when the semi-implicit solver is used. The 
-                          !< semi-implicit algorithm is substantially more efficient except 
-                          !< at very high (km-scale) resolutions with an acoustic time step 
-                          !< of a few seconds or less. Proper values are 0, or between 0.5  
-                          !< and 1. The default value is 0.75. Only used if 
+                          !< enable the semi-implicit solver, in which the value of 'a_imp'
+                          !< controls the time-off-centering: use a_imp = 1.0 for a fully
+                          !< backward time stepping. For consistency, the sum of 'beta' and
+                          !< 'a_imp' should be 1 when the semi-implicit solver is used. The
+                          !< semi-implicit algorithm is substantially more efficient except
+                          !< at very high (km-scale) resolutions with an acoustic time step
+                          !< of a few seconds or less. Proper values are 0, or between 0.5
+                          !< and 1. The default value is 0.75. Only used if
                           !< 'hydrostatic' = .false.
 
    real :: dz_min = 2.0   !< Controls minimum thickness in NH solver
 
    integer :: n_split = 0   !< The number of small dynamics (acoustic) time steps between
-                            !< vertical remapping. 0 by default, in which case the model 
-                            !< produces a good first guess by examining the resolution, 
+                            !< vertical remapping. 0 by default, in which case the model
+                            !< produces a good first guess by examining the resolution,
                             !< dt_atmos, and k_split.
 
    integer :: m_split = 0    ! Number of time splits for Riemann solver
    integer :: k_split = 1   !< Number of vertical remappings per dt_atmos (physics timestep).
                             !< 1 by default.
 
-   logical :: use_logp = .false.   !< Enables a variant of the Lin pressure-gradient force 
-                                   !< algorithm, which uses the logarithm of pressure instead 
-                                   !< of the Exner function (as in \cite lin1997explicit). This yields 
-                                   !< more accurate results for regions that are nearly isothermal. 
+   logical :: use_logp = .false.   !< Enables a variant of the Lin pressure-gradient force
+                                   !< algorithm, which uses the logarithm of pressure instead
+                                   !< of the Exner function (as in \cite lin1997explicit). This yields
+                                   !< more accurate results for regions that are nearly isothermal.
                                    !< Ignored if 'hydrostatic' = .true. The default is .false.
 
 !            For doubly periodic domain with sim_phys
@@ -642,11 +645,11 @@ module fv_arrays_mod
             ! C2000:   ~5         90         18 (5 s)    2
             !===================================================
 ! The nonhydrostatic algorithm is described in Lin 2006, QJ, (submitted)
-! C2000 should easily scale to at least 6 * 100 * 100 = 60,000 CPUs  
+! C2000 should easily scale to at least 6 * 100 * 100 = 60,000 CPUs
 ! For a 1024 system: try 6 x 13 * 13 = 1014 CPUs
-  
+
    integer :: q_split = 0    !< number of time steps for sub-cycled tracer advection.
-                             !< The default value is 0 (recommended), in which case 
+                             !< The default value is 0 (recommended), in which case
                              !< the model determines the number of time steps from the
                              !< global maximum wind speed at each call to the tracer advection.
 
@@ -655,44 +658,44 @@ module fv_arrays_mod
                                !< never prints out any output; set to -1 to see output after every
                                !< dt_at-mos. Computing these diagnostics requires some computational overhead
 
-   logical :: write_3d_diags = .true.   !< whether to write out three-dimensional dynamical diagnostic 
+   logical :: write_3d_diags = .true.   !< whether to write out three-dimensional dynamical diagnostic
                                         !< fields (those defined in fv_diagnostics.F90). This is useful
                                         !< for runs with multiple grids if you only want very large 3D
-                                        !< diagnostics written out for (say) a nested grid, and not for 
+                                        !< diagnostics written out for (say) a nested grid, and not for
                                         !< the global grid. False by default.
 !------------------------------------------
 ! Model Domain parameters
 !------------------------------------------
-   integer :: npx   !< Number of grid corners in the x-direction on one tile of the domain; 
+   integer :: npx   !< Number of grid corners in the x-direction on one tile of the domain;
                     !< so one more than the number of grid cells across a tile. On the cubed sphere
                     !< this is one more than the number of cells across a cube face. Must be set.
-          
+
    integer :: npy   !< Number of grid corners in the y-direction on one tile of the
                     !< domain. This value should be identical to npx on a cubed-sphere grid;
                     !< doubly periodic or nested grids do not have this restriction. Must be set.
 
    integer :: npz   !< Number of vertical levels. Each choice of npz comes with a
-                    !< pre-defined set of hybrid sigma-pressure levels and model top 
+                    !< pre-defined set of hybrid sigma-pressure levels and model top
                     !< (see fv_eta.F90). Must be set.
 
    integer :: npz_rst = 0    !< If using a restart file with a different number of vertical
                              !< levels, set npz_rst to be the number of levels in your restart file.
                              !< The model will then remap the restart file data to the vertical coordinates
-                             !< specified by npz. 0 by default; if 0 or equal to npz no remapping is done.              
-                      
-   integer :: ncnst = 0   !< Number of tracer species advected by fv_tracer in the dynamical core.  
-                          !< Typically this is set automatically by reading in values from field_table, 
-                          !< but ncnst can be set to a smaller value so only the first ncnst tracers 
-                          !< listed in field_table are not advected. 0 by default, which will use the value 
+                             !< specified by npz. 0 by default; if 0 or equal to npz no remapping is done.
+
+   integer :: ncnst = 0   !< Number of tracer species advected by fv_tracer in the dynamical core.
+                          !< Typically this is set automatically by reading in values from field_table,
+                          !< but ncnst can be set to a smaller value so only the first ncnst tracers
+                          !< listed in field_table are not advected. 0 by default, which will use the value
                           !< from field_table.
 
    integer :: pnats = 0   !< The number of tracers not to advect by the dynamical core.
-                          !< Unlike dnats, these tracers are not seen by the dynamical core. 
-                          !< The last pnats entries in field_table are not advected. 
+                          !< Unlike dnats, these tracers are not seen by the dynamical core.
+                          !< The last pnats entries in field_table are not advected.
                           !< The default value is 0.
-  
+
    integer :: dnats = 0   !< The number of tracers which are not to be advected by the dynamical core,
-                          !< but still passed into the dynamical core; the last dnats+pnats tracers 
+                          !< but still passed into the dynamical core; the last dnats+pnats tracers
                           !< in field_table are not advected. 0 by default.
 
    integer :: ntiles = 1   !< Number of tiles on the domain. For the cubed sphere, this
@@ -705,11 +708,11 @@ module fv_arrays_mod
                               !< diagnosed omega. When 0 the filter is disabled. 1 by default.
 
    integer :: fv_sg_adj = -1   !< Timescale (in seconds) at which to remove two-delta-z
-                               !< instability when the local (between two adjacent levels) 
-                               !< Richardson number is less than 1. This is achieved by local 
-                               !< mixing, which conserves mass, momentum, and total energy. 
-                               !< Values of 0 or smaller disable this feature. If n_sponge < 0 
-                               !< then the mixing is applied only to the top n_sponge layers of the 
+                               !< instability when the local (between two adjacent levels)
+                               !< Richardson number is less than 1. This is achieved by local
+                               !< mixing, which conserves mass, momentum, and total energy.
+                               !< Values of 0 or smaller disable this feature. If n_sponge < 0
+                               !< then the mixing is applied only to the top n_sponge layers of the
                                !< domain. Set to -1 (inactive) by default. The proper range is 0 to 3600.
 
    integer :: na_init = 0   !< Number of forward-backward dynamics steps used to initialize
@@ -717,7 +720,7 @@ module fv_arrays_mod
                             !< state from the hydrostatic GFS analyses. 0 by default. Recommended
                             !< to set this to a non-zero value (1 or 2 is typically sufficient)
                             !< when initializing from GFS or ECMWF analyses.
-   
+
 
    logical :: nudge_dz = .false.    !< During the adiabatic initialization (na_init > 0), if set
                                     !< to .true., delz is nudged back to the value specified in the initial
@@ -727,9 +730,9 @@ module fv_arrays_mod
 
    real :: p_ref = 1.E5   !< Surface pressure used to construct a horizontally-uniform reference
                           !< vertical pressure profile, used in some simple physics packages
-                          !< in the solo_core and in the Rayleigh damping. This should not be 
+                          !< in the solo_core and in the Rayleigh damping. This should not be
                           !< confused with the actual, horizontally-varying pressure levels used
-                          !< for all other dynamical calculations. The default value is 1.e5. 
+                          !< for all other dynamical calculations. The default value is 1.e5.
                           !< CHANGING THIS VALUE IS STRONGLY DISCOURAGED.
 
    real :: dry_mass = 98290.   !< If adjust_dry_mass is .true., sets the global dry air mass,
@@ -741,22 +744,22 @@ module fv_arrays_mod
    integer :: nt_phys = 0
    real :: tau_h2o = 0.   !< Time-scale (days) for simple methane chemistry to act as
                           !< a source of water in the stratosphere. Can be useful if the
-                          !< stratosphere dries out too quickly; consider a value between 
-                          !< 60 and 120 days if this is the case. The default value is 0., 
-                          !< which disables the methane chemistry. Values less than zero apply 
-                          !< the chemistry above 100 mb; else applied above 30 mb. 
+                          !< stratosphere dries out too quickly; consider a value between
+                          !< 60 and 120 days if this is the case. The default value is 0.,
+                          !< which disables the methane chemistry. Values less than zero apply
+                          !< the chemistry above 100 mb; else applied above 30 mb.
                           !< Requires 'adiabatic' to be .false.
 
 
-   real :: delt_max = 1.   !< Maximum allowed magnitude of the dissipative heating rate, K s−1; 
+   real :: delt_max = 1.   !< Maximum allowed magnitude of the dissipative heating rate, K s−1;
                            !< larger magnitudes are clipped to this amount. This can help avoid
-                           !< instability that can occur due to strong heating when d_con > 0. 
+                           !< instability that can occur due to strong heating when d_con > 0.
                            !< A value of 0.008 (a rate equivalent to about 800 K/day) is
-                           !< sufficient to stabilize the model at 3-km resolution. 
+                           !< sufficient to stabilize the model at 3-km resolution.
                            !< Set to 1. by default, which effectively disables this limitation.
 
-   real :: d_con = 0.   !< Fraction of kinetic energy lost to explicit damping to be 
-                        !< converted to heat. Acts as a dissipative heating mechanism in 
+   real :: d_con = 0.   !< Fraction of kinetic energy lost to explicit damping to be
+                        !< converted to heat. Acts as a dissipative heating mechanism in
                         !< the dynamical core. The default is 0. Proper range is 0 to 1.
                         !< Note that this is a local, physically correct, energy fixer.
 
@@ -766,36 +769,36 @@ module fv_arrays_mod
    real :: consv_te = 0.   !< Fraction of total energy lost during the adiabatic integration
                            !< between calls of the physics, to be added back globally as heat;
                            !< essentially the strength of the energy fixer in the physics.
-                           !< Note that this is a global energy fixer and cannot add back energy 
+                           !< Note that this is a global energy fixer and cannot add back energy
                            !< locally. The default algorithm increments the potential temperature
                            !< so the pressure gradients are unchanged.  The default value is 0.
                            !< Proper range is 0 to 1. 1 will restore the energy completely to its
-                           !< original value before entering the physics; a value of 0.7 roughly 
+                           !< original value before entering the physics; a value of 0.7 roughly
                            !< causes the energy fixer to compensate for the amount of energy changed
                            !< by the physics in GFDL HiRAM or AM3.
- 
+
    real :: tau = 0.   !< Time scale (in days) for Rayleigh friction applied to horizontal
                       !< and vertical winds; lost kinetic energy is converted to heat, except
                       !< on nested grids. The default value is 0.0, which disables damping.
-                      !< Larger values yield less damping. For models with tops at 1 mb or lower 
-                      !< values between  10 and 30 are useful for preventing overly-strong polar night 
-                      !< jets; for higher-top hydrostatic models values between 5 and 15 should be 
-                      !< considered; and for non-hydrostatic models values of 10 or less should be  
+                      !< Larger values yield less damping. For models with tops at 1 mb or lower
+                      !< values between  10 and 30 are useful for preventing overly-strong polar night
+                      !< jets; for higher-top hydrostatic models values between 5 and 15 should be
+                      !< considered; and for non-hydrostatic models values of 10 or less should be
                       !< considered, with smaller values for higher-resolution.
 
    real :: rf_cutoff = 30.E2   !< Pressure below which no Rayleigh damping is applied if tau > 0.
 
    logical :: filter_phys = .false.
    logical :: dwind_2d = .false.    !< Whether to use a simpler & faster algorithm for interpolating
-                                    !< the A-grid (cell-centered) wind tendencies computed from the physics 
+                                    !< the A-grid (cell-centered) wind tendencies computed from the physics
                                     !< to the D-grid. Typically, the A-grid wind tendencies are first
                                     !< converted in 3D cartesian coordinates and then interpolated before
                                     !< converting back to 2D local coordinates. When this option enabled,
                                     !< a much simpler but less accurate 2D interpolation is used. False by
                                     !< default.
 
-   logical :: breed_vortex_inline = .false.   !< Whether to bogus tropical cyclones into the model, 
-                                              !< which are specified by an external file. Options are set in 
+   logical :: breed_vortex_inline = .false.   !< Whether to bogus tropical cyclones into the model,
+                                              !< which are specified by an external file. Options are set in
                                               !< fv_nwp_nudge_nml. False by default.
 
    logical :: range_warn = .false.   !< Checks whether the values of the prognostic variables
@@ -808,38 +811,38 @@ module fv_arrays_mod
                                !< the cells above and below. This option is useful when the physical
                                !< parameterizations produced negatives. The default is .false.
    logical :: fill_dp = .false.   !< Like 'fill' except for p, the hydrostatic pressure thickness.
-                                  !< When the filling occurs a diagnostic message is printed out, 
+                                  !< When the filling occurs a diagnostic message is printed out,
                                   !< which is helpful for diagnosing where the problem may be occurring.
-                                  !< Typically, a crash is inevitable if the pressure filling is needed; 
+                                  !< Typically, a crash is inevitable if the pressure filling is needed;
                                   !< thus, this option is often better for debugging than as a safety valve.
                                   !< The default is .false.
- 
-   
+
+
    logical :: fill_wz = .false.
    logical :: check_negative = .false.   !< Whether to print the most negative global value of microphysical tracers.
    logical :: non_ortho = .true.
    logical :: moist_phys = .true.     !< Run with moist physics
    logical :: do_Held_Suarez = .false.   !< Whether to use Held-Suarez forcing. Requires adiabatic
-                                         !< to be false. The default is .false.; this option has no 
+                                         !< to be false. The default is .false.; this option has no
                                          !< effect if not running solo_core.
    logical :: do_reed_physics = .false.
    logical :: reed_cond_only = .false.
-   logical :: reproduce_sum = .true.   !< uses an exactly-reproducible global sum operation performed 
-                                       !< when computing the global energy for consv_te. This is used 
+   logical :: reproduce_sum = .true.   !< uses an exactly-reproducible global sum operation performed
+                                       !< when computing the global energy for consv_te. This is used
                                        !< because the FMS routine mpp_sum() is not bit-wise reproducible
-                                       !< due to its handling of floating-point arithmetic, and so can 
-                                       !< return different answers for (say) different processor layouts. 
+                                       !< due to its handling of floating-point arithmetic, and so can
+                                       !< return different answers for (say) different processor layouts.
                                        !< The default is .true.
 
    logical :: adjust_dry_mass = .false.    !< Whether to adjust the global dry-air mass to the
-                                           !< value set by dry_mass. This is only done in an initialization step, 
-                                           !< particularly when using an initial condition from an external dataset, 
+                                           !< value set by dry_mass. This is only done in an initialization step,
+                                           !< particularly when using an initial condition from an external dataset,
                                            !< interpolated from another resolution (either horizontal or vertical), or
                                            !< when changing the topography, so that the global mass of the atmosphere
                                            !< matches some estimate of observed value. False by default. It
                                            !< is recommended to only set this to .true. when initializing the model.
- 
-   logical :: fv_debug = .false.   !< Whether to turn on additional diagnostics in fv_dynamics. 
+
+   logical :: fv_debug = .false.   !< Whether to turn on additional diagnostics in fv_dynamics.
                                    !< The default is .false.
    logical :: srf_init = .false.
    logical :: mountain = .true.   !< Takes topography into account when initializing the
@@ -860,10 +863,10 @@ module fv_arrays_mod
                                       !<    d2_divg_max_k1 = 0.15   d2_divg_max_k2 = 0.08
                                       !<    damp_k_k1 = 0.2         damp_k_k2 = 0.12
 
-   integer :: remap_option = 0   !< Whether the vertical remapping is performed on (virtual) temperature 
-                                 !< instead of (virtual) potential temperature. Since typically potential 
-                                 !< temperature increases exponentially from layer to layer near the top 
-                                 !< boundary, the cubic-spline interpolation in the vertical remapping 
+   integer :: remap_option = 0   !< Whether the vertical remapping is performed on (virtual) temperature
+                                 !< instead of (virtual) potential temperature. Since typically potential
+                                 !< temperature increases exponentially from layer to layer near the top
+                                 !< boundary, the cubic-spline interpolation in the vertical remapping
                                  !< will have difficulty with the exponential profile. Temperature
                                  !< does not have this problem and will often yield a more accurate result.
                                  !< WMP-NASA-GMAO UPDATE
@@ -882,7 +885,7 @@ module fv_arrays_mod
 
    logical :: z_tracer = .false.   !< Whether to transport sub-cycled tracers layer-by-layer,
                                    !< each with its own computed sub-cycling time step (if q_split = 0).
-                                   !< This may improve efficiency for very large numbers of tracers. 
+                                   !< This may improve efficiency for very large numbers of tracers.
                                    !< The default value is .false.; currently not implemented.
 
    logical :: fv_land = .false.   !< Whether to create terrain deviation and land fraction for
@@ -896,16 +899,16 @@ module fv_arrays_mod
 !--------------------------------------------------------------------------------------
 ! The following options are useful for NWP experiments using datasets on the lat-lon grid
 !--------------------------------------------------------------------------------------
-   logical :: nudge = .false.   !< Whether to use the nudging towards the state in some externally-supplied 
+   logical :: nudge = .false.   !< Whether to use the nudging towards the state in some externally-supplied
                                 !< file (such as from reanalysis or another simulation). Further
                                 !< nudging options are set in fv_nwp_nudge_nml. The default is .false.
 
-   logical :: nudge_ic = .false.   !< Same as nudge, but works in adiabatic solo_core simulations to 
-                                   !< nudge the field to a single external analysis file. 
+   logical :: nudge_ic = .false.   !< Same as nudge, but works in adiabatic solo_core simulations to
+                                   !< nudge the field to a single external analysis file.
                                    !< The default is .false.
 
    logical :: ncep_ic = .false.   !< If external_ic = .true., this variable says whether the
-                                  !< file in res_latlon_dynamics is an NCEP analysis or reanalysis file. 
+                                  !< file in res_latlon_dynamics is an NCEP analysis or reanalysis file.
                                   !< This option zeros out all tracer fields except specific humidity.
                                   !< The default is .false.
 
@@ -914,13 +917,13 @@ module fv_arrays_mod
                                    !< Additional options are available through external_ic_nml.
 
    logical :: ecmwf_ic = .false.   !< If external_ic = .true., reads initial conditions from ECMWF analyses.
-                                   !< The default is .false. 
+                                   !< The default is .false.
 
    logical :: gfs_phil = .false.   !< if .T., compute geopotential inside of GFS physics
 
-   logical :: agrid_vel_rst = .false.   !< Whether to write the unstaggered latitude-longitude winds 
-                                        !< (ua and va) to the restart files. This is useful for data 
-                                        !< assimilation cycling systems which do not handle staggered winds. 
+   logical :: agrid_vel_rst = .false.   !< Whether to write the unstaggered latitude-longitude winds
+                                        !< (ua and va) to the restart files. This is useful for data
+                                        !< assimilation cycling systems which do not handle staggered winds.
                                         !< The default is .false.
 
    logical :: use_new_ncep = .false.  ! use the NCEP ICs created after 2014/10/22, if want to read CWAT
@@ -945,12 +948,12 @@ module fv_arrays_mod
    logical :: do_skeb  = .false.         !< save dissipation estimate
    integer :: skeb_npass  = 11           !< Filter dissipation estimate "skeb_npass" times
 ! Default restart files from the "Memphis" latlon FV core:
-   character(len=128) :: res_latlon_dynamics = 'INPUT/fv_rst.res.nc'   !< If external_ic =.true.gives the filename of the 
+   character(len=128) :: res_latlon_dynamics = 'INPUT/fv_rst.res.nc'   !< If external_ic =.true.gives the filename of the
                                                                        !< input IC file. The default is 'INPUT/fv_rst.res.nc'.
    character(len=128) :: res_latlon_tracers = 'INPUT/atmos_tracers.res.nc'   !< If external_ic =.true.and both ncep_ic and fv_diag_ic
                                                                               !< are.false., this variable gives the filename of the
-                                                                              !< initial conditions for the tracers, assumed to be a 
-                                                                              !< legacy lat-lon FV core restart file. 
+                                                                              !< initial conditions for the tracers, assumed to be a
+                                                                              !< legacy lat-lon FV core restart file.
                                                                               !< The default is 'INPUT/atmos_tracers.res.nc'.
 ! The user also needs to copy the "cold start" cubed sphere restart files (fv_core.res.tile1-6)
 ! to the INPUT dir during runtime
@@ -960,33 +963,33 @@ module fv_arrays_mod
    logical :: hydrostatic = .true.   !< Whether to use the hydrostatic or nonhydrostatic solver.
                                      !< The default is .true.
 
-   logical :: phys_hydrostatic = .true.   !< Option to enable hydrostatic application of heating from the physics 
-                                          !< in a nonhydrostatic simulation: heating is applied in hydrostatic 
+   logical :: phys_hydrostatic = .true.   !< Option to enable hydrostatic application of heating from the physics
+                                          !< in a nonhydrostatic simulation: heating is applied in hydrostatic
                                           !< balance, causing the entire atmospheric column to expand instantaneously.
                                           !< If .false., heating from the physics is applied simply as a temperature
                                           !< tendency. The default value is .true.; ignored if hydrostatic = .true.
 
-   logical :: use_hydro_pressure = .false.   !< Whether to compute hydrostatic pressure for input to the physics. 
+   logical :: use_hydro_pressure = .false.   !< Whether to compute hydrostatic pressure for input to the physics.
                                              !< Currently only enabled for the fvGFS model.
                                              !< Ignored in hydrostatic simulations. The default is .false.
 
-   logical :: do_uni_zfull = .false.   !< Whether to compute z_full (the height of each modellayer, 
+   logical :: do_uni_zfull = .false.   !< Whether to compute z_full (the height of each modellayer,
                                        !< as opposed to z_half, the height of each model interface)
-                                       !< as the midpoint of the layer, as is done for the nonhydrostatic 
+                                       !< as the midpoint of the layer, as is done for the nonhydrostatic
                                        !< solver, instead of the height of the location where p = p the mean
-                                       !< pressure in the layer. This option is not available for fvGFS or 
+                                       !< pressure in the layer. This option is not available for fvGFS or
                                        !< the solo_core. The default is .false.
 
    logical :: hybrid_z = .false.   !< Whether to use a hybrid-height coordinate, instead of
-                                   !< the usual sigma-p coordinate. The default value is .false. 
+                                   !< the usual sigma-p coordinate. The default value is .false.
                                    !< (Not currently maintained.)
-  
+
    logical :: Make_NH = .false.   !< Whether to re-initialize the nonhydrostatic state, by recomputing
-                                  !< dz from hydrostatic balance and setting w to 0. The default is 
+                                  !< dz from hydrostatic balance and setting w to 0. The default is
                                   !< false.
 
-   logical :: make_hybrid_z = .false.   !< Converts the vertical coordinate to a hybrid-height coordinate, 
-                                        !< instead of the usual sigma-p coordinate. Requires hybrid_z = .true. 
+   logical :: make_hybrid_z = .false.   !< Converts the vertical coordinate to a hybrid-height coordinate,
+                                        !< instead of the usual sigma-p coordinate. Requires hybrid_z = .true.
                                         !< The default value is .false.
 
    logical :: nudge_qv = .false.   !< During the adiabatic initialization (na_init > 0), if set to .true.,
@@ -997,28 +1000,28 @@ module fv_arrays_mod
                                    !< unnecessary for other ICs, especially the ECMWF initial conditions.
                                    !< The default is .false.
 
-   real :: add_noise = -1.   !< Amplitude of random thermal noise (in K) to add upon startup. 
+   real :: add_noise = -1.   !< Amplitude of random thermal noise (in K) to add upon startup.
                              !< Useful for perturbing initial conditions. -1 by default;
                              !< disabled if 0 or negative.
 
    integer :: a2b_ord = 4   !< Order of interpolation used by the pressure gradient force
-                            !< to interpolate cell-centered (A-grid) values to the grid corners. 
-                            !< The default value is 4 (recommended), which uses fourth-order 
+                            !< to interpolate cell-centered (A-grid) values to the grid corners.
+                            !< The default value is 4 (recommended), which uses fourth-order
                             !< interpolation; otherwise second-order interpolation is used.
 
    integer :: c2l_ord = 4   !< Order of interpolation from the solvers native D-grid winds
                             !< to latitude-longitude A-grid winds, which are used as input to
-                            !< the physics routines and for writing to history files. 
+                            !< the physics routines and for writing to history files.
                             !< The default value is 4 (recommended); fourth-order interpolation
                             !< is used unless c2l_ord = 2.
 
 
    real(kind=R_GRID) :: dx_const = 1000.   !< Specifies the (uniform) grid-cell-width in the x-direction
-                                           !< on a doubly-periodic grid (grid_type = 4) in meters. 
+                                           !< on a doubly-periodic grid (grid_type = 4) in meters.
                                            !< The default value is 1000.
 
    real(kind=R_GRID) :: dy_const = 1000.   !< Specifies the (uniform) grid-cell-width in the y-direction
-                                           !< on a doubly-periodic grid (grid_type = 4) in meters. 
+                                           !< on a doubly-periodic grid (grid_type = 4) in meters.
                                            !< The default value is 1000.
 
    real(kind=R_GRID) :: deglat = 15.   !< Latitude (in degrees) used to compute the uniform f-plane
@@ -1035,7 +1038,7 @@ module fv_arrays_mod
    !f1p
    logical  :: adj_mass_vmr = .false. !TER: This is to reproduce answers for verona patch.  This default can be changed
                                      !     to .true. in the next city release if desired
-  
+
   !integer, pointer :: test_case
    !real,    pointer :: alpha
 
@@ -1074,10 +1077,10 @@ module fv_arrays_mod
 !nested grid flags:
 
      integer :: refinement = 3   !< Refinement ratio of the nested grid. This is the number
-                                 !< of times that each coarse-grid cell face will be divided 
-                                 !< into smaller segments on the nested grid. Required to be a 
-                                 !< positive integer if nested = true. Nested grids are aligned 
-                                 !< with the coarse grid, so non-integer refinements are not 
+                                 !< of times that each coarse-grid cell face will be divided
+                                 !< into smaller segments on the nested grid. Required to be a
+                                 !< positive integer if nested = true. Nested grids are aligned
+                                 !< with the coarse grid, so non-integer refinements are not
                                  !< permitted. The default value is 3.
 
 
@@ -1085,18 +1088,18 @@ module fv_arrays_mod
                                   !< is found in its parent. Required to be a positive value if nested = true.
                                   !< If the parent grid is not a cubed sphere, or itself is a nested grid, this
                                   !< should be set to 1. If the parent grid has been rotated (using do_schmidt) with
-                                  !< the intent of centering the nested grid at target_lat and target_lon, then 
+                                  !< the intent of centering the nested grid at target_lat and target_lon, then
                                   !< parent_tile should be set to 6. The default value is 1.
 
      logical :: nested = .false.   !< Whether this is a nested grid. The default value is .false.
-                                         
+
      integer :: nestbctype = 1
      integer :: nsponge = 0
      integer :: nestupdate = 0   !< Type of nested-grid update to use; details are given in
                                  !< model/fv_nesting.F90.  The default is 0.
-       
+
      logical :: twowaynest = .false.   !< Whether to use two-way nesting, the process by which
-                                       !< the nested-grid solution can feed back onto the 
+                                       !< the nested-grid solution can feed back onto the
                                        !< coarse-grid solution. The default value is .false.
      integer :: ioffset, joffset !<Position of nest within parent grid
 
@@ -1107,7 +1110,7 @@ module fv_arrays_mod
      integer :: refinement_of_global = 1
      integer :: npx_global
      integer :: upoff = 1 !< currently the same for all variables
-     integer :: isu = -999, ieu = -1000, jsu = -999, jeu = -1000 !< limits of update regions on coarse grid 
+     integer :: isu = -999, ieu = -1000, jsu = -999, jeu = -1000 !< limits of update regions on coarse grid
 
      type(nest_domain_type) :: nest_domain !<Structure holding link from this grid to its parent
      type(nest_domain_type), allocatable :: nest_domain_all(:)
@@ -1124,7 +1127,7 @@ module fv_arrays_mod
 
      logical :: parent_proc, child_proc
      logical :: parent_of_twoway = .false.
-   
+
      !These are for time-extrapolated BCs
      type(fv_nest_BC_type_3D) :: delp_BC, u_BC, v_BC, uc_BC, vc_BC, divg_BC
      type(fv_nest_BC_type_3D), allocatable, dimension(:) :: q_BC
@@ -1234,7 +1237,7 @@ module fv_arrays_mod
     real, _ALLOCATABLE :: ts(:,:)       _NULL  !< skin temperature (sst) from NCEP/GFS (K) -- tile
 ! For stochastic kinetic energy backscatter (SKEB)
     real, _ALLOCATABLE :: diss_est(:,:,:) _NULL !< dissipation estimate taken from 'heat_source'
- 
+
 !-----------------------------------------------------------------------
 ! Others:
 !-----------------------------------------------------------------------
@@ -1259,7 +1262,7 @@ module fv_arrays_mod
     real, _ALLOCATABLE ::  cy(:,:,:)  _NULL
 
     type(fv_flags_type) :: flagstruct
-    
+
     !! Convenience pointers
     integer, pointer :: npx, npy, npz, ncnst, ng
 
@@ -1273,20 +1276,20 @@ module fv_arrays_mod
     type(domain2D) :: domain_for_coupler !< domain used in coupled model with halo = 1.
 
      integer :: num_contact, npes_per_tile, tile, npes_this_grid
-     integer :: layout(2), io_layout(2) = (/ 1,1 /)   !< layout: Processor layout on each tile. 
-                                                      !< The number of PEs assigned to a domain must equal 
+     integer :: layout(2), io_layout(2) = (/ 1,1 /)   !< layout: Processor layout on each tile.
+                                                      !< The number of PEs assigned to a domain must equal
                                                       !< layout(1)*layout(2)*ntiles. Must be set.
                                                       !< io_layout: Layout of output files on each tile. 1,1 by default,
                                                       !< which combines all restart and history files on a tile into one file.
                                                       !< For 0,0, every process writes out its own restart and history files.
-                                                      !< If not equal to 1,1, you will have to use mppnccombine to combine these 
-                                                      !< output files prior to post-processing, or if you want to change the 
+                                                      !< If not equal to 1,1, you will have to use mppnccombine to combine these
+                                                      !< output files prior to post-processing, or if you want to change the
                                                       !< number of PEs. Both entries must divide the respective value in layout.
 
 #endif
      !These do not actually belong to the grid, but to the process
      !integer :: masterproc
-     !integer :: gid 
+     !integer :: gid
 
 !!!!!!!!!!!!!!!!
 ! From fv_grid_tools
@@ -1296,7 +1299,7 @@ module fv_arrays_mod
      real    :: ptop
 
   type(fv_grid_type) :: gridstruct
-  
+
 
 !!!!!!!!!!!!!!!!
 !fv_diagnostics!
@@ -1323,7 +1326,7 @@ module fv_arrays_mod
 contains
 
 !>@brief The subroutine 'allocate_fv_atmos_type' allocates the fv_atmos_type
-!>@details It includes an option to define dummy grids that have scalar and 
+!>@details It includes an option to define dummy grids that have scalar and
 !! small arrays defined as null 3D arrays.
   subroutine allocate_fv_atmos_type(Atm, isd_in, ied_in, jsd_in, jed_in, is_in, ie_in, js_in, je_in, &
        npx_in, npy_in, npz_in, ndims_in, ncnst_in, nq_in, ng_in, dummy, alloc_2d, ngrids_in)
@@ -1350,71 +1353,71 @@ contains
     if (Atm%allocated) return
 
     if (dummy) then
-       isd     =  0   
-       ied=   -1   
-       jsd=   0   
-       jed=   -1   
-       is=   0    
-       ie=   -1    
-       js=   0    
-       je=   -1    
-       npx=   1   
-       npy=   1   
-       npz=   1   
-       ndims=   1 
-       ncnst=   1 
+       isd     =  0
+       ied=   -1
+       jsd=   0
+       jed=   -1
+       is=   0
+       ie=   -1
+       js=   0
+       je=   -1
+       npx=   1
+       npy=   1
+       npz=   1
+       ndims=   1
+       ncnst=   1
        nq=   1
-       ng     =   1   
+       ng     =   1
     else
-       isd     =  isd_in   
-       ied=   ied_in   
-       jsd=   jsd_in   
-       jed=   jed_in   
-       is=   is_in    
-       ie=   ie_in    
-       js=   js_in    
-       je=   je_in    
-       npx=   npx_in   
-       npy=   npy_in   
-       npz=   npz_in   
-       ndims=   ndims_in 
-       ncnst=   ncnst_in 
+       isd     =  isd_in
+       ied=   ied_in
+       jsd=   jsd_in
+       jed=   jed_in
+       is=   is_in
+       ie=   ie_in
+       js=   js_in
+       je=   je_in
+       npx=   npx_in
+       npy=   npy_in
+       npz=   npz_in
+       ndims=   ndims_in
+       ncnst=   ncnst_in
        nq=   nq_in
-       ng     =   ng_in    
+       ng     =   ng_in
     endif
 
     if ((.not. dummy) .or. alloc_2d) then
-       isd_2d     =  isd_in   
-       ied_2d=   ied_in   
-       jsd_2d=   jsd_in   
-       jed_2d=   jed_in   
-       is_2d=   is_in    
-       ie_2d=   ie_in    
-       js_2d=   js_in    
-       je_2d=   je_in    
-       npx_2d=   npx_in   
-       npy_2d=   npy_in   
-       npz_2d=   npz_in   
-       ndims_2d=   ndims_in 
-       ncnst_2d=   ncnst_in 
-       nq_2d=   nq_in 
-       ng_2d     =   ng_in 
+       isd_2d     =  isd_in
+       ied_2d=   ied_in
+       jsd_2d=   jsd_in
+       jed_2d=   jed_in
+       is_2d=   is_in
+       ie_2d=   ie_in
+       js_2d=   js_in
+       je_2d=   je_in
+       npx_2d=   npx_in
+       npy_2d=   npy_in
+       npz_2d=   npz_in
+       ndims_2d=   ndims_in
+       ncnst_2d=   ncnst_in
+       nq_2d=   nq_in
+       ng_2d     =   ng_in
     else
-       isd_2d     =  0   
-       ied_2d=   -1   
-       jsd_2d=   0   
-       jed_2d=   -1   
-       is_2d=   0    
-       ie_2d=   -1    
-       js_2d=   0    
-       je_2d=   -1    
-       npx_2d=   1   
-       npy_2d=   1   
+       isd_2d     =  0
+       ied_2d=   -1
+       jsd_2d=   0
+       jed_2d=   -1
+       is_2d=   0
+       ie_2d=   -1
+       js_2d=   0
+       je_2d=   -1
+       npx_2d=   1
+       npy_2d=   1
        npz_2d=   npz_in !for ak, bk, which are 1D arrays and thus OK to allocate
-       ndims_2d=   1 
-       ncnst_2d=   1 
-       nq_2d=   1 
-       ng_2d     =   1        
+       ndims_2d=   1
+       ncnst_2d=   1
+       nq_2d=   1
+       ng_2d     =   1
     endif
 
 !This should be set up in fv_mp_mod
@@ -1571,11 +1574,11 @@ contains
     allocate ( Atm%gridstruct% area(isd_2d:ied_2d  ,jsd_2d:jed_2d  ) )   ! Cell Centered
     allocate ( Atm%gridstruct% area_64(isd_2d:ied_2d  ,jsd_2d:jed_2d  ) ) ! Cell Centered
     allocate ( Atm%gridstruct%rarea(isd_2d:ied_2d  ,jsd_2d:jed_2d  ) )   ! Cell Centered
-    
+
     allocate ( Atm%gridstruct% area_c(isd_2d:ied_2d+1,jsd_2d:jed_2d+1) )   ! Cell Corners
     allocate ( Atm%gridstruct% area_c_64(isd_2d:ied_2d+1,jsd_2d:jed_2d+1) )! Cell Corners
     allocate ( Atm%gridstruct%rarea_c(isd_2d:ied_2d+1,jsd_2d:jed_2d+1) )   ! Cell Corners
-   
+
     Atm%gridstruct% area = 0.0
     Atm%gridstruct% area_64 = 0.0
     Atm%gridstruct%rarea = 0.0
@@ -1583,28 +1586,28 @@ contains
     Atm%gridstruct% area_c = 0.0
     Atm%gridstruct% area_c_64 = 0.0
     Atm%gridstruct%rarea_c = 0.0
- 
+
     allocate ( Atm%gridstruct% dx(isd_2d:ied_2d  ,jsd_2d:jed_2d+1) )
     allocate ( Atm%gridstruct% dx_64(isd_2d:ied_2d  ,jsd_2d:jed_2d+1) )
     allocate ( Atm%gridstruct%rdx(isd_2d:ied_2d  ,jsd_2d:jed_2d+1) )
     allocate ( Atm%gridstruct% dy(isd_2d:ied_2d+1,jsd_2d:jed_2d  ) )
     allocate ( Atm%gridstruct% dy_64(isd_2d:ied_2d+1,jsd_2d:jed_2d  ) )
     allocate ( Atm%gridstruct%rdy(isd_2d:ied_2d+1,jsd_2d:jed_2d  ) )
-    
+
     allocate ( Atm%gridstruct% dxc(isd_2d:ied_2d+1,jsd_2d:jed_2d  ) )
     allocate ( Atm%gridstruct% dxc_64(isd_2d:ied_2d+1,jsd_2d:jed_2d  ) )
     allocate ( Atm%gridstruct%rdxc(isd_2d:ied_2d+1,jsd_2d:jed_2d  ) )
     allocate ( Atm%gridstruct% dyc(isd_2d:ied_2d  ,jsd_2d:jed_2d+1) )
     allocate ( Atm%gridstruct% dyc_64(isd_2d:ied_2d  ,jsd_2d:jed_2d+1) )
     allocate ( Atm%gridstruct%rdyc(isd_2d:ied_2d  ,jsd_2d:jed_2d+1) )
-    
+
     allocate ( Atm%gridstruct% dxa(isd_2d:ied_2d  ,jsd_2d:jed_2d  ) )
     allocate ( Atm%gridstruct% dxa_64(isd_2d:ied_2d  ,jsd_2d:jed_2d  ) )
     allocate ( Atm%gridstruct%rdxa(isd_2d:ied_2d  ,jsd_2d:jed_2d  ) )
     allocate ( Atm%gridstruct% dya(isd_2d:ied_2d  ,jsd_2d:jed_2d  ) )
     allocate ( Atm%gridstruct% dya_64(isd_2d:ied_2d  ,jsd_2d:jed_2d  ) )
     allocate ( Atm%gridstruct%rdya(isd_2d:ied_2d  ,jsd_2d:jed_2d  ) )
-    
+
     allocate ( Atm%gridstruct%grid (isd_2d:ied_2d+1,jsd_2d:jed_2d+1,1:ndims_2d) )
     allocate ( Atm%gridstruct%grid_64 (isd_2d:ied_2d+1,jsd_2d:jed_2d+1,1:ndims_2d) )
     allocate ( Atm%gridstruct%agrid(isd_2d:ied_2d  ,jsd_2d:jed_2d  ,1:ndims_2d) )
@@ -1614,7 +1617,7 @@ contains
     allocate ( Atm%gridstruct%rsina(is_2d:ie_2d+1,js_2d:je_2d+1) )      ! Why is the size different?
     allocate ( Atm%gridstruct% cosa(isd_2d:ied_2d+1,jsd_2d:jed_2d+1) )   ! COS(angle of intersection)
     allocate ( Atm%gridstruct% cosa_64(isd_2d:ied_2d+1,jsd_2d:jed_2d+1) )   ! COS(angle of intersection)
-    
+
     allocate ( Atm%gridstruct%  e1(3,isd_2d:ied_2d+1,jsd_2d:jed_2d+1) )
     allocate ( Atm%gridstruct%  e2(3,isd_2d:ied_2d+1,jsd_2d:jed_2d+1) )
 
@@ -1774,7 +1777,7 @@ contains
 
     Atm%allocated = .true.
     if (dummy) Atm%dummy = .true.
-    
+
   end subroutine allocate_fv_atmos_type
 
 !>@brief The subroutine 'deallocate_fv_atmos_type' deallocates the fv_atmos_type.
@@ -1824,30 +1827,30 @@ contains
 
     deallocate ( Atm%gridstruct% area )   ! Cell Centered
     deallocate ( Atm%gridstruct%rarea )   ! Cell Centered
-    
+
     deallocate ( Atm%gridstruct% area_c )  ! Cell Corners
     deallocate ( Atm%gridstruct%rarea_c )  ! Cell Corners
-    
+
     deallocate ( Atm%gridstruct% dx )
     deallocate ( Atm%gridstruct%rdx )
     deallocate ( Atm%gridstruct% dy )
     deallocate ( Atm%gridstruct%rdy )
-    
+
     deallocate ( Atm%gridstruct% dxc )
     deallocate ( Atm%gridstruct%rdxc )
     deallocate ( Atm%gridstruct% dyc )
     deallocate ( Atm%gridstruct%rdyc )
-    
+
     deallocate ( Atm%gridstruct% dxa )
     deallocate ( Atm%gridstruct%rdxa )
     deallocate ( Atm%gridstruct% dya )
     deallocate ( Atm%gridstruct%rdya )
-    
+
     deallocate ( Atm%gridstruct%grid  )
     deallocate ( Atm%gridstruct%agrid )
     deallocate ( Atm%gridstruct%sina )   ! SIN(angle of intersection)
     deallocate ( Atm%gridstruct%cosa )   ! COS(angle of intersection)
-    
+
     deallocate ( Atm%gridstruct%  e1 )
     deallocate ( Atm%gridstruct%  e2 )
 
@@ -1987,7 +1990,7 @@ contains
     if (Atm%flagstruct%grid_type < 4) then
        if(allocated(Atm%grid_global)) deallocate(Atm%grid_global)
     end if
-    
+
     Atm%allocated = .false.
 
   end subroutine deallocate_fv_atmos_type
