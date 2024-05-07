@@ -729,8 +729,10 @@ module fv_control_mod
       read (input_nml_file,test_case_nml,iostat=ios)
       ierr = check_nml_error(ios,'test_case_nml')
 
-   ! Reset input_file_nml to default behavior
-      call read_input_nml
+   ! Reset input_file_nml to default behavior if necessary
+      if (n > 1) then
+        call read_input_nml
+      endif
 #else
       if (size(Atm) == 1) then
          f_unit = open_namelist_file()
@@ -750,7 +752,7 @@ module fv_control_mod
       read (f_unit,test_case_nml,iostat=ios)
       ierr = check_nml_error(ios,'test_case_nml')
       call close_file(f_unit)
-#endif         
+#endif
       write(unit, nml=fv_core_nml)
       write(unit, nml=test_case_nml)
 
