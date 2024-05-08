@@ -87,6 +87,9 @@ ecbuild_info("Building FV dynamics dual hydrostatic/non-hydrostatic")
 ecbuild_info("This sets MOIST_CAPPA and USE_COND preprocessor variables")
 target_compile_definitions (${this} PRIVATE MOIST_CAPPA USE_COND)
 
+ecbuild_info("This sets the INTERNAL_FILE_NML preprocessor variable")
+target_compile_definitions (${this} PRIVATE INTERNAL_FILE_NML)
+
 esma_add_subdirectories(
   model/mapz-driver
   model/tp-core-driver)

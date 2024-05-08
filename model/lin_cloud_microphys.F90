@@ -36,7 +36,7 @@
 
 module gfdl_lin_cloud_microphys_mod
     
-      use mpp_mod, only: mpp_pe, mpp_root_pe
+      use mpp_mod, only: mpp_pe, mpp_root_pe, input_nml_file
     ! use mpp_mod, only: stdlog, mpp_pe, mpp_root_pe, mpp_clock_id, &
     ! mpp_clock_begin, mpp_clock_end, clock_routine, &
     ! input_nml_file
