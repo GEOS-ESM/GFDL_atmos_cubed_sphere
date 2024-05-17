@@ -51,7 +51,7 @@ module fv_diagnostics_mod
 !   </tr>
 !   <tr>
 !     <td>fms_io_mod</td>
-!     <td>set_domain, nullify_domain, write_version_number</td>
+!     <td>set_domain, nullify_domain</td>
 !   </tr>
 !   <tr>
 !     <td>fv_arrays_mod</td>
@@ -119,7 +119,7 @@ module fv_diagnostics_mod
  use constants_mod,      only: grav, rdgas, rvgas, pi=>pi_8, radius, kappa, WTMAIR, WTMCO2, &
                                omega, hlv, cp_air, cp_vapor
  use fms_mod,            only: write_version_number
- use fms_io_mod,         only: set_domain, nullify_domain, write_version_number
+ use fms_io_mod,         only: set_domain, nullify_domain
  use time_manager_mod,   only: time_type, get_date, get_time
  use mpp_domains_mod,    only: domain2d, mpp_update_domains, DGRID_NE
  use diag_manager_mod,   only: diag_axis_init, register_diag_field, &
