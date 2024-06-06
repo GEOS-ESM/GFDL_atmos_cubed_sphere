@@ -776,14 +776,10 @@ contains
 #endif
 
 ! Accumulate the total Mass flux and Courant numbers for export
-         ! mfx = mfx + mfxL
-         ! mfy = mfy + mfyL
-         !  cx =  cx +  cxL
-         !  cy =  cy +  cyL
-         mfx = mfxL
-         mfy = mfyL
-          cx =  cxL
-          cy =  cyL
+         mfx = mfx + mfxL
+         mfy = mfy + mfyL
+          cx =  cx +  cxL
+          cy =  cy +  cyL
 
          if( last_step )  then
             if( .not. hydrostatic ) then
