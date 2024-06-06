@@ -1,4 +1,3 @@
-#define ACC_PREFIX !$acc
 !***********************************************************************
 !*                   GNU Lesser General Public License                 
 !*
@@ -26,26 +25,6 @@
 !! The nonhydrostatic components are handled by 'nh_core.F90'.
 
 module dyn_core_mod
-
-#ifdef SERIALIZE
-USE m_serialize, ONLY: &
-  fs_read_field, &
-  fs_create_savepoint, &
-  fs_write_field, &
-  fs_add_savepoint_metainfo, &
-  fs_disable_serialization
-USE utils_ppser, ONLY:  &
-  ppser_get_mode, &
-  ppser_savepoint, &
-  ppser_serializer, &
-  ppser_serializer_ref, &
-  ppser_intlength, &
-  ppser_reallength, &
-  ppser_realtype, &
-  ppser_zrperturb, &
-  ppser_get_mode
-#endif
-
 
 ! <table>
 ! <tr>
@@ -123,11 +102,9 @@ USE utils_ppser, ONLY:  &
 !     <td>copy_corners</td>
 !   </tr>
 ! </table>
-#ifdef SERIALIZE
-USE utils_ppser_kbuff, ONLY: finalize_kbuff
-use mpi
-USE m_serialize, ONLY: fs_is_serialization_on
-#endif
+  !$ser verbatim USE utils_ppser_kbuff, ONLY: finalize_kbuff
+  !$ser verbatim use mpi
+  !$ser verbatim USE m_serialize, ONLY: fs_is_serialization_on
   use constants_mod,      only: rdgas, radius, cp_air, pi
   use mpp_mod,            only: mpp_pe 
   use mpp_domains_mod,    only: CGRID_NE, DGRID_NE, AGRID, mpp_get_boundary, mpp_update_domains,  &
@@ -157,9 +134,7 @@ USE m_serialize, ONLY: fs_is_serialization_on
 #ifdef SW_DYNAMICS
   use test_cases_mod,      only: test_case, case9_forcing1, case9_forcing2
 #endif
-#ifdef SERIALIZE
-use k_checkpoint, only: set_k
-#endif
+  !$ser verbatim use k_checkpoint, only: set_k
 
 implicit none
 private
@@ -297,14 +272,12 @@ contains
 
     integer :: is,  ie,  js,  je
     integer :: isd, ied, jsd, jed
-#ifdef SERIALIZE
-integer :: mpi_rank,ier, nz
-logical :: ser_on, boolean_false, boolean_true
-boolean_false = .false.
-boolean_true = .true.
-call mpi_comm_rank(MPI_COMM_WORLD, mpi_rank,ier)
-ser_on=fs_is_serialization_on()
-#endif
+    !$ser verbatim integer :: mpi_rank,ier, nz
+    !$ser verbatim logical :: ser_on, boolean_false, boolean_true
+    !$ser verbatim boolean_false = .false.
+    !$ser verbatim boolean_true = .true.
+    !$ser verbatim call mpi_comm_rank(MPI_COMM_WORLD, mpi_rank,ier)
+    !$ser verbatim ser_on=fs_is_serialization_on()
 
       is  = bd%is
       ie  = bd%ie
@@ -356,48 +329,28 @@ ser_on=fs_is_serialization_on()
            allocate(    gz(isd:ied, jsd:jed ,npz+1) )
              call init_ijk_mem(isd,ied, jsd,jed, npz+1, gz, huge_r)
            allocate(   pkc(isd:ied, jsd:jed ,npz+1) )
-#ifdef SERIALIZE
-call init_ijk_mem(isd,ied, jsd,jed, npz+1, pkc, 0.)
-#endif
+!$ser verbatim call init_ijk_mem(isd,ied, jsd,jed, npz+1, pkc, 0.)
            allocate(   ptc(isd:ied, jsd:jed ,npz ) )
-#ifdef SERIALIZE
-call init_ijk_mem(isd,ied, jsd,jed, npz, ptc, 0.)
-#endif
+!$ser verbatim call init_ijk_mem(isd,ied, jsd,jed, npz, ptc, 0.)
            allocate( crx(is :ie+1, jsd:jed,  npz) )
-#ifdef SERIALIZE
-call init_ijk_mem(is,ie+1, jsd,jed, npz, crx, 0.)
-#endif
+!$ser verbatim call init_ijk_mem(is,ie+1, jsd,jed, npz, crx, 0.)
            allocate( xfx(is :ie+1, jsd:jed,  npz) )
-#ifdef SERIALIZE
-call init_ijk_mem(is,ie+1, jsd,jed, npz, xfx, 0.)
-#endif
+!$ser verbatim call init_ijk_mem(is,ie+1, jsd,jed, npz, xfx, 0.)
            allocate( cry(isd:ied,  js :je+1, npz) )
-#ifdef SERIALIZE
-call init_ijk_mem(isd,ied, js,je+1, npz, cry, 0.)
-#endif
+!$ser verbatim call init_ijk_mem(isd,ied, js,je+1, npz, cry, 0.)
            allocate( yfx(isd:ied,  js :je+1, npz) )
-#ifdef SERIALIZE
-call init_ijk_mem(isd,ied, js,je+1, npz, yfx, 0.)
-#endif
+!$ser verbatim call init_ijk_mem(isd,ied, js,je+1, npz, yfx, 0.)
            allocate( divgd(isd:ied+1,jsd:jed+1,npz) )
-#ifdef SERIALIZE
-call init_ijk_mem(isd,ied+1, jsd,jed+1, npz, divgd, 0.)
-#endif
+!$ser verbatim call init_ijk_mem(isd,ied+1, jsd,jed+1, npz, divgd, 0.)
            allocate( delpc(isd:ied, jsd:jed  ,npz  ) )
 !                    call init_ijk_mem(isd,ied, jsd,jed, npz, delpc, 0.)
-#ifdef SERIALIZE
-call init_ijk_mem(isd,ied, jsd,jed, npz, delpc, 0.)
-#endif
+!$ser verbatim call init_ijk_mem(isd,ied, jsd,jed, npz, delpc, 0.)
            allocate( ut(isd:ied, jsd:jed, npz) )
 !                    call init_ijk_mem(isd,ied, jsd,jed, npz, ut, 0.)
-#ifdef SERIALIZE
-call init_ijk_mem(isd,ied, jsd,jed, npz, ut, 0.)
-#endif
+!$ser verbatim call init_ijk_mem(isd,ied, jsd,jed, npz, ut, 0.)
            allocate( vt(isd:ied, jsd:jed, npz) )
 !                    call init_ijk_mem(isd,ied, jsd,jed, npz, vt, 0.)
-#ifdef SERIALIZE
-call init_ijk_mem(isd,ied, jsd,jed, npz, vt, 0.)
-#endif
+!$ser verbatim call init_ijk_mem(isd,ied, jsd,jed, npz, vt, 0.)
 
           if ( .not. hydrostatic ) then
                allocate( zh(isd:ied, jsd:jed, npz+1) )
@@ -455,12 +408,9 @@ call init_ijk_mem(isd,ied, jsd,jed, npz, vt, 0.)
 !-----------------------------------------------------
   do it=1,n_split
 !-----------------------------------------------------
-#ifdef SERIALIZE
-if (it > 1) then
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #412
-call fs_disable_serialization()
-endif
-#endif
+     !$ser verbatim if (it > 1) then
+     !$ser off
+     !$ser verbatim endif
 #ifdef ROT3
      call start_group_halo_update(i_pack(8), u, v, domain, gridtype=DGRID_NE)
 #endif
@@ -568,71 +518,13 @@ endif
                                                      call timing_off('COMM_TOTAL')
 
                                                      call timing_on('c_sw')
-#ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #521
-call fs_create_savepoint('C_SW-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #522
-SELECT CASE ( ppser_get_mode() )
-  CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'delpcd', delpc)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'delpd', delp)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'ptcd', ptc)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'ptd', pt)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'ud', u)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'vd', v)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'wd', w)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'ucd', uc)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'vcd', vc)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'uad', ua)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'vad', va)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'omgad', omga)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'utd', ut)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'vtd', vt)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'divgdd', divgd)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'dt2', dt2)
-  CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delpcd', delpc)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delpd', delp)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptcd', ptc)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptd', pt)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ud', u)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vd', v)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'wd', w)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ucd', uc)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vcd', vc)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'uad', ua)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vad', va)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'omgad', omga)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'utd', ut)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vtd', vt)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'divgdd', divgd)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dt2', dt2)
-  CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delpcd', delpc, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delpd', delp, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptcd', ptc, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptd', pt, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ud', u, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vd', v, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'wd', w, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ucd', uc, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vcd', vc, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'uad', ua, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vad', va, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'omgad', omga, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'utd', ut, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vtd', vt, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'divgdd', divgd, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dt2', dt2, ppser_zrperturb)
-END SELECT
-#endif
+     !$ser savepoint C_SW-In
+     !$ser data delpcd=delpc delpd=delp ptcd=ptc ptd=pt ud=u vd=v wd=w ucd=uc vcd=vc uad=ua vad=va omgad=omga utd=ut vtd=vt divgdd=divgd dt2=dt2
 !$OMP parallel do default(none) shared(npz,isd,jsd,delpc,delp,ptc,pt,u,v,w,uc,vc,ua,va, &
 !$OMP                                  omga,ut,vt,divgd,flagstruct,dt2,hydrostatic,bd,  &
 !$OMP                                  gridstruct)
       do k=1,npz
-#ifdef SERIALIZE
-call set_k(k)
-#endif
+         !$ser verbatim call set_k(k)
          call c_sw(delpc(isd,jsd,k), delp(isd,jsd,k),  ptc(isd,jsd,k),    &
                       pt(isd,jsd,k),    u(isd,jsd,k),    v(isd,jsd,k),    &
                        w(isd:,jsd:,k),   uc(isd,jsd,k),   vc(isd,jsd,k),    &
@@ -641,62 +533,9 @@ call set_k(k)
                       flagstruct%nord,   dt2,  hydrostatic,  .true., bd,  &
                       gridstruct, flagstruct)
       enddo
-#ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #536
-call fs_create_savepoint('C_SW-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #537
-SELECT CASE ( ppser_get_mode() )
-  CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'delpcd', delpc)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'delpd', delp)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'ptcd', ptc)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'ptd', pt)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'ud', u)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'vd', v)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'wd', w)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'ucd', uc)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'vcd', vc)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'uad', ua)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'vad', va)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'omgad', omga)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'utd', ut)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'vtd', vt)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'divgdd', divgd)
-  CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delpcd', delpc)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delpd', delp)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptcd', ptc)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptd', pt)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ud', u)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vd', v)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'wd', w)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ucd', uc)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vcd', vc)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'uad', ua)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vad', va)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'omgad', omga)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'utd', ut)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vtd', vt)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'divgdd', divgd)
-  CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delpcd', delpc, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delpd', delp, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptcd', ptc, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptd', pt, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ud', u, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vd', v, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'wd', w, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ucd', uc, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vcd', vc, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'uad', ua, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vad', va, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'omgad', omga, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'utd', ut, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vtd', vt, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'divgdd', divgd, ppser_zrperturb)
-END SELECT
-call finalize_kbuff()
-#endif
+      !$ser savepoint C_SW-Out
+      !$ser data delpcd=delpc delpd=delp ptcd=ptc ptd=pt ud=u vd=v wd=w ucd=uc vcd=vc uad=ua vad=va omgad=omga utd=ut vtd=vt divgdd=divgd
+      !$ser verbatim call finalize_kbuff()
                                                      call timing_off('c_sw')
       if ( flagstruct%nord > 0 ) then
                                                    call timing_on('COMM_TOTAL')
@@ -1644,11 +1483,7 @@ end subroutine adv_pe
 subroutine p_grad_c(dt2, npz, delpc, pkc, gz, uc, vc, bd, rdxc, rdyc, hydrostatic)
 
 integer, intent(in):: npz
-#ifdef SERIALIZE
-real:: dt2
-#else
 real,    intent(in):: dt2
-#endif
 type(fv_grid_bounds_type), intent(IN) :: bd
 real, intent(in), dimension(bd%isd:, bd%jsd: ,:  ):: delpc
 !> pkc is pe**cappa     if hydrostatic
@@ -2719,4 +2554,3 @@ do 1000 j=jfirst,jlast
 
 
 end module dyn_core_mod
-
