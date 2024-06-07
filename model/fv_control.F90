@@ -120,8 +120,7 @@ module fv_control_mod
                                   check_nml_error, close_file, file_exist
    use mpp_mod,             only: FATAL, mpp_error, mpp_pe, stdlog, &
                                   mpp_npes, mpp_get_current_pelist, &
-                                  input_nml_file, get_unit, WARNING, &
-                                  read_ascii_file, INPUT_STR_LENGTH
+                                  input_nml_file, get_unit, WARNING
    use mpp_domains_mod,     only: mpp_get_data_domain, mpp_get_compute_domain
    use tracer_manager_mod,  only: tm_get_number_tracers => get_number_tracers, &
                                   tm_get_tracer_index   => get_tracer_index,   &
