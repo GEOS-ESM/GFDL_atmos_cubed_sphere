@@ -684,6 +684,8 @@ contains
                neststruct%q_BC(iq), bctype=neststruct%nestbctype )
             end do
       endif
+    !$ser savepoint D_SW-In
+    !$ser data delpcd=vt delpd=delp ptcd=ptc ptd=pt ud=u vd=v wd=w ucd=uc vcd=vc uad=ua vad=va divgdd=divgd mfxd=mfx mfyd=mfy cxd=cx cyd=cy crxd=crx cryd=cry xfxd=xfx yfxd=yfx q_cond=q_con zhd=zh heat_sourced=heat_source diss_estd=diss_est zvir=zvir nq=nq dt=dt nord_v=nord_v damp_vt=damp_vt
 
                                                      call timing_on('d_sw')
 !$OMP parallel do default(none) shared(npz,flagstruct,nord_v,pfull,damp_vt,hydrostatic,last_step, &
@@ -694,6 +696,7 @@ contains
 !$OMP                          private(nord_k, nord_w, nord_t, damp_w, damp_t, d2_divg, kfac, &
 !$OMP                          d_con_k,kgb, hord_m, hord_v, hord_t, hord_p, wk, heat_s,diss_e, z_rat)
     do k=1,npz
+      !$ser verbatim call set_k(k)
        hord_m = flagstruct%hord_mt
        hord_t = flagstruct%hord_tm
        hord_v = flagstruct%hord_vt
@@ -817,6 +820,9 @@ contains
             enddo
        endif
     enddo           ! end openMP k-loop
+    !$ser savepoint D_SW-Out
+    !$ser data delpcd=vt delpd=delp ptcd=ptc ptd=pt ud=u vd=v wd=w ucd=uc vcd=vc uad=ua vad=va divgdd=divgd mfxd=mfx mfyd=mfy cxd=cx cyd=cy crxd=crx cryd=cry xfxd=xfx yfxd=yfx q_cond=q_con heat_sourced=heat_source diss_estd=diss_est nord_vd=nord_v damp_vtd=damp_vt
+    !$ser verbatim call finalize_kbuff()
     if ( (.not. hydrostatic) .and.  flagstruct%fv_debug ) &
     call prt_mxm('W_dsw ', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
 
@@ -824,6 +830,8 @@ contains
 
     if( flagstruct%fill_dp ) call mix_dp(hydrostatic, w, delp, pt, npz, ak, bk, .false., flagstruct%fv_debug, bd)
 
+    !$ser savepoint HaloUpdate-In
+    !$ser data complete=boolean_true array=pt rank=mpi_rank 
                                                              call timing_on('COMM_TOTAL')
     call start_group_halo_update(i_pack(1), delp, domain, complete=.false.)
     call start_group_halo_update(i_pack(1), pt,   domain, complete=.true.)
@@ -861,6 +869,9 @@ contains
 #endif
                                        call timing_off('COMM_TOTAL')
 
+    !$ser savepoint HaloUpdate-Out
+    !$ser data array=pt
+
      !Want to move this block into the hydro/nonhydro branch above and merge the two if structures
      if (gridstruct%nested) then
        call nested_grid_BC_apply_intT(delp, &
@@ -883,16 +894,23 @@ contains
                    gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd)
      else
 #ifndef SW_DYNAMICS
+
+    !$ser savepoint UpdateDzD-In
+    !$ser data ndif=nord_v damp_vtd=damp_vt dp0=dp_ref zs=zs zh=zh crx=crx cry=cry xfx=xfx yfx=yfx delz=delz wsd=ws dt=dt
                                             call timing_on('UPDATE_DZ')
         call update_dz_d(nord_v, damp_vt, flagstruct%hord_tm, is, ie, js, je, npz, ng, npx, npy, gridstruct%area,  &
                          gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, flagstruct%dz_min, gridstruct, bd, flagstruct%lim_fac)
                                             call timing_off('UPDATE_DZ')
+    !$ser savepoint UpdateDzD-Out
+    !$ser data ndif=nord_v damp_vtd=damp_vt zh=zh crx=crx cry=cry xfx=xfx yfx=yfx delz=delz wsd=ws
 
         if (idiag%id_ws>0 .and. last_step) then
             used=send_data(idiag%id_ws, ws, fv_time)
         endif
 
                                                          call timing_on('Riem_Solver')
+        !$ser savepoint Riem_Solver3-In
+        !$ser data dt=dt akap=akap cappa=cappa cp=cp ptop=ptop zs=zs q_con=q_con w=w delz=delz pt=pt delp=delp zh=zh pe=pe ppe=pkc pk3=pk3 pk=pk peln=peln wsd=ws last_call=remap_step 
         call Riem_Solver3(flagstruct%m_split, dt,  is,  ie,   js,   je, npz, ng,     &
                          isd, ied, jsd, jed, &
                          akap, cappa, cp,  ptop, zs, q_con, w, delz, pt, delp, zh,   &
@@ -900,9 +918,13 @@ contains
                          flagstruct%scale_z, flagstruct%p_fac, flagstruct%a_imp, &
                          flagstruct%use_logp, remap_step, beta<-0.1)
                                                          call timing_off('Riem_Solver')
+    !$ser savepoint Riem_Solver3-Out
+    !$ser data w=w delz=delz zh=zh pe=pe ppe=pkc pk3=pk3 pk=pk peln=peln wsd=ws
         if ( flagstruct%fv_debug ) &
         call prt_mxm('W_riem', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
 
+        !$ser savepoint HaloUpdate-2-In
+        !$ser data complete=boolean_true array2=zh rank=mpi_rank         
                                        call timing_on('COMM_TOTAL')
         if ( gridstruct%square_domain ) then
           call start_group_halo_update(i_pack(4), zh ,  domain)
@@ -913,13 +935,23 @@ contains
         endif
                                        call timing_off('COMM_TOTAL')
 
+        !$ser verbatim if ( remap_step ) then
+        !$ser savepoint PE_Halo-In
+        !$ser data ptop=ptop pe=pe delp=delp remap_step=remap_step                                       
         if ( remap_step )  &
         call pe_halo(is, ie, js, je, isd, ied, jsd, jed, npz, ptop, pe, delp)
+        !$ser savepoint PE_Halo-Out
+        !$ser data pe=pe
+        !$ser verbatim endif
 
         if ( flagstruct%use_logp ) then
              call pln_halo(is, ie, js, je, isd, ied, jsd, jed, npz, ptop, pk3, delp)
         else
+            !$ser savepoint PK3_Halo-In
+            !$ser data akap=akap pk3=pk3 delp=delp ptop=ptop
              call pk3_halo(is, ie, js, je, isd, ied, jsd, jed, npz, ptop, akap, pk3, delp)
+            !$ser savepoint PK3_Halo-Out
+            !$ser data pk3=pk3
         endif
 
         if (gridstruct%nested) then
@@ -940,6 +972,10 @@ contains
         endif
         call timing_on('COMM_TOTAL')
         call complete_group_halo_update(i_pack(4), domain)
+
+        !$ser savepoint HaloUpdate-2-Out
+        !$ser data array2=zh
+
         call timing_off('COMM_TOTAL')
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,gz,zh,grav)
         do k=1,npz+1
@@ -988,7 +1024,11 @@ contains
        elseif ( beta < -0.1 ) then
          call one_grad_p(u, v, pkc, gz, divg2, delp, dt, ng, gridstruct, bd, npx, npy, npz, ptop, hydrostatic, flagstruct%a2b_ord, flagstruct%d_ext)
        else
-          call nh_p_grad(u, v, pkc, gz, delp, pk3, dt, ng, gridstruct, bd, npx, npy, npz, flagstruct%use_logp)
+         !$ser savepoint NH_P_Grad-In
+         !$ser data u=u v=v pp=pkc gz=gz pk3=pk3 delp=delp dt=dt ptop=ptop akap=akap
+         call nh_p_grad(u, v, pkc, gz, delp, pk3, dt, ng, gridstruct, bd, npx, npy, npz, flagstruct%use_logp)
+         !$ser savepoint NH_P_Grad-Out
+         !$ser data  u=u v=v pp=pkc gz=gz pk3=pk3 delp=delp
        endif
 #ifdef ROT3
        if ( flagstruct%do_f3d ) then
