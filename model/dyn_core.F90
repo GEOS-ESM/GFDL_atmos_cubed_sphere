@@ -29,11 +29,11 @@ module dyn_core_mod
 
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
-  fs_read_field, &
-  fs_create_savepoint, &
-  fs_write_field, &
   fs_add_savepoint_metainfo, &
-  fs_disable_serialization
+  fs_create_savepoint, &
+  fs_disable_serialization, &
+  fs_write_field, &
+  fs_read_field
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
   ppser_savepoint, &
@@ -197,8 +197,16 @@ contains
     integer, intent(IN) :: ng, nq, sphum
     integer, intent(IN) :: k_split, n_split
     real   , intent(IN) :: bdt
+#ifdef SERIALIZE
+    real    :: zvir, cp, akap, grav
+#else
     real   , intent(IN) :: zvir, cp, akap, grav
+#endif
+#ifdef SERIALIZE
+    real    :: ptop
+#else
     real   , intent(IN) :: ptop
+#endif
     logical, intent(IN) :: hydrostatic
     logical, intent(IN) :: init_step, end_step
     real, intent(in) :: pfull(npz)
@@ -746,17 +754,132 @@ call finalize_kbuff()
            enddo
         endif
                                             call timing_on('UPDATE_DZ_C')
+#ifdef SERIALIZE
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #588
+call fs_create_savepoint('UpdateDzC-In', ppser_savepoint)
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #589
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dp0', dp_ref)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'utc', ut)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'vtc', vt)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'gz', gz)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'zs', zs)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ws', ws3)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dt2', dt2)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dp0', dp_ref)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'utc', ut)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vtc', vt)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz', gz)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'zs', zs)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ws', ws3)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dt2', dt2)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dp0', dp_ref, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'utc', ut, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'vtc', vt, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz', gz, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'zs', zs, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ws', ws3, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dt2', dt2, ppser_zrperturb)
+END SELECT
+#endif
          call update_dz_c(is, ie, js, je, npz, ng, dt2, flagstruct%dz_min, dp_ref, zs, gridstruct%area, ut, vt, gz, ws3, &
              npx, npy, gridstruct%sw_corner, gridstruct%se_corner, &
              gridstruct%ne_corner, gridstruct%nw_corner, bd, gridstruct%grid_type)
+#ifdef SERIALIZE
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #593
+call fs_create_savepoint('UpdateDzC-Out', ppser_savepoint)
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #594
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ws', ws3)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'gz', gz)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ws', ws3)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz', gz)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ws', ws3, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz', gz, ppser_zrperturb)
+END SELECT
+#endif
                                             call timing_off('UPDATE_DZ_C')
 
                                                call timing_on('Riem_Solver')
+#ifdef SERIALIZE
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #598
+call fs_create_savepoint('Riem_Solver_C-In', ppser_savepoint)
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #599
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ms', ms)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dt2', dt2)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'akap', akap)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cappa', cappa)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cp', cp)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ptop', ptop)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'hs', phis)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'w3', omga)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ptc', ptc)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'q_con', q_con)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'delpc', delpc)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'gz', gz)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'pef', pkc)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ws', ws3)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ms', ms)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dt2', dt2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'akap', akap)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cappa', cappa)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cp', cp)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptop', ptop)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'hs', phis)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'w3', omga)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptc', ptc)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'q_con', q_con)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delpc', delpc)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz', gz)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pef', pkc)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ws', ws3)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ms', ms, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dt2', dt2, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'akap', akap, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cappa', cappa, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cp', cp, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptop', ptop, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'hs', phis, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'w3', omga, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptc', ptc, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'q_con', q_con, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delpc', delpc, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz', gz, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pef', pkc, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ws', ws3, ppser_zrperturb)
+END SELECT
+#endif
            call Riem_Solver_C( ms, dt2,   is,  ie,   js,   je,   npz,   ng,   &
                                akap, cappa,  cp,  ptop, phis, omga, ptc,  &
                                q_con,  delpc, gz,  pkc, ws3, flagstruct%p_fac, &
                                 flagstruct%a_imp, flagstruct%scale_z )
                                                call timing_off('Riem_Solver')
+#ifdef SERIALIZE
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #605
+call fs_create_savepoint('Riem_Solver_C-Out', ppser_savepoint)
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #606
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'gz', gz)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'pef', pkc)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz', gz)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pef', pkc)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz', gz, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pef', pkc, ppser_zrperturb)
+END SELECT
+#endif
 
            if (gridstruct%nested) then
                  call nested_grid_BC_apply_intT(delz, &
@@ -786,6 +909,28 @@ call finalize_kbuff()
       call p_grad_c(dt2, npz, delpc, pkc, gz, uc, vc, bd, gridstruct%rdxc, gridstruct%rdyc, hydrostatic)
 
                                                                    call timing_on('COMM_TOTAL')
+#ifdef SERIALIZE
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #636
+call fs_create_savepoint('HaloVectorUpdate-In', ppser_savepoint)
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #637
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'complete', boolean_true)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'array_u', uc)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'array_v', vc)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'rank', mpi_rank)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'complete', boolean_true)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'array_u', uc)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'array_v', vc)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'rank', mpi_rank)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'complete', boolean_true, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'array_u', uc, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'array_v', vc, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'rank', mpi_rank, ppser_zrperturb)
+END SELECT
+#endif
       call start_group_halo_update(i_pack(9), uc, vc, domain, gridtype=CGRID_NE)
                                                      call timing_off('COMM_TOTAL')
 #ifdef SW_DYNAMICS
@@ -799,6 +944,22 @@ call finalize_kbuff()
     if (flagstruct%inline_q .and. nq>0) call complete_group_halo_update(i_pack(10), domain)
     if (flagstruct%nord > 0) call complete_group_halo_update(i_pack(3), domain)
                              call complete_group_halo_update(i_pack(9), domain)
+#ifdef SERIALIZE
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #651
+call fs_create_savepoint('HaloVectorUpdate-Out', ppser_savepoint)
+! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #652
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'array_u', uc)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'array_v', vc)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'array_u', uc)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'array_v', vc)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'array_u', uc, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'array_v', vc, ppser_zrperturb)
+END SELECT
+#endif
 
                                                                    call timing_off('COMM_TOTAL')
       if (gridstruct%nested) then
@@ -1403,7 +1564,11 @@ end subroutine dyn_core
 
 subroutine pk3_halo(is, ie, js, je, isd, ied, jsd, jed, npz, ptop, akap, pk3, delp)
 integer, intent(in):: is, ie, js, je, isd, ied, jsd, jed, npz
+#ifdef SERIALIZE
+real:: ptop, akap
+#else
 real, intent(in):: ptop, akap
+#endif
 real, intent(in   ), dimension(isd:ied,jsd:jed,npz):: delp
 real, intent(inout), dimension(isd:ied,jsd:jed,npz+1):: pk3
 ! Local:
@@ -1457,7 +1622,11 @@ end subroutine pk3_halo
 
 subroutine pln_halo(is, ie, js, je, isd, ied, jsd, jed, npz, ptop, pk3, delp)
 integer, intent(in):: is, ie, js, je, isd, ied, jsd, jed, npz
+#ifdef SERIALIZE
+real:: ptop
+#else
 real, intent(in):: ptop
+#endif
 real, intent(in   ), dimension(isd:ied,jsd:jed,npz):: delp
 real, intent(inout), dimension(isd:ied,jsd:jed,npz+1):: pk3
 ! Local:
@@ -1506,7 +1675,11 @@ end subroutine pln_halo
 
 subroutine pe_halo(is, ie, js, je, isd, ied, jsd, jed, npz, ptop, pe, delp)
 integer, intent(in):: is, ie, js, je, isd, ied, jsd, jed, npz
+#ifdef SERIALIZE
+real:: ptop
+#else
 real, intent(in):: ptop
+#endif
 real, intent(in   ), dimension(isd:ied,jsd:jed,npz):: delp
 real, intent(inout), dimension(is-1:ie+1,npz+1,js-1:je+1):: pe
 ! Local:
@@ -1923,7 +2096,11 @@ subroutine one_grad_p(u, v, pk, gz, divg2, delp, dt, ng, gridstruct, bd, npx, np
    ptop, hydrostatic, a2b_ord, d_ext)  
 
 integer, intent(IN) :: ng, npx, npy, npz, a2b_ord
+#ifdef SERIALIZE
+real :: dt, ptop, d_ext
+#else
 real,    intent(IN) :: dt, ptop, d_ext
+#endif
 logical, intent(in) :: hydrostatic
 type(fv_grid_bounds_type), intent(IN) :: bd
 real,    intent(in) :: divg2(bd%is:bd%ie+1,bd%js:bd%je+1)
@@ -2058,7 +2235,11 @@ end subroutine one_grad_p
 subroutine grad1_p_update(divg2, u, v, pk, gz, dt, ng, gridstruct, bd, npx, npy, npz, ptop, beta, a2b_ord)
 
 integer, intent(in) :: ng, npx, npy, npz, a2b_ord
+#ifdef SERIALIZE
+real :: dt, ptop, beta
+#else
 real,    intent(in) :: dt, ptop, beta
+#endif
 type(fv_grid_bounds_type), intent(IN) :: bd
 real, intent(in):: divg2(bd%is:bd%ie+1,bd%js:bd%je+1)
 real, intent(inout) ::    pk(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz+1)
@@ -2231,7 +2412,11 @@ do 1000 j=jfirst,jlast
  subroutine geopk(ptop, pe, peln, delp, pk, gz, hs, pt, q_con, pkz, km, akap, CG, nested, computehalo, npx, npy, a2b_ord, bd)
 
    integer, intent(IN) :: km, npx, npy, a2b_ord
+#ifdef SERIALIZE
+   real    :: akap, ptop
+#else
    real   , intent(IN) :: akap, ptop
+#endif
    type(fv_grid_bounds_type), intent(IN) :: bd
    real   , intent(IN) :: hs(bd%isd:bd%ied,bd%jsd:bd%jed)
    real, intent(IN), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,km):: pt, delp
@@ -2604,7 +2789,11 @@ do 1000 j=jfirst,jlast
 ! Simple "inline" version of the Rayleigh friction
     real, intent(in):: dt
     real, intent(in):: tau              !< time scale (days)
+#ifdef SERIALIZE
+    real:: ptop, rf_cutoff
+#else
     real, intent(in):: ptop, rf_cutoff
+#endif
     real, intent(in),  dimension(npz):: pfull
     integer, intent(in):: npx, npy, npz, ks
     logical, intent(in):: hydrostatic
