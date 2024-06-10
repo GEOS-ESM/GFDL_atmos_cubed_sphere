@@ -27,7 +27,7 @@ if (FV_PRECISION STREQUAL R4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
   set(FMS fms_r8)
 elseif (FV_PRECISION STREQUAL R8)
-   set(FMS fms_r8)
+  set(FMS fms_r8)
 endif ()
 
 ecbuild_add_executable(

@@ -36,7 +36,7 @@
 
 module gfdl_lin_cloud_microphys_mod
 
-      use mpp_mod, only: mpp_pe, mpp_root_pe
+      use mpp_mod, only: mpp_pe, mpp_root_pe, input_nml_file
     ! use mpp_mod, only: stdlog, mpp_pe, mpp_root_pe, mpp_clock_id, &
     ! mpp_clock_begin, mpp_clock_end, clock_routine, &
     ! input_nml_file
@@ -74,9 +74,9 @@ module gfdl_lin_cloud_microphys_mod
     real, parameter :: hlv = 2.5e6 !< gfs: latent heat of evaporation
     real, parameter :: hlf = 3.3358e5 !< gfs: latent heat of fusion
     real, parameter :: pi = 3.1415926535897931 !< gfs: ratio of circle circumference to diameter
-    
+
     ! real, parameter :: rdgas = 287.04 ! gfdl: gas constant for dry air
-    
+
     ! real, parameter :: cp_air = rdgas * 7. / 2. ! 1004.675, heat capacity of dry air at constant pressure
     real, parameter :: cp_vap = 4.0 * rvgas !< 1846.0, heat capacity of water vapore at constnat pressure
     ! real, parameter :: cv_air = 717.56 ! satoh value
@@ -126,7 +126,7 @@ module gfdl_lin_cloud_microphys_mod
 
     real, parameter :: sfcrho = 1.2 !< surface air density
     real, parameter :: rhor = 1.e3 !< density of rain water, lin83
-    
+
     real :: cracs, csacr, cgacr, cgacs, csacw, craci, csaci, cgacw, cgaci, cracw !< constants for accretions
     real :: acco (3, 4) !< constants for accretions
     real :: cssub (5), cgsub (5), crevp (5), cgfr (2), csmlt (5), cgmlt (5)
@@ -233,7 +233,7 @@ module gfdl_lin_cloud_microphys_mod
     real :: ccn_l = 270. !< ccn over land (cm^ - 3)
 
     real :: rthresh = 10.0e-6 !< critical cloud drop radius (micro m)
-    
+
     ! -----------------------------------------------------------------------
     ! wrf / wsm6 scheme: qi_gen = 4.92e-11 * (1.e3 * exp (0.1 * tmp)) ** 1.33
     ! optimized: qi_gen = 4.92e-11 * exp (1.33 * log (1.e3 * exp (0.1 * tmp)))
@@ -241,7 +241,7 @@ module gfdl_lin_cloud_microphys_mod
     ! the following value is constructed such that qc_crt = 0 at zero c and @ - 10c matches
     ! wrf / wsm6 ice initiation scheme; qi_crt = qi_gen * min (qi_lim, 0.1 * tmp) / den
     ! -----------------------------------------------------------------------
-    
+
     real :: sat_adj0 = 0.90 !< adjustment factor (0: no, 1: full) during fast_sat_adj
 
     real :: qc_crt = 5.0e-8 !< mini condensate mixing ratio to allow partial cloudiness
@@ -250,7 +250,7 @@ module gfdl_lin_cloud_microphys_mod
 
     real :: ql_mlt = 2.0e-3 !< max value of cloud water allowed from melted cloud ice
     real :: qs_mlt = 1.0e-6 !< max cloud water due to snow melt
-    
+
     real :: ql_gen = 1.0e-3 !< max cloud water generation during remapping step if fast_sat_adj = .t.
 ! GFDL    real :: qi_gen = 1.82e-6 !< max cloud ice generation during remapping step
     real :: qi_gen = 9.82679e-5 !< max cloud ice generation at -40 C
@@ -293,7 +293,7 @@ module gfdl_lin_cloud_microphys_mod
     real :: vr_fac = 1. !< if const_vr: 4.
 
     ! upper bounds of fall speed (with variable speed option)
-    
+
     real :: vi_max = 1.0 !< max fall speed for ice
     real :: vs_max = 2.0 !< max fall speed for snow
     real :: vg_max = 12. !< max fall speed for graupel
@@ -648,12 +648,12 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
 
     real, intent (in), dimension (is:) :: area1, land
     real, intent (in), dimension (is:) :: cnv_fraction
-   
+
     real, intent (in) :: anv_icefall, lsc_icefall
 
     real, intent (in), dimension (is:, js:, ks:) :: uin, vin, delp, pt, dz
     real, intent (in), dimension (is:, js:, ks:) :: qv, ql, qr, qg, qa, qn
-    
+
     real, intent (inout), dimension (is:, js:, ks:) :: qi, qs
     real, intent (inout), dimension (is:, js:, ks:) :: u_dt, v_dt, w, pt_dt, qa_dt
     real, intent (inout), dimension (is:, js:, ks:) :: qv_dt, ql_dt, qr_dt, qi_dt, qs_dt, qg_dt
@@ -666,7 +666,7 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
     real, intent (out), dimension (is:, js:, ks:) :: vt_r, vt_s, vt_g, vt_i, qn2
 
     real, intent (out), dimension (is:, js:, ks:) :: m2_rain, m2_sol
-    
+
     real, dimension (ktop:kbot) :: qvz, qlz, qrz, qiz, qsz, qgz, qaz
     real, dimension (ktop:kbot) :: vtiz, vtsz, vtgz, vtrz
     real, dimension (ktop:kbot) :: dp0, dp1, dz0, dz1
@@ -698,11 +698,11 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
             qiz (k) = qi (i, j, k)
             qsz (k) = qs (i, j, k)
         enddo
-        
+
         ! -----------------------------------------------------------------------
         ! this is to prevent excessive build - up of cloud ice from external sources
         ! -----------------------------------------------------------------------
-        
+
         if (de_ice) then
             do k = ktop, kbot
                 qio = qiz (k) - dt_in * qi_dt (i, j, k) ! original qi before phys
@@ -718,18 +718,18 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
                 endif
             enddo
         endif
-        
+
         do k = ktop, kbot
 
             t0 (k) = pt (i, j, k)
             tz (k) = t0 (k)
             dp1 (k) = delp (i, j, k)
             dp0 (k) = dp1 (k) ! moist air mass * grav
-            
+
             ! -----------------------------------------------------------------------
             ! convert moist mixing ratios to dry mixing ratios
             ! -----------------------------------------------------------------------
-            
+
             qvz (k) = qv (i, j, k)
             qlz (k) = ql (i, j, k)
             qrz (k) = qr (i, j, k)
@@ -746,7 +746,7 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
             qiz (k) = qiz (k) * omq
             qsz (k) = qsz (k) * omq
             qgz (k) = qgz (k) * omq
-            
+
             qa0 (k) = qa (i, j, k)
             qaz (k) = qa (i, j, k)
             dz0 (k) = dz (i, j, k)
@@ -787,9 +787,9 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
         ! calculate cloud condensation nuclei (ccn)
         ! the following is based on klein eq. 15
         ! -----------------------------------------------------------------------
-        
+
         cpaut = c_paut * 0.104 * grav / 1.717e-5
-      
+
         if (prog_ccn) then
             do k = ktop, kbot
                 ! convert # / cc to # / m^3
@@ -817,21 +817,21 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
         ! total water subgrid deviation in horizontal direction
         ! default area dependent form: use dx ~ 100 km as the base
         ! -----------------------------------------------------------------------
-        
+
         s_leng = sqrt (sqrt (area1 (i) / 1.e10))
         t_land = dw_land * s_leng
         t_ocean = dw_ocean * s_leng
         h_var = t_land * land (i) + t_ocean * (1. - land (i))
         h_var = min (0.30, max (0.01, h_var))
         ! if (id_var > 0) w_var (i, j) = h_var
-        
+
         ! -----------------------------------------------------------------------
         ! relative humidity increment
         ! -----------------------------------------------------------------------
-        
+
         rh_adj = 1. - h_var - rh_inc
         rh_rain = max (0.35, rh_adj - rh_inr) ! rh_inr = 0.25
-        
+
         ! -----------------------------------------------------------------------
         ! fix all negative water species
         ! -----------------------------------------------------------------------
@@ -868,19 +868,19 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
             ! -----------------------------------------------------------------------
             ! time - split warm rain processes: 1st pass
             ! -----------------------------------------------------------------------
-            
+
             call warm_rain (dt_rain, ktop, kbot, dp1, dz1, tz, qvz, qlz, qrz, qiz, qsz, &
                 qgz, qaz, den, denfac, ccn, c_praut, rh_rain, vtrz, r1, evap1, subl1, m1_rain, w1, h_var)
 
             rain (i) = rain (i) + r1
- 
+
             do k = ktop, kbot
                 revap (i,j,k) = revap (i,j,k) + evap1(k)
                 isubl (i,j,k) = isubl (i,j,k) + subl1(k)
                 m2_rain (i, j, k) = m2_rain (i, j, k) + m1_rain (k)
                 m1 (k) = m1 (k) + m1_rain (k)
             enddo
-            
+
             ! -----------------------------------------------------------------------
             ! sedimentation of cloud ice, snow, and graupel
             ! -----------------------------------------------------------------------
@@ -907,7 +907,7 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
             ! -----------------------------------------------------------------------
             ! time - split warm rain processes: 2nd pass
             ! -----------------------------------------------------------------------
-            
+
             call warm_rain (dt_rain, ktop, kbot, dp1, dz1, tz, qvz, qlz, qrz, qiz, qsz, &
                 qgz, qaz, den, denfac, ccn, c_praut, rh_rain, vtrz, r1, evap1, subl1, m1_rain, w1, h_var)
 
@@ -974,7 +974,7 @@ subroutine mpdrv (hydrostatic, uin, vin, w, delp, pt, qv, ql, qr, qi, qs,     &
         ! -----------------------------------------------------------------------
         ! update cloud fraction tendency
         ! -----------------------------------------------------------------------
-        
+
         do k = ktop, kbot
              qa_dt (i, j, k) =  rdt * (qaz (k) - qa0 (k))
         enddo
@@ -1132,7 +1132,7 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, qa, &
     m1_rain (:) = 0.
 
     call check_column (ktop, kbot, qr, no_fall)
-   
+
     if (no_fall) then
         vtr (:) = vf_min
         r1 = 0.
@@ -1141,7 +1141,7 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, qa, &
         ! -----------------------------------------------------------------------
         ! fall speed of rain
         ! -----------------------------------------------------------------------
-        
+
         if (const_vr) then
             vtr (:) = vr_fac ! ifs_2016: 4.0
         else
@@ -1180,7 +1180,7 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, qa, &
         ! -----------------------------------------------------------------------
         ! mass flux induced by falling rain
         ! -----------------------------------------------------------------------
-        
+
         if (use_ppm) then
             zt (ktop) = ze (ktop)
             do k = ktop + 1, kbot
@@ -1222,21 +1222,21 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, qa, &
         call revap_racc (ktop, kbot, dt5, tz, qv, ql, qr, qi, qs, qg, revap, isubl, den, denfac, rh_rain, h_var)
         evap1 = evap1 + revap
         subl1 = subl1 + isubl
-        
+
     endif
-    
+
     ! -----------------------------------------------------------------------
     ! auto - conversion
     ! assuming linear subgrid vertical distribution of cloud water
     ! following lin et al. 1994, mwr
     ! -----------------------------------------------------------------------
-    
+
     if (irain_f /= 0) then
-        
+
         ! -----------------------------------------------------------------------
         ! no subgrid varaibility
         ! -----------------------------------------------------------------------
-        
+
         do k = ktop, kbot
             qc0 = fac_rc * ccn (k)
             if (tz (k) > t_wfr) then
@@ -1257,9 +1257,9 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, qa, &
                 endif
             endif
         enddo
-        
+
     else
-        
+
         ! -----------------------------------------------------------------------
         ! with subgrid variability
         ! -----------------------------------------------------------------------
@@ -1268,9 +1268,9 @@ subroutine warm_rain (dt, ktop, kbot, dp, dz, tz, qv, ql, qr, qi, qs, qg, qa, &
        qadum = max(qa,qrmin)
        ql = ql/qadum
        qi = qi/qadum
-        
+
         call linear_prof (kbot - ktop + 1, ql (ktop), dl (ktop), z_slope_liq, h_var)
-        
+
         do k = ktop, kbot
             qc0 = fac_rc * ccn (k)
             if (tz (k) > t_wfr + dt_fr) then
@@ -1322,7 +1322,7 @@ subroutine revap_racc (ktop, kbot, dt, tz, qv, ql, qr, qi, qs, qg, revap, isubl,
 
     real, intent (in) :: dt ! time step (s)
     real, intent (in) :: rh_rain, h_var
-    
+
     real, intent (in), dimension (ktop:kbot) :: den, denfac
 
     real, intent (inout), dimension (ktop:kbot) :: tz, qv, qr, ql, qi, qs, qg
@@ -1333,18 +1333,18 @@ subroutine revap_racc (ktop, kbot, dt, tz, qv, ql, qr, qi, qs, qg, revap, isubl,
 
     real :: dqv, qsat, dqsdt, evap, t2, qden, q_plus, q_minus, sink
     real :: qpz, dq, dqh, tin
-    real :: fac_revp 
+    real :: fac_revp
     integer :: k
 
     fac_revp = 1. - exp (- dt / tau_revp)
- 
+
     revap(:) = 0.
     isubl(:) = 0.
 
     do k = ktop, kbot
-        
+
         if (tz (k) > t_wfr .and. qr (k) > qrmin) then
-            
+
             ! -----------------------------------------------------------------------
             ! define heat capacity and latent heat coefficient
             ! -----------------------------------------------------------------------
@@ -1405,7 +1405,7 @@ subroutine revap_racc (ktop, kbot, dt, tz, qv, ql, qr, qi, qs, qg, revap, isubl,
             ! -----------------------------------------------------------------------
             ! accretion: pracc
             ! -----------------------------------------------------------------------
-            
+
             ! if (qr (k) > qrmin .and. ql (k) > 1.e-7 .and. qsat < q_plus) then
             if (qr (k) > qrmin .and. ql (k) > 1.e-6 .and. qsat < q_minus) then
                 sink = dt * denfac (k) * cracw * exp (0.95 * log (qr (k) * den (k)))
@@ -1490,18 +1490,18 @@ end subroutine linear_prof
 
 subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
         den, denfac, vts, vtg, vtr, qak, evapc, rh_adj, rh_rain, dts, h_var)
-    
+
     implicit none
 
     integer, intent (in) :: ktop, kbot
 
     real, intent (in), dimension (ktop:kbot) :: p1, dp1, den, denfac, vts, vtg, vtr
-    
+
     real, intent (inout), dimension (ktop:kbot) :: tzk, qvk, qlk, qrk, qik, qsk, qgk, qak
     real, intent(inout), dimension(ktop:kbot) :: evapc
 
     real, intent (in) :: rh_adj, rh_rain, dts, h_var
-    
+
     real, dimension (ktop:kbot) :: lcpk, icpk, tcpk, di, lhl, lhi
     real, dimension (ktop:kbot) :: cvm, q_liq, q_sol
 
@@ -1515,11 +1515,11 @@ subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
     real :: dtmp, qc, q_plus, q_minus
 
     integer :: k, it
-    
+
     dt5 = 0.5 * dts
-    
+
     rdts = 1. / dts
-   
+
     evapc(:) = 0.0
 
     ! -----------------------------------------------------------------------
@@ -1529,10 +1529,10 @@ subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
     fac_i2s = 1. - exp (- dts / tau_i2s)
     fac_g2v = 1. - exp (- dts / tau_g2v)
     fac_v2g = 1. - exp (- dts / tau_v2g)
-    
+
     fac_imlt = 1. - exp (- dt5 / tau_imlt)
     fac_frz  = 1. - exp (- dt5 / tau_frz)
-    
+
     ! -----------------------------------------------------------------------
     ! define heat capacity and latend heat coefficient
     ! -----------------------------------------------------------------------
@@ -1580,7 +1580,7 @@ subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
         if (tzk (k) <= tice) then
 
             newqi = new_ice_condensate(tzk (k), qlk (k), qik (k))
- 
+
             ! -----------------------------------------------------------------------
             ! pihom: homogeneous freezing of cloud water into cloud ice
             ! this is the 1st occurance of liquid water freezing in the split mp process
@@ -1590,7 +1590,7 @@ subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
             sink = max(0.0,min (newqi, fac_frz * dtmp / icpk (k)))
     ! WRF   qi_crt = 4.92e-11 * exp (1.33 * log (1.e3 * exp (0.15 * dtmp)))
     ! GFDL !qi_crt = qi_gen * min (qi_lim, 0.1 * dtmp) / den (k)
-! GEOS ! WMP impose CALIPSO ice polynomial from 0 C to -40 C on qi0_crt  
+! GEOS ! WMP impose CALIPSO ice polynomial from 0 C to -40 C on qi0_crt
             qi_crt = calipso_ice_polynomial(tzk(k)) * qi_gen / den (k)
             tmp = min (sink, dim (qi_crt, qik (k)))
             qlk (k) = qlk (k) - sink
@@ -1600,13 +1600,13 @@ subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
             q_sol (k) = q_sol (k) + sink
             cvm (k) = c_air + qvk (k) * c_vap + q_liq (k) * c_liq + q_sol (k) * c_ice
             tzk (k) = tzk (k) + sink * lhi (k) / cvm (k)
-            
+
         endif
 
     enddo
 
     enddo
-  
+
     ! -----------------------------------------------------------------------
     ! vertical subgrid variability
     ! -----------------------------------------------------------------------
@@ -1781,8 +1781,8 @@ subroutine icloud (ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
                 ! similar to lfo 1983: eq. 21 solved implicitly
                 ! threshold from wsm6 scheme, hong et al 2004, eq (13) : qi0_crt ~0.8e-4
                 ! -----------------------------------------------------------------------
-               
-! GEOS ! WMP impose CALIPSO ice polynomial from 0 C to -40 C on qi0_crt  
+
+! GEOS ! WMP impose CALIPSO ice polynomial from 0 C to -40 C on qi0_crt
                 qim = calipso_ice_polynomial(tz) * qi0_crt / den (k)
         ! WMP Use h_var to add some resolution dependence on critical qi
         ! WMP   qim = (h_var**3) * qi0_crt / den (k)
@@ -1987,7 +1987,7 @@ end subroutine icloud
 
 subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
     ql, qr, qi, qs, qg, qa, evapc, h_var, rh_rain)
-    
+
     implicit none
 
     integer, intent (in) :: ktop, kbot
@@ -1997,7 +1997,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
     real, intent (in) :: dts, rh_adj, h_var, rh_rain
 
     real, intent (inout), dimension (ktop:kbot) :: tz, qv, ql, qr, qi, qs, qg, qa
-    real, intent (inout), dimension(ktop:kbot) :: evapc    
+    real, intent (inout), dimension(ktop:kbot) :: evapc
 
     real, dimension (ktop:kbot) :: lcpk, icpk, tcpk, tcp3, lhl, lhi
     real, dimension (ktop:kbot) :: cvm, q_liq, q_sol, q_cond
@@ -2017,9 +2017,9 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
     real :: evap, sink, tc, pisub, q_adj, dtmp
     real :: pssub, pgsub, tsq, qden, fac_g2v, fac_v2g
     real :: newqi, fac_frz
- 
+
     integer :: k
-    
+
     if (fast_sat_adj) then
         dt_evap = 0.5 * dts
         dt_pisub = 0.5 * dts
@@ -2027,19 +2027,19 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         dt_evap = dts
         dt_pisub = dts
     endif
-    
+
     ! -----------------------------------------------------------------------
     ! define conversion scalar / factor
     ! -----------------------------------------------------------------------
-    
+
     fac_v2l = 1. - exp (- dt_evap / tau_v2l)
     fac_l2v = 1. - exp (- dt_evap / tau_l2v)
-   
+
     fac_i2v = 1. - exp (- dt_evap / tau_i2v)
- 
+
     fac_g2v = 1. - exp (- dts / tau_g2v)
     fac_v2g = 1. - exp (- dts / tau_v2g)
-  
+
     fac_frz = 1. - exp (- dts / tau_frz)
 
     ! -----------------------------------------------------------------------
@@ -2059,7 +2059,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
     enddo
 
     do k = ktop, kbot
-        
+
       if (p1 (k) < p_min) cycle
 
         ! -----------------------------------------------------------------------
@@ -2087,7 +2087,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         icpk (k) = lhi (k) / cvm (k)
         tcpk (k) = lcpk (k) + icpk (k)
         tcp3 (k) = lcpk (k) + icpk (k) * min (1., dim (tice, tz (k)) / (tice - t_wfr))
-        
+
         ! -----------------------------------------------------------------------
         ! instant evaporation / sublimation of all clouds if rh < rh_adj -- > cloud free
         ! -----------------------------------------------------------------------
@@ -2105,11 +2105,11 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
                 cycle ! cloud free
             endif
         endif
-        
+
         ! -----------------------------------------------------------------------
         ! cloud water < -- > vapor adjustment:
         ! -----------------------------------------------------------------------
-        if (do_evap) then 
+        if (do_evap) then
           qsw = wqs2 (tz (k), den (k), dwsdt)
           dq0 = qsw - qv (k)
           if (dq0 > 0.) then
@@ -2118,7 +2118,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
           else
             evap = 0.0
           endif
-          qa(k) = max(0.,min(1.,qa(k) * max(qi(k) + ql(k)-evap,0.0) / max(qi(k)+ql(k),qrmin)))     ! new total condensate / old condensate 
+          qa(k) = max(0.,min(1.,qa(k) * max(qi(k) + ql(k)-evap,0.0) / max(qi(k)+ql(k),qrmin)))     ! new total condensate / old condensate
           qv (k) = qv (k) + evap
           ql (k) = ql (k) - evap
           q_liq (k) = q_liq (k) - evap
@@ -2159,7 +2159,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! -----------------------------------------------------------------------
         ! bigg mechanism
         ! -----------------------------------------------------------------------
-        
+
         tc = tice - tz (k)
         if ( (do_bigg) .and. (ql (k) > qrmin .and. tc > 0.) ) then
             newqi = new_ice_condensate(tz (k), ql (k), qi (k))
@@ -2172,7 +2172,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
             cvm (k) = c_air + qv (k) * c_vap + q_liq (k) * c_liq + q_sol (k) * c_ice
             tz (k) = tz (k) + sink * lhi (k) / cvm (k)
         endif ! significant ql existed
-       
+
         ! -----------------------------------------------------------------------
         ! update capacity heat and latend heat coefficient
         ! -----------------------------------------------------------------------
@@ -2203,14 +2203,14 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
                  tmp = tice - tz (k)
        ! WRF    qi_crt = 4.92e-11 * exp (1.33 * log (1.e3 * exp (0.15 * tmp)))
        ! GFDL   qi_crt = qi_gen * min (qi_lim, 0.1 * tmp) / den (k)
-! GEOS ! WMP impose CALIPSO ice polynomial from 0 C to -40 C on qi0_crt  
+! GEOS ! WMP impose CALIPSO ice polynomial from 0 C to -40 C on qi0_crt
                 qi_crt = calipso_ice_polynomial(tz(k))  * qi_gen / den (k)
                 sink = min (sink, max (qi_crt - qi (k), pidep), tmp / tcpk (k))
             else ! ice -- > vapor
                 pidep = pidep * min (1., dim (tz (k), t_sub) * 0.2)
                 sink = max (pidep, sink, - qi (k))
             endif
-            qa (k) = max(0.,min(1.,qa(k) * (qi(k)+sink + ql(k)) / max(qi(k)+ql(k),qrmin)))     ! new total condensate / old condensate 
+            qa (k) = max(0.,min(1.,qa(k) * (qi(k)+sink + ql(k)) / max(qi(k)+ql(k),qrmin)))     ! new total condensate / old condensate
             qv (k) = qv (k) - sink
             qi (k) = qi (k) + sink
             q_sol (k) = q_sol (k) + sink
@@ -2232,7 +2232,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! sublimation / deposition of snow
         ! this process happens for all temp rage
         ! -----------------------------------------------------------------------
-        
+
         if (qs (k) > qrmin) then
             qsi = iqs2 (tz (k), den (k), dqsdt)
             qden = qs (k) * den (k)
@@ -2331,9 +2331,9 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         ! -----------------------------------------------------------------------
         ! combine water species
         ! -----------------------------------------------------------------------
-        
+
         if (.not. do_qa) cycle
-        
+
         if (preciprad) then
             q_sol (k) = qi (k) + qs (k) + qg (k)
             q_liq (k) = ql (k) + qr (k)
@@ -2344,7 +2344,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         q_cond (k) = q_liq (k) + q_sol (k)
 
         qpz = qv (k) + q_cond (k) ! qpz is conserved
-        
+
         ! -----------------------------------------------------------------------
         ! use the "liquid - frozen water temperature" (tin) to compute saturated specific humidity
         ! -----------------------------------------------------------------------
@@ -2352,7 +2352,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
         tin = tz (k) - (lcpk (k) * q_cond (k) + icpk (k) * q_sol (k)) ! minimum temperature
         ! tin = tz (k) - ((lv00 + d0_vap * tz (k)) * q_cond (k) + &
         ! (li00 + dc_ice * tz (k)) * q_sol (k)) / (c_air + qpz * c_vap)
-        
+
         ! -----------------------------------------------------------------------
         ! determine saturated specific humidity
         ! -----------------------------------------------------------------------
@@ -2367,7 +2367,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
             ! mixed phase:
             qsi = iqs1 (tin, den (k))
             qsw = wqs1 (tin, den (k))
-! GEOS ! WMP impose CALIPSO ice polynomial from 0 C to -40 C on qi0_crt  
+! GEOS ! WMP impose CALIPSO ice polynomial from 0 C to -40 C on qi0_crt
             rqi = calipso_ice_polynomial(tin)
             qstar = rqi * qsi + (1. - rqi) * qsw
         endif
@@ -2395,7 +2395,7 @@ subroutine subgrid_z_proc (ktop, kbot, p1, den, denfac, dts, rh_adj, tz, qv, &
              else
              ! top-hat
                if(q_plus.le.qstar) then
-                 qa (k) = 0.0  ! no cloud cover 
+                 qa (k) = 0.0  ! no cloud cover
                elseif (qstar < q_plus .and. q_cond (k) > qc_crt) then
                  qa (k) = max(0.0, min(1., (q_plus - qstar) / (dq + dq) )) ! partial cloud cover
                elseif (qstar .le. q_minus) then
@@ -2413,30 +2413,30 @@ end subroutine subgrid_z_proc
 ! =======================================================================
 
 subroutine revap_rac1 (hydrostatic, is, ie, dt, tz, qv, ql, qr, qi, qs, qg, den, hvar)
-    
+
     implicit none
-    
+
     logical, intent (in) :: hydrostatic
-    
+
     integer, intent (in) :: is, ie
-    
+
     real, intent (in) :: dt ! time step (s)
-    
+
     real, intent (in), dimension (is:ie) :: den, hvar, qi, qs, qg
-    
+
     real, intent (inout), dimension (is:ie) :: tz, qv, qr, ql
-    
+
     real, dimension (is:ie) :: lcp2, denfac, q_liq, q_sol, cvm, lhl
-    
+
     real :: dqv, qsat, dqsdt, evap, qden, q_plus, q_minus, sink
     real :: tin, t2, qpz, dq, dqh
-    
+
     integer :: i
-    
+
     ! -----------------------------------------------------------------------
     ! define latend heat coefficient
     ! -----------------------------------------------------------------------
-    
+
     do i = is, ie
         lhl (i) = lv00 + d0_vap * tz (i)
         q_liq (i) = ql (i) + qr (i)
@@ -2445,7 +2445,7 @@ subroutine revap_rac1 (hydrostatic, is, ie, dt, tz, qv, ql, qr, qi, qs, qg, den,
         lcp2 (i) = lhl (i) / cvm (i)
         ! denfac (i) = sqrt (sfcrho / den (i))
     enddo
-    
+
     do i = is, ie
         if (qr (i) > qrmin .and. tz (i) > t_wfr) then
             qpz = qv (i) + ql (i)
@@ -2455,16 +2455,16 @@ subroutine revap_rac1 (hydrostatic, is, ie, dt, tz, qv, ql, qr, qi, qs, qg, den,
             dqv = qsat - qv (i)
             q_minus = qpz - dqh
             q_plus = qpz + dqh
-            
+
             ! -----------------------------------------------------------------------
             ! qsat must be > q_minus to activate evaporation
             ! qsat must be < q_plus to activate accretion
             ! -----------------------------------------------------------------------
-            
+
             ! -----------------------------------------------------------------------
             ! rain evaporation
             ! -----------------------------------------------------------------------
-            
+
             if (dqv > qvmin .and. qsat > q_minus) then
                 if (qsat > q_plus) then
                     dq = qsat - qpz
@@ -2484,11 +2484,11 @@ subroutine revap_rac1 (hydrostatic, is, ie, dt, tz, qv, ql, qr, qi, qs, qg, den,
                 cvm (i) = c_air + qv (i) * c_vap + q_liq (i) * c_liq + q_sol (i) * c_ice
                 tz (i) = tz (i) - evap * lhl (i) / cvm (i)
             endif
-            
+
             ! -----------------------------------------------------------------------
             ! accretion: pracc
             ! -----------------------------------------------------------------------
-            
+
             if (qr (i) > qrmin .and. ql (i) > qrmin .and. qsat < q_plus) then
                 denfac (i) = sqrt (sfcrho / den (i))
                 sink = dt * denfac (i) * cracw * exp (0.95 * log (qr (i) * den (i)))
@@ -2498,7 +2498,7 @@ subroutine revap_rac1 (hydrostatic, is, ie, dt, tz, qv, ql, qr, qi, qs, qg, den,
             endif
         endif
     enddo
-    
+
 end subroutine revap_rac1
 
 ! =======================================================================
@@ -2522,7 +2522,7 @@ subroutine terminal_fall (dtm, ktop, kbot, tz, qv, ql, qr, qg, qs, qi, dz, dp, &
     real, intent (out) :: r1, g1, s1, i1
 
     real, dimension (ktop:kbot + 1) :: ze, zt
-    
+
     real :: qsat, dqsdt, dt5, evap, dtime
     real :: factor, frac
     real :: tmp, precip, tc, sink
@@ -2536,10 +2536,10 @@ subroutine terminal_fall (dtm, ktop, kbot, tz, qv, ql, qr, qg, qs, qi, dz, dp, &
     integer :: k, k0, m
 
     logical :: no_fall
-    
+
     dt5 = 0.5 * dtm
     fac_imlt = 1. - exp (- dt5 / tau_imlt)
-    
+
     ! -----------------------------------------------------------------------
     ! define heat capacity and latend heat coefficient
     ! -----------------------------------------------------------------------
@@ -2592,7 +2592,7 @@ subroutine terminal_fall (dtm, ktop, kbot, tz, qv, ql, qr, qg, qs, qi, dz, dp, &
     ! -----------------------------------------------------------------------
 
     if (dtm < 60.) k0 = kbot
-    
+
     ! sjl, turn off melting of falling cloud ice, snow and graupel
     k0 = kbot
     ! sjl, turn off melting of falling cloud ice, snow and graupel
@@ -3308,7 +3308,7 @@ subroutine fall_speed (ktop, kbot, pl, cnv_fraction, anv_icefall, lsc_icefall, &
                 IWC    = qi (k) * den (k) * 1.e3 ! Units are g/m3
                 viLSC   = lsc_icefall*10.0**(log10(IWC) * (tc (k) * (aaL * tc (k) + bbL) + ccL) + ddL * tc (k) + eeL)
                ! -----------------------------------------------------------------------
-               ! With 'convective' Mishra et al (2014, JGR) 'Parameterization of ice fall speeds in 
+               ! With 'convective' Mishra et al (2014, JGR) 'Parameterization of ice fall speeds in
                !                               midlatitude cirrus: Results from SPartICus'
                ! -----------------------------------------------------------------------
                 IWC    = IWC * 1.e3 ! Units are mg/m3
@@ -3407,15 +3407,15 @@ subroutine setupm
     real, parameter :: acc (3) = (/ 5.0, 2.0, 0.5 /)
 
     real den_rc
-    
+
     integer :: i, k
 
     pie = 4. * atan (1.0)
 
     ! s. klein's formular (eq 16) from am2
-    
+
     fac_rc = (4. / 3.) * pie * rhor * rthresh ** 3
-    
+
     if (prog_ccn) then
         ! if (root_proc) write (*, *) 'prog_ccn option is .t.'
     else
@@ -3424,7 +3424,7 @@ subroutine setupm
         den_rc = fac_rc * ccn_l * 1.e6
         ! if (root_proc) write (*, *) 'mp: for ccn_l = ', ccn_l, 'ql_rc = ', den_rc
     endif
-    
+
     vdifu = 2.11e-5
     tcond = 2.36e-2
 
@@ -3542,7 +3542,7 @@ subroutine gfdl_cloud_microphys_init ()
     ! logical :: flag
     ! real :: tmp, q1, q2
 
-    call fms_init()     
+    call fms_init()
 
     ! root_proc = (mpp_pe () .eq.mpp_root_pe ())
 
@@ -4457,7 +4457,7 @@ subroutine qs_table (n)
         tem = 233.16 + delt * real (i - 1)
       ! wice = 0.05 * (table_ice - tem)
       ! wh2o = 0.05 * (tem - 253.16)
-! GEOS ! WMP impose CALIPSO ice polynomial from 0 C to -40 C on qi0_crt  
+! GEOS ! WMP impose CALIPSO ice polynomial from 0 C to -40 C on qi0_crt
         wice = calipso_ice_polynomial(tem)
         wh2o = 1.0 - wice
         table (i + 1200) = wice * table (i + 1200) + wh2o * esupc (i)
@@ -4856,10 +4856,10 @@ real function new_liq_condensate(tk, qlk, qik)
 end function new_liq_condensate
 
 real function calipso_ice_polynomial(tk)
-  ! Citation: Hu, Y., S. Rodier, K. Xu, W. Sun, J. Huang, B. Lin, P. Zhai, and D. Josset (2010), 
-  !           Occurrence, liquid water content, and fraction of supercooled water clouds from 
-  !           combined CALIOP/IIR/MODIS measurements, J. Geophys. Res., 115, D00H34, 
-  !           doi:10.1029/2009JD012384. 
+  ! Citation: Hu, Y., S. Rodier, K. Xu, W. Sun, J. Huang, B. Lin, P. Zhai, and D. Josset (2010),
+  !           Occurrence, liquid water content, and fraction of supercooled water clouds from
+  !           combined CALIOP/IIR/MODIS measurements, J. Geophys. Res., 115, D00H34,
+  !           doi:10.1029/2009JD012384.
      real, intent(in) :: tk ! temperature in K
      real :: tc, ptc
 
