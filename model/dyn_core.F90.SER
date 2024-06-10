@@ -1053,10 +1053,15 @@ contains
                                        call timing_off('PG_D')
 
 ! *** Inline Rayleigh friction here?
+   !$ser verbatim if( flagstruct%RF_fast .and. flagstruct%tau > 0. ) then
+   !$ser savepoint Ray_Fast-In
+   !$ser data  dt=dt pfull=pfull u=u v=v w=w ks=ks dp=dp_ref ptop=ptop                              
    if( flagstruct%RF_fast .and. flagstruct%tau > 0. )  &
    call Ray_fast(abs(dt), npx, npy, npz, pfull, flagstruct%tau, u, v, w,  &
                       ks, dp_ref, ptop, hydrostatic, flagstruct%rf_cutoff, bd)
-
+   !$ser savepoint Ray_Fast-Out
+   !$ser data u=u v=v w=w
+   !$ser verbatim endif
 ! *** Inline Beljaars turbulent-orographic-form-drag here
 ! pt is virtual potential temperature
 #ifdef DO_TOFD
@@ -1096,7 +1101,9 @@ contains
                                                      call timing_on('COMM_TOTAL')
     if( it==n_split .and. gridstruct%grid_type<4 .and. .not. gridstruct%nested) then
 ! Prevent accumulation of rounding errors at overlapped domain edges:
-       call mpp_get_boundary(u, v, domain, ebuffery=ebuffer,  &
+       !$ser savepoint MPPBoundaryAdjust-In
+       !$ser data u=u v=v ebuffer=ebuffer nbuffer=nbuffer
+      call mpp_get_boundary(u, v, domain, ebuffery=ebuffer,  &
                              nbufferx=nbuffer, gridtype=DGRID_NE )
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,u,nbuffer,v,ebuffer)
           do k=1,npz
@@ -1107,7 +1114,8 @@ contains
                 v(ie+1,j,k) = ebuffer(j-js+1,k)
              enddo
           enddo
-
+       !$ser savepoint MPPBoundaryAdjust-Out
+       !$ser data u=u v=v ebuffer=ebuffer nbuffer=nbuffer
     endif
 
 #ifndef ROT3
@@ -1200,6 +1208,9 @@ contains
 
 !-----------------------------------------------------
   enddo   ! time split loop
+  !$ser verbatim if (ser_on) then
+  !$ser on
+  !$ser verbatim endif
 !-----------------------------------------------------
     if ( nq > 0 .and. .not. flagstruct%inline_q ) then
        call timing_on('COMM_TOTAL')
@@ -1241,6 +1252,8 @@ contains
           enddo
        enddo
     else
+       !$ser savepoint PressureAdjustedTemperature_NonHydrostatic-In
+       !$ser data cappa=cappa bdt=bdt n_con=n_con delp=delp delz=delz pt=pt cv_air=cv_air heat_source_dyn=heat_source rdg=rdg k1k=k1k pkz=pkz
 !$OMP parallel do default(none) shared(flagstruct,is,ie,js,je,n_con,pkz,cappa,rdg,delp,delz,pt, &
 !$OMP                                  heat_source,k1k,cv_air,bdt) &
 !$OMP                          private(dtmp, delt)
@@ -1261,6 +1274,8 @@ contains
              enddo
           enddo
        enddo
+       !$ser savepoint PressureAdjustedTemperature_NonHydrostatic-Out
+       !$ser data pkz=pkz pt=pt
     endif
 
   endif
@@ -1289,6 +1304,8 @@ contains
 
   endif
   if( allocated(pem) )   deallocate ( pem )
+
+  !$ser verbatim call finalize_kbuff()  
 
 end subroutine dyn_core
 
@@ -1613,6 +1630,7 @@ real du1, dv1, top_value
 integer i,j,k
 integer :: is,  ie,  js,  je
 integer :: isd, ied, jsd, jed
+!$ser verbatim logical :: ser_on
 
       is  = bd%is
       ie  = bd%ie
@@ -1628,7 +1646,12 @@ if ( use_logp ) then
 else
    top_value = ptk
 endif
-
+!$ser verbatim if (fs_is_serialization_on()) then
+!$ser verbatim ser_on = .true.
+!$ser verbatim else
+!$ser verbatim ser_on = .false.
+!$ser verbatim endif
+!$ser off
 !$OMP parallel do default(none) shared(top_value,isd,jsd,npz,pp,gridstruct,npx,npy,is,ie,js,je,ng,pk,gz) &
 !$OMP                          private(wk1)
 do k=1,npz+1
@@ -1689,6 +1712,9 @@ do k=1,npz
    enddo
 
 enddo    ! end k-loop
+!$ser verbatim if (ser_on) then
+!$ser on
+!$ser verbatim endif
 end subroutine nh_p_grad
 
 
@@ -2267,7 +2293,9 @@ do 1000 j=jfirst,jlast
       integer i,j,k, n, nt, ntimes
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
-
+      !$ser verbatim logical ::complete_mpp
+      !$ser verbatim real ::real_cd
+      !$ser verbatim real_cd=real(cd)
       !Local routine pointers
 !     real, pointer, dimension(:,:) :: rarea
 !     real, pointer, dimension(:,:) :: del6_u, del6_v
@@ -2294,10 +2322,17 @@ do 1000 j=jfirst,jlast
       ntimes = min(3, nmax)
 
       call timing_on('COMM_TOTAL')
+      !$ser verbatim complete_mpp=.true.
+      !$ser savepoint MPPUpdateDomains-In
+      !$ser data update_arr=q complete=complete_mpp
       call mpp_update_domains(q, domain, complete=.true.)
+      !$ser savepoint MPPUpdateDomains-Out
+      !$ser data update_arr=q 
       call timing_off('COMM_TOTAL')
 
 
+      !$ser savepoint Del2Cubed-In
+      !$ser data qdel=q nmax=nmax cd=real_cd km=km
       do n=1,ntimes
          nt = ntimes - n
 
@@ -2360,6 +2395,8 @@ do 1000 j=jfirst,jlast
          enddo
       enddo
 
+   !$ser savepoint Del2Cubed-Out
+   !$ser data qdel=q
  end subroutine del2_cubed
 
  subroutine init_ijk_mem(i1, i2, j1, j2, km, array, var)

@@ -29,11 +29,12 @@ module dyn_core_mod
 
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
+  fs_write_field, &
   fs_read_field, &
-  fs_create_savepoint, &
-  fs_disable_serialization, &
   fs_add_savepoint_metainfo, &
-  fs_write_field
+  fs_create_savepoint, &
+  fs_enable_serialization, &
+  fs_disable_serialization
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
   ppser_savepoint, &
@@ -200,7 +201,11 @@ contains
     integer, intent(IN) :: ng, nq, sphum
 #endif
     integer, intent(IN) :: k_split, n_split
+#ifdef SERIALIZE
+    real    :: bdt
+#else
     real   , intent(IN) :: bdt
+#endif
 #ifdef SERIALIZE
     real    :: zvir, cp, akap, grav
 #else
@@ -213,9 +218,17 @@ contains
 #endif
     logical, intent(IN) :: hydrostatic
     logical, intent(IN) :: init_step, end_step
+#ifdef SERIALIZE
+    real :: pfull(npz)
+#else
     real, intent(in) :: pfull(npz)
+#endif
     real, intent(in),     dimension(npz+1) :: ak, bk
+#ifdef SERIALIZE
+    integer :: ks
+#else
     integer, intent(IN) :: ks
+#endif
     type(group_halo_update_type), intent(inout) :: i_pack(*)
     type(fv_grid_bounds_type), intent(IN) :: bd
     real, intent(inout), dimension(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz):: u  !< D grid zonal wind (m/s)
@@ -469,7 +482,7 @@ call init_ijk_mem(isd,ied, jsd,jed, npz, vt, 0.)
 !-----------------------------------------------------
 #ifdef SERIALIZE
 if (it > 1) then
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #412
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #412
 call fs_disable_serialization()
 endif
 #endif
@@ -581,9 +594,9 @@ endif
 
                                                      call timing_on('c_sw')
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #521
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #521
 call fs_create_savepoint('C_SW-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #522
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #522
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'delpcd', delpc)
@@ -654,9 +667,9 @@ call set_k(k)
                       gridstruct, flagstruct)
       enddo
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #536
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #536
 call fs_create_savepoint('C_SW-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #537
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #537
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'delpcd', delpc)
@@ -759,9 +772,9 @@ call finalize_kbuff()
         endif
                                             call timing_on('UPDATE_DZ_C')
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #588
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #588
 call fs_create_savepoint('UpdateDzC-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #589
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #589
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dp0', dp_ref)
@@ -793,9 +806,9 @@ END SELECT
              npx, npy, gridstruct%sw_corner, gridstruct%se_corner, &
              gridstruct%ne_corner, gridstruct%nw_corner, bd, gridstruct%grid_type)
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #593
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #593
 call fs_create_savepoint('UpdateDzC-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #594
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #594
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'ws', ws3)
@@ -812,9 +825,9 @@ END SELECT
 
                                                call timing_on('Riem_Solver')
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #598
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #598
 call fs_create_savepoint('Riem_Solver_C-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #599
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #599
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'ms', ms)
@@ -869,9 +882,9 @@ END SELECT
                                 flagstruct%a_imp, flagstruct%scale_z )
                                                call timing_off('Riem_Solver')
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #605
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #605
 call fs_create_savepoint('Riem_Solver_C-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #606
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #606
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'gz', gz)
@@ -914,9 +927,9 @@ END SELECT
 
                                                                    call timing_on('COMM_TOTAL')
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #636
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #636
 call fs_create_savepoint('HaloVectorUpdate-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #637
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #637
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'complete', boolean_true)
@@ -949,9 +962,9 @@ END SELECT
     if (flagstruct%nord > 0) call complete_group_halo_update(i_pack(3), domain)
                              call complete_group_halo_update(i_pack(9), domain)
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #651
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #651
 call fs_create_savepoint('HaloVectorUpdate-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #652
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #652
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'array_u', uc)
@@ -999,9 +1012,9 @@ END SELECT
             end do
       endif
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #687
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #687
 call fs_create_savepoint('D_SW-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #688
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #688
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'delpcd', vt)
@@ -1232,9 +1245,9 @@ call set_k(k)
        endif
     enddo           ! end openMP k-loop
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #823
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #823
 call fs_create_savepoint('D_SW-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #824
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #824
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'delpcd', vt)
@@ -1325,9 +1338,9 @@ call finalize_kbuff()
     if( flagstruct%fill_dp ) call mix_dp(hydrostatic, w, delp, pt, npz, ak, bk, .false., flagstruct%fv_debug, bd)
 
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #833
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #833
 call fs_create_savepoint('HaloUpdate-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #834
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #834
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'complete', boolean_true)
@@ -1381,9 +1394,9 @@ END SELECT
                                        call timing_off('COMM_TOTAL')
 
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #872
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #872
 call fs_create_savepoint('HaloUpdate-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #873
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #873
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'array', pt)
@@ -1418,9 +1431,9 @@ END SELECT
 #ifndef SW_DYNAMICS
 
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #898
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #898
 call fs_create_savepoint('UpdateDzD-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #899
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #899
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'ndif', nord_v)
@@ -1468,9 +1481,9 @@ END SELECT
                          gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, flagstruct%dz_min, gridstruct, bd, flagstruct%lim_fac)
                                             call timing_off('UPDATE_DZ')
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #904
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #904
 call fs_create_savepoint('UpdateDzD-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #905
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #905
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'ndif', nord_v)
@@ -1511,9 +1524,9 @@ END SELECT
 
                                                          call timing_on('Riem_Solver')
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #912
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #912
 call fs_create_savepoint('Riem_Solver3-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #913
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #913
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dt', dt)
@@ -1585,9 +1598,9 @@ END SELECT
                          flagstruct%use_logp, remap_step, beta<-0.1)
                                                          call timing_off('Riem_Solver')
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #921
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #921
 call fs_create_savepoint('Riem_Solver3-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #922
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #922
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'w', w)
@@ -1625,9 +1638,9 @@ END SELECT
         call prt_mxm('W_riem', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
 
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #926
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #926
 call fs_create_savepoint('HaloUpdate-2-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #927
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #927
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'complete', boolean_true)
@@ -1655,9 +1668,9 @@ END SELECT
 
 #ifdef SERIALIZE
 if ( remap_step ) then
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #939
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #939
 call fs_create_savepoint('PE_Halo-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #940
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #940
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'ptop', ptop)
@@ -1679,9 +1692,9 @@ END SELECT
         if ( remap_step )  &
         call pe_halo(is, ie, js, je, isd, ied, jsd, jed, npz, ptop, pe, delp)
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #943
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #943
 call fs_create_savepoint('PE_Halo-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #944
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #944
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'pe', pe)
@@ -1697,9 +1710,9 @@ endif
              call pln_halo(is, ie, js, je, isd, ied, jsd, jed, npz, ptop, pk3, delp)
         else
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #950
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #950
 call fs_create_savepoint('PK3_Halo-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #951
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #951
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'akap', akap)
@@ -1720,9 +1733,9 @@ END SELECT
 #endif
              call pk3_halo(is, ie, js, je, isd, ied, jsd, jed, npz, ptop, akap, pk3, delp)
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #953
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #953
 call fs_create_savepoint('PK3_Halo-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #954
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #954
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'pk3', pk3)
@@ -1754,9 +1767,9 @@ END SELECT
         call complete_group_halo_update(i_pack(4), domain)
 
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #976
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #976
 call fs_create_savepoint('HaloUpdate-2-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #977
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #977
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'array2', zh)
@@ -1816,9 +1829,9 @@ END SELECT
          call one_grad_p(u, v, pkc, gz, divg2, delp, dt, ng, gridstruct, bd, npx, npy, npz, ptop, hydrostatic, flagstruct%a2b_ord, flagstruct%d_ext)
        else
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1027
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1027
 call fs_create_savepoint('NH_P_Grad-In', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1028
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1028
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'u', u)
@@ -1854,9 +1867,9 @@ END SELECT
 #endif
          call nh_p_grad(u, v, pkc, gz, delp, pk3, dt, ng, gridstruct, bd, npx, npy, npz, flagstruct%use_logp)
 #ifdef SERIALIZE
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1030
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1030
 call fs_create_savepoint('NH_P_Grad-Out', ppser_savepoint)
-! file: /home/fgdeconi/work/git/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1031
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1031
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'u', u)
@@ -1905,10 +1918,64 @@ END SELECT
                                        call timing_off('PG_D')
 
 ! *** Inline Rayleigh friction here?
+#ifdef SERIALIZE
+if( flagstruct%RF_fast .and. flagstruct%tau > 0. ) then
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1057
+call fs_create_savepoint('Ray_Fast-In', ppser_savepoint)
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1058
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dt', dt)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'pfull', pfull)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'u', u)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'v', v)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'w', w)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ks', ks)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dp', dp_ref)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ptop', ptop)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dt', dt)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pfull', pfull)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'w', w)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ks', ks)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dp', dp_ref)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptop', ptop)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dt', dt, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pfull', pfull, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'w', w, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ks', ks, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dp', dp_ref, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ptop', ptop, ppser_zrperturb)
+END SELECT
+#endif
    if( flagstruct%RF_fast .and. flagstruct%tau > 0. )  &
    call Ray_fast(abs(dt), npx, npy, npz, pfull, flagstruct%tau, u, v, w,  &
                       ks, dp_ref, ptop, hydrostatic, flagstruct%rf_cutoff, bd)
-
+#ifdef SERIALIZE
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1062
+call fs_create_savepoint('Ray_Fast-Out', ppser_savepoint)
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1063
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'u', u)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'v', v)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'w', w)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'w', w)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'w', w, ppser_zrperturb)
+END SELECT
+endif
+#endif
 ! *** Inline Beljaars turbulent-orographic-form-drag here
 ! pt is virtual potential temperature
 #ifdef DO_TOFD
@@ -1948,7 +2015,29 @@ END SELECT
                                                      call timing_on('COMM_TOTAL')
     if( it==n_split .and. gridstruct%grid_type<4 .and. .not. gridstruct%nested) then
 ! Prevent accumulation of rounding errors at overlapped domain edges:
-       call mpp_get_boundary(u, v, domain, ebuffery=ebuffer,  &
+#ifdef SERIALIZE
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1104
+call fs_create_savepoint('MPPBoundaryAdjust-In', ppser_savepoint)
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1105
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'u', u)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'v', v)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ebuffer', ebuffer)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'nbuffer', nbuffer)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ebuffer', ebuffer)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nbuffer', nbuffer)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ebuffer', ebuffer, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nbuffer', nbuffer, ppser_zrperturb)
+END SELECT
+#endif
+      call mpp_get_boundary(u, v, domain, ebuffery=ebuffer,  &
                              nbufferx=nbuffer, gridtype=DGRID_NE )
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,u,nbuffer,v,ebuffer)
           do k=1,npz
@@ -1959,7 +2048,28 @@ END SELECT
                 v(ie+1,j,k) = ebuffer(j-js+1,k)
              enddo
           enddo
-
+#ifdef SERIALIZE
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1117
+call fs_create_savepoint('MPPBoundaryAdjust-Out', ppser_savepoint)
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1118
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'u', u)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'v', v)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ebuffer', ebuffer)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'nbuffer', nbuffer)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ebuffer', ebuffer)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nbuffer', nbuffer)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ebuffer', ebuffer, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nbuffer', nbuffer, ppser_zrperturb)
+END SELECT
+#endif
     endif
 
 #ifndef ROT3
@@ -2052,6 +2162,12 @@ END SELECT
 
 !-----------------------------------------------------
   enddo   ! time split loop
+#ifdef SERIALIZE
+if (ser_on) then
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1212
+call fs_enable_serialization()
+endif
+#endif
 !-----------------------------------------------------
     if ( nq > 0 .and. .not. flagstruct%inline_q ) then
        call timing_on('COMM_TOTAL')
@@ -2093,6 +2209,49 @@ END SELECT
           enddo
        enddo
     else
+#ifdef SERIALIZE
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1255
+call fs_create_savepoint('PressureAdjustedTemperature_NonHydrostatic-In', ppser_savepoint)
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1256
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cappa', cappa)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'bdt', bdt)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'n_con', n_con)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'delp', delp)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'delz', delz)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'pt', pt)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cv_air', cv_air)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'heat_source_dyn', heat_source)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'rdg', rdg)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'k1k', k1k)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'pkz', pkz)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cappa', cappa)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'bdt', bdt)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'n_con', n_con)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delp', delp)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delz', delz)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cv_air', cv_air)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'heat_source_dyn', heat_source)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'rdg', rdg)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'k1k', k1k)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pkz', pkz)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cappa', cappa, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'bdt', bdt, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'n_con', n_con, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delp', delp, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delz', delz, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cv_air', cv_air, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'heat_source_dyn', heat_source, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'rdg', rdg, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'k1k', k1k, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pkz', pkz, ppser_zrperturb)
+END SELECT
+#endif
 !$OMP parallel do default(none) shared(flagstruct,is,ie,js,je,n_con,pkz,cappa,rdg,delp,delz,pt, &
 !$OMP                                  heat_source,k1k,cv_air,bdt) &
 !$OMP                          private(dtmp, delt)
@@ -2113,6 +2272,22 @@ END SELECT
              enddo
           enddo
        enddo
+#ifdef SERIALIZE
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1277
+call fs_create_savepoint('PressureAdjustedTemperature_NonHydrostatic-Out', ppser_savepoint)
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1278
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'pkz', pkz)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'pt', pt)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pkz', pkz)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pkz', pkz, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt, ppser_zrperturb)
+END SELECT
+#endif
     endif
 
   endif
@@ -2141,6 +2316,10 @@ END SELECT
 
   endif
   if( allocated(pem) )   deallocate ( pem )
+
+#ifdef SERIALIZE
+call finalize_kbuff()
+#endif
 
 end subroutine dyn_core
 
@@ -2485,6 +2664,9 @@ real du1, dv1, top_value
 integer i,j,k
 integer :: is,  ie,  js,  je
 integer :: isd, ied, jsd, jed
+#ifdef SERIALIZE
+logical :: ser_on
+#endif
 
       is  = bd%is
       ie  = bd%ie
@@ -2500,7 +2682,15 @@ if ( use_logp ) then
 else
    top_value = ptk
 endif
-
+#ifdef SERIALIZE
+if (fs_is_serialization_on()) then
+ser_on = .true.
+else
+ser_on = .false.
+endif
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1654
+call fs_disable_serialization()
+#endif
 !$OMP parallel do default(none) shared(top_value,isd,jsd,npz,pp,gridstruct,npx,npy,is,ie,js,je,ng,pk,gz) &
 !$OMP                          private(wk1)
 do k=1,npz+1
@@ -2561,6 +2751,12 @@ do k=1,npz
    enddo
 
 enddo    ! end k-loop
+#ifdef SERIALIZE
+if (ser_on) then
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #1716
+call fs_enable_serialization()
+endif
+#endif
 end subroutine nh_p_grad
 
 
@@ -2921,7 +3117,11 @@ end subroutine grad1_p_update
 
 
 subroutine mix_dp(hydrostatic, w, delp, pt, km, ak, bk, CG, fv_debug, bd)
+#ifdef SERIALIZE
+integer :: km
+#else
 integer, intent(IN) :: km
+#endif
 real   , intent(IN) :: ak(km+1), bk(km+1)
 type(fv_grid_bounds_type), intent(IN) :: bd
 real, intent(INOUT), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,km):: pt, delp
@@ -3001,7 +3201,11 @@ do 1000 j=jfirst,jlast
 !>@brief The subroutine 'geopk' calculates geopotential and pressure to the kappa.
  subroutine geopk(ptop, pe, peln, delp, pk, gz, hs, pt, q_con, pkz, km, akap, CG, nested, computehalo, npx, npy, a2b_ord, bd)
 
+#ifdef SERIALIZE
+   integer :: km, npx, npy, a2b_ord
+#else
    integer, intent(IN) :: km, npx, npy, a2b_ord
+#endif
 #ifdef SERIALIZE
    real    :: akap, ptop
 #else
@@ -3143,7 +3347,11 @@ do 1000 j=jfirst,jlast
       !---------------------------------------------------------------
       ! This routine is for filtering the omega field for the physics
       !---------------------------------------------------------------
+#ifdef SERIALIZE
+      integer:: npx, npy, km, nmax
+#else
       integer, intent(in):: npx, npy, km, nmax
+#endif
       real(kind=R_GRID),    intent(in):: cd            !< cd = K * da_min;   0 < K < 0.25
       type(fv_grid_bounds_type), intent(IN) :: bd
       real, intent(inout):: q(bd%isd:bd%ied,bd%jsd:bd%jed,km)
@@ -3155,7 +3363,11 @@ do 1000 j=jfirst,jlast
       integer i,j,k, n, nt, ntimes
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
-
+#ifdef SERIALIZE
+logical ::complete_mpp
+real ::real_cd
+real_cd=real(cd)
+#endif
       !Local routine pointers
 !     real, pointer, dimension(:,:) :: rarea
 !     real, pointer, dimension(:,:) :: del6_u, del6_v
@@ -3182,10 +3394,62 @@ do 1000 j=jfirst,jlast
       ntimes = min(3, nmax)
 
       call timing_on('COMM_TOTAL')
+#ifdef SERIALIZE
+complete_mpp=.true.
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #2326
+call fs_create_savepoint('MPPUpdateDomains-In', ppser_savepoint)
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #2327
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'update_arr', q)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'complete', complete_mpp)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'update_arr', q)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'complete', complete_mpp)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'update_arr', q, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'complete', complete_mpp, ppser_zrperturb)
+END SELECT
+#endif
       call mpp_update_domains(q, domain, complete=.true.)
+#ifdef SERIALIZE
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #2329
+call fs_create_savepoint('MPPUpdateDomains-Out', ppser_savepoint)
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #2330
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'update_arr', q)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'update_arr', q)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'update_arr', q, ppser_zrperturb)
+END SELECT
+#endif
       call timing_off('COMM_TOTAL')
 
 
+#ifdef SERIALIZE
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #2334
+call fs_create_savepoint('Del2Cubed-In', ppser_savepoint)
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #2335
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'qdel', q)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'nmax', nmax)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cd', real_cd)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'km', km)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qdel', q)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nmax', nmax)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cd', real_cd)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'km', km)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qdel', q, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nmax', nmax, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cd', real_cd, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'km', km, ppser_zrperturb)
+END SELECT
+#endif
       do n=1,ntimes
          nt = ntimes - n
 
@@ -3248,10 +3512,27 @@ do 1000 j=jfirst,jlast
          enddo
       enddo
 
+#ifdef SERIALIZE
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #2398
+call fs_create_savepoint('Del2Cubed-Out', ppser_savepoint)
+! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/dyn_core.F90.SER lineno: #2399
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'qdel', q)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qdel', q)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qdel', q, ppser_zrperturb)
+END SELECT
+#endif
  end subroutine del2_cubed
 
  subroutine init_ijk_mem(i1, i2, j1, j2, km, array, var)
+#ifdef SERIALIZE
+      integer:: i1, i2, j1, j2, km
+#else
       integer, intent(in):: i1, i2, j1, j2, km
+#endif
       real, intent(inout):: array(i1:i2,j1:j2,km)
       real, intent(in):: var
       integer:: i, j, k
@@ -3388,8 +3669,16 @@ do 1000 j=jfirst,jlast
 #else
     real, intent(in):: ptop, rf_cutoff
 #endif
+#ifdef SERIALIZE
+    real,  dimension(npz):: pfull
+#else
     real, intent(in),  dimension(npz):: pfull
+#endif
+#ifdef SERIALIZE
+    integer:: npx, npy, npz, ks
+#else
     integer, intent(in):: npx, npy, npz, ks
+#endif
     logical, intent(in):: hydrostatic
     type(fv_grid_bounds_type), intent(IN) :: bd
     real, intent(inout):: u(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz) !< D grid zonal wind (m/s)
