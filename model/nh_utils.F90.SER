@@ -1,4 +1,3 @@
-#define ACC_PREFIX !$acc
 !***********************************************************************
 !*                   GNU Lesser General Public License                 
 !*
@@ -26,23 +25,6 @@
 
 module nh_utils_mod
 
-#ifdef SERIALIZE
-USE m_serialize, ONLY: &
-  fs_enable_serialization, &
-  fs_disable_serialization
-USE utils_ppser, ONLY:  &
-  ppser_savepoint, &
-  ppser_serializer, &
-  ppser_serializer_ref, &
-  ppser_intlength, &
-  ppser_reallength, &
-  ppser_realtype, &
-  ppser_zrperturb, &
-  ppser_get_mode
-USE utils_ppser_kbuff
-#endif
-
-
 ! Modules Included:
 ! <table>
 ! <tr>
@@ -68,9 +50,7 @@ USE utils_ppser_kbuff
 !   </tr>
 ! </table>
 
-#ifdef SERIALIZE
-USE m_serialize, ONLY: fs_is_serialization_on
-#endif
+   !$ser verbatim USE m_serialize, ONLY: fs_is_serialization_on
    use constants_mod,     only: rdgas, cp_air, grav
    use tp_core_mod,       only: fv_tp_2d
    use sw_core_mod,       only: fill_4corners, del6_vt_flux
@@ -262,10 +242,8 @@ CONTAINS
 !--------------------------------------------------------------------
   integer  i, j, k, isd, ied, jsd, jed
   logical:: uniform_grid
-#ifdef SERIALIZE
-logical :: ser_on
-ser_on=fs_is_serialization_on()
-#endif
+  !$ser verbatim logical :: ser_on
+  !$ser verbatim ser_on=fs_is_serialization_on()
 
   uniform_grid = .false.
 
@@ -285,10 +263,7 @@ ser_on=fs_is_serialization_on()
                             dp0, uniform_grid, 0)
   enddo
 
-#ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/nh_utils.F90.SER lineno: #266
-call fs_disable_serialization()
-#endif
+!$ser off
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,km,area,xfx_adv,yfx_adv, &
 !$OMP                                  damp,zh,crx_adv,cry_adv,npx,npy,hord,gridstruct,bd,  &
 !$OMP                                  ndif,rarea,lim_fac) &
@@ -336,12 +311,9 @@ call fs_disable_serialization()
 
   enddo
 
-#ifdef SERIALIZE
-if (ser_on) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/nh_utils.F90.SER lineno: #315
-call fs_enable_serialization()
-endif
-#endif
+!$ser verbatim if (ser_on) then
+!$ser on
+!$ser verbatim endif
 !$OMP parallel do default(none) shared(is,ie,js,je,km,ws,zs,zh,rdt,dz_min)
   do j=js, je
      do i=is,ie
@@ -2222,4 +2194,3 @@ endif
 end subroutine nest_halo_nh
 
 end module nh_utils_mod
-
