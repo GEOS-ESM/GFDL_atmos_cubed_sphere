@@ -28,10 +28,10 @@ module sw_core_mod
 
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
-  fs_write_field, &
   fs_create_savepoint, &
-  fs_add_savepoint_metainfo, &
-  fs_read_field
+  fs_write_field, &
+  fs_read_field, &
+  fs_add_savepoint_metainfo
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
   ppser_savepoint, &

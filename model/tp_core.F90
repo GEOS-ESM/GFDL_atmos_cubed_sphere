@@ -26,10 +26,8 @@ module tp_core_mod
 
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
-  fs_add_savepoint_metainfo, &
-  fs_read_field, &
   fs_create_savepoint, &
-  fs_write_field
+  fs_add_savepoint_metainfo
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
   ppser_savepoint, &
@@ -138,11 +136,7 @@ contains
 
    real, intent(in)::  crx(bd%is:bd%ie+1,bd%jsd:bd%jed)  
    real, intent(in)::  xfx(bd%is:bd%ie+1,bd%jsd:bd%jed)  
-#ifdef SERIALIZE
-   real::  cry(bd%isd:bd%ied,bd%js:bd%je+1 )  
-#else
    real, intent(in)::  cry(bd%isd:bd%ied,bd%js:bd%je+1 )  
-#endif
    real, intent(in)::  yfx(bd%isd:bd%ied,bd%js:bd%je+1 )  
    real, intent(in):: ra_x(bd%is:bd%ie,bd%jsd:bd%jed)
    real, intent(in):: ra_y(bd%isd:bd%ied,bd%js:bd%je)
@@ -269,37 +263,14 @@ call get_nz(nz)
       enddo
    enddo
 
-#ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #239
-call fs_create_savepoint('YPPM-2-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #240
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q_2', q_j, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'c', cry, k=k, k_size=nz, mode=ppser_get_mode())
-if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #242
-SELECT CASE ( ppser_get_mode() )
-  CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'jord', ord_ou)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'ifirst', is)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'ilast', ie)
-  CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jord', ord_ou)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ifirst', is)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ilast', ie)
-  CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jord', ord_ou, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ifirst', is, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ilast', ie, ppser_zrperturb)
-END SELECT
-endif
-#endif
+  !$-ser savepoint YPPM-2-In
+  !$-ser data_kbuff k=k k_size=nz q_2=q_j c=cry
+  !$-ser verbatim if (k == nz) then 
+  !$-ser data jord=ord_ou ifirst=is ilast=ie
+  !$-ser verbatim endif
   call yppm(fy, q_j, cry, ord_ou, is,ie,isd,ied, js,je,jsd,jed, npx, npy, gridstruct%dya, gridstruct%nested, gridstruct%grid_type, lim_fac)
-#ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #245
-call fs_create_savepoint('YPPM-2-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #246
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'flux_2', fy, k=k, k_size=nz, mode=ppser_get_mode())
-#endif
+  !$-ser savepoint YPPM-2-Out
+  !$-ser data_kbuff k=k k_size=nz flux_2=fy
 !----------------
 ! Flux averaging:
 !----------------
@@ -463,11 +434,7 @@ call fs_create_savepoint('DelnFlux-2-Out', ppser_savepoint)
  end subroutine copy_corners
 
  subroutine xppm(flux, q, c, iord, is,ie,isd,ied, jfirst,jlast,jsd,jed, npx, npy, dxa, nested, grid_type, lim_fac)
-#ifdef SERIALIZE
- integer :: is, ie, isd, ied, jsd, jed
-#else
  integer, INTENT(IN) :: is, ie, isd, ied, jsd, jed
-#endif
  integer, INTENT(IN) :: jfirst, jlast  !< compute domain
  integer, INTENT(IN) :: iord
  integer, INTENT(IN) :: npx, npy
@@ -1427,11 +1394,7 @@ endif
 !------------------
    type(fv_grid_bounds_type), intent(IN) :: bd
    integer, intent(in):: nord            !< del-n
-#ifdef SERIALIZE
-   integer:: is,ie,js,je, npx, npy
-#else
    integer, intent(in):: is,ie,js,je, npx, npy
-#endif
    real, intent(in):: damp
 #ifdef SERIALIZE
    real:: q(bd%is-ng:bd%ie+ng, bd%js-ng:bd%je+ng)  ! q ghosted on input
