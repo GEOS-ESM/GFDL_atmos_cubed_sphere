@@ -1,4 +1,3 @@
-#define ACC_PREFIX !$acc
 !***********************************************************************
 !*                   GNU Lesser General Public License
 !*
@@ -25,26 +24,6 @@
 !! due to the elimination of KS to compute pressure level for remapping.
 
 module fv_mapz_mod
-
-#ifdef SERIALIZE
-USE m_serialize, ONLY: &
-  fs_read_field, &
-  fs_create_savepoint, &
-  fs_add_savepoint_metainfo, &
-  fs_write_field
-USE utils_ppser, ONLY:  &
-  ppser_get_mode, &
-  ppser_savepoint, &
-  ppser_serializer, &
-  ppser_serializer_ref, &
-  ppser_intlength, &
-  ppser_reallength, &
-  ppser_realtype, &
-  ppser_zrperturb, &
-  ppser_get_mode
-USE utils_ppser_kbuff
-#endif
-
 
 ! Modules Included:
 ! <table>
@@ -101,9 +80,7 @@ USE utils_ppser_kbuff
 !     <td>get_tracer_index</td>
 !   </tr>
 ! </table>
-#ifdef SERIALIZE
-USE m_serialize, ONLY: fs_is_serialization_on
-#endif
+  !$ser verbatim USE m_serialize, ONLY: fs_is_serialization_on
   use constants_mod,     only: radius, pi=>pi_8, rvgas, rdgas, grav, hlv, hlf, hls, cp_air, cp_vapor
   use tracer_manager_mod,only: get_tracer_index
   use field_manager_mod, only: MODEL_ATMOS
@@ -161,11 +138,7 @@ contains
   real,    intent(in):: mdt                    !< remap time step
   real,    intent(in):: pdt                    !< phys time step
   integer, intent(in):: km
-#ifdef SERIALIZE
-  integer:: nq                     !< number of tracers (including h2o)
-#else
   integer, intent(in):: nq                     !< number of tracers (including h2o)
-#endif
   integer, intent(in):: nwat
   integer, intent(in):: sphum                  !< index for water vapor (specific humidity)
   integer, intent(in):: ng
@@ -177,11 +150,7 @@ contains
   integer, intent(in):: kord_tm                !< Mapping order for thermodynamics
 
   real, intent(in):: consv                  !< factor for TE conservation
-#ifdef SERIALIZE
-  real:: r_vir
-#else
   real, intent(in):: r_vir
-#endif
   real, intent(in):: cp
   real, intent(in):: akap
   real, intent(in):: hs(isd:ied,jsd:jed)  !< surface geopotential
@@ -252,15 +221,13 @@ contains
   integer:: i,j,k
   integer:: nt, liq_wat, ice_wat, rainwat, snowwat, cld_amt, graupel, iq, n, kmp, kp, k_next
   logical:: remap_t, remap_pt, remap_te
-#ifdef SERIALIZE
-integer:: mode, abskord, iep1, iedp1, jedp1, js2d, o3mr, sgs_tke
-real :: qmin
-qmin = 0.0
-iep1=ie+1
-iedp1=ied+1
-jedp1=jed+1
-js2d=js
-#endif
+  !$ser verbatim integer:: mode, abskord, iep1, iedp1, jedp1, js2d, o3mr, sgs_tke
+  !$ser verbatim real :: qmin
+  !$ser verbatim qmin = 0.0
+  !$ser verbatim iep1=ie+1
+  !$ser verbatim iedp1=ied+1
+  !$ser verbatim jedp1=jed+1
+  !$ser verbatim js2d=js
 
   remap_t  = .false.
   remap_pt = .false.
@@ -357,10 +324,8 @@ js2d=js
        snowwat = get_tracer_index (MODEL_ATMOS, 'snowwat')
        graupel = get_tracer_index (MODEL_ATMOS, 'graupel')
        cld_amt = get_tracer_index (MODEL_ATMOS, 'cld_amt')
-#ifdef SERIALIZE
-o3mr = get_tracer_index (MODEL_ATMOS, 'o3mr')
-sgs_tke = get_tracer_index (MODEL_ATMOS, 'sgs_tke')
-#endif
+       !$ser verbatim o3mr = get_tracer_index (MODEL_ATMOS, 'o3mr')
+       !$ser verbatim sgs_tke = get_tracer_index (MODEL_ATMOS, 'sgs_tke')
 #endif
 
        if ( do_sat_adj .and. nwat>=6 ) then
@@ -411,69 +376,10 @@ sgs_tke = get_tracer_index (MODEL_ATMOS, 'sgs_tke')
                enddo
              else
 ! Transform "density pt" to "density temp"
-#ifdef SERIALIZE
-if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #380
-call fs_create_savepoint('MoistCVPlusPt_2d-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #381
-SELECT CASE ( ppser_get_mode() )
-  CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'qvapor_js', q(:,j,:,sphum))
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'qliquid_js', q(:,j,:,liq_wat))
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'qice_js', q(:,j,:,ice_wat))
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'qrain_js', q(:,j,:,rainwat))
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'qsnow_js', q(:,j,:,snowwat))
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'qgraupel_js', q(:,j,:,graupel))
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'qcld_js', q(:,j,:,cld_amt))
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'gz1d', gz)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'cvm', cvm)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'r_vir', r_vir)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'cappa', cappa)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'rrg', rrg)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'delp', delp)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'delz', delz)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'pt', pt)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'k1k', k1k)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'j_2d', js2d)
-  CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qvapor_js', q(:,j,:,sphum))
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qliquid_js', q(:,j,:,liq_wat))
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qice_js', q(:,j,:,ice_wat))
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qrain_js', q(:,j,:,rainwat))
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qsnow_js', q(:,j,:,snowwat))
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qgraupel_js', q(:,j,:,graupel))
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qcld_js', q(:,j,:,cld_amt))
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz1d', gz)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cvm', cvm)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'r_vir', r_vir)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cappa', cappa)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'rrg', rrg)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delp', delp)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delz', delz)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'k1k', k1k)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'j_2d', js2d)
-  CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qvapor_js', q(:,j,:,sphum), ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qliquid_js', q(:,j,:,liq_wat), ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qice_js', q(:,j,:,ice_wat), ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qrain_js', q(:,j,:,rainwat), ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qsnow_js', q(:,j,:,snowwat), ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qgraupel_js', q(:,j,:,graupel), ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qcld_js', q(:,j,:,cld_amt), ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz1d', gz, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cvm', cvm, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'r_vir', r_vir, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cappa', cappa, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'rrg', rrg, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delp', delp, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delz', delz, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'k1k', k1k, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'j_2d', js2d, ppser_zrperturb)
-END SELECT
-endif
-#endif
+               !$ser verbatim if(j == js2d) then 
+               !$ser savepoint MoistCVPlusPt_2d-In
+               !$ser data  qvapor_js=q(:,j,:,sphum) qliquid_js=q(:,j,:,liq_wat) qice_js=q(:,j,:,ice_wat) qrain_js=q(:,j,:,rainwat) qsnow_js=q(:,j,:,snowwat) qgraupel_js=q(:,j,:,graupel) qcld_js=q(:,j,:,cld_amt) gz1d=gz cvm=cvm r_vir=r_vir cappa=cappa rrg=rrg delp=delp delz=delz pt=pt k1k=k1k j_2d=js2d
+               !$ser verbatim endif
                do k=1,km
 #ifdef MOIST_CAPPA
                   call moist_cv(is,ie,isd,ied,jsd,jed, km, j, k, nwat, sphum, liq_wat, rainwat,    &
@@ -488,30 +394,10 @@ endif
                   enddo
 #endif
                enddo
-#ifdef SERIALIZE
-if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #398
-call fs_create_savepoint('MoistCVPlusPt_2d-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #399
-SELECT CASE ( ppser_get_mode() )
-  CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'gz1d', gz)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'cvm', cvm)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'pt', pt)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'cappa', cappa)
-  CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz1d', gz)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cvm', cvm)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cappa', cappa)
-  CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz1d', gz, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cvm', cvm, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cappa', cappa, ppser_zrperturb)
-END SELECT
-endif
-#endif
+               !$ser verbatim if(j == js2d) then 
+               !$ser savepoint MoistCVPlusPt_2d-Out
+               !$ser data  gz1d=gz cvm=cvm pt=pt cappa=cappa
+               !$ser verbatim endif
              endif         ! hydro test
       elseif (remap_pt) then
        ! Remap PT in P
@@ -639,55 +525,18 @@ endif
                          km,  pe2,  te,       &
                          is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, P_MAP=1, conserv=.true.)
       else
-#ifdef SERIALIZE
-if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #529
-call fs_create_savepoint('MapScalar_2d-In', ppser_savepoint)
-mode=1
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #531
-SELECT CASE ( ppser_get_mode() )
-  CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'peln', peln)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'pt', pt)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'gz1d', gz)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'pn2', pn2)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'mode', mode)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'j_2d', js2d)
-  CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'peln', peln)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz1d', gz)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pn2', pn2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mode', mode)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'j_2d', js2d)
-  CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'peln', peln, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'gz1d', gz, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pn2', pn2, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mode', mode, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'j_2d', js2d, ppser_zrperturb)
-END SELECT
-endif
-#endif
+         !$ser verbatim if(j == js2d) then 
+         !$ser savepoint MapScalar_2d-In
+         !$ser verbatim mode=1
+         !$ser data  peln=peln pt=pt gz1d=gz pn2=pn2  mode=mode j_2d=js2d
+         !$ser verbatim endif
          call map_scalar(km,  pn1,  te, gz,   &
                          km,  pn2,  te,       &
                          is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), te_min)
-#ifdef SERIALIZE
-if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #537
-call fs_create_savepoint('MapScalar_2d-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #538
-SELECT CASE ( ppser_get_mode() )
-  CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'pt', pt)
-  CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt)
-  CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pt', pt, ppser_zrperturb)
-END SELECT
-endif
-#endif
+         !$ser verbatim if(j == js2d) then 
+         !$ser savepoint MapScalar_2d-Out
+         !$ser data pt=pt
+         !$ser verbatim endif
       endif
    else
 !----------------------------------
@@ -708,56 +557,16 @@ endif
 ! Map constituents
 !----------------
       if( nq > 5 ) then
-#ifdef SERIALIZE
-if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #561
-call fs_create_savepoint('MapN_Tracer_2d-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #562
-SELECT CASE ( ppser_get_mode() )
-  CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'j_2d', js2d)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'nq', nq)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'qtracers', q(:,:,:,1:nq))
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'pe1', pe1)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'pe2', pe2)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'dp2', dp2)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'q_min', qmin)
-  CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'j_2d', js2d)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nq', nq)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qtracers', q(:,:,:,1:nq))
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pe1', pe1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pe2', pe2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dp2', dp2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'q_min', qmin)
-  CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'j_2d', js2d, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nq', nq, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qtracers', q(:,:,:,1:nq), ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pe1', pe1, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'pe2', pe2, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dp2', dp2, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'q_min', qmin, ppser_zrperturb)
-END SELECT
-endif
-#endif
+           !$ser verbatim if(j == js2d) then 
+           !$ser savepoint MapN_Tracer_2d-In
+           !$ser data j_2d=js2d nq=nq  qtracers=q(:,:,:,1:nq) pe1=pe1 pe2=pe2 dp2=dp2 q_min=qmin
+           !$ser verbatim endif
            call mapn_tracer(nq, km, pe1, pe2, q, dp2, kord_tr, j,     &
                             is, ie, isd, ied, jsd, jed, 0., fill)
-#ifdef SERIALIZE
-if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #567
-call fs_create_savepoint('MapN_Tracer_2d-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #568
-SELECT CASE ( ppser_get_mode() )
-  CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'qtracers', q(:,:,:,1:nq))
-  CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qtracers', q(:,:,:,1:nq))
-  CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qtracers', q(:,:,:,1:nq), ppser_zrperturb)
-END SELECT
-endif
-#endif
+           !$ser verbatim if(j == js2d) then 
+           !$ser savepoint MapN_Tracer_2d-Out
+           !$ser data qtracers=q(:,:,:,1:nq)
+           !$ser verbatim endif
       elseif ( nq > 0 ) then
 ! Remap one tracer at a time
          do iq=1,nq
@@ -1404,23 +1213,11 @@ endif        ! end last_step check
    real, intent(inout)::  u(isd:ied,  jsd:jed+1,km)
    real, intent(inout)::  v(isd:ied+1,jsd:jed,  km)
    real, intent(in)::  w(isd:,jsd:,1:)   !< vertical velocity (m/s)
-#ifdef SERIALIZE
-   real:: delz(isd:,jsd:,1:)
-#else
    real, intent(in):: delz(isd:,jsd:,1:)
-#endif
    real, intent(in):: hs(isd:ied,jsd:jed)  !< surface geopotential
    real, intent(in)::   pe(is-1:ie+1,km+1,js-1:je+1) !< pressure at layer edges
-#ifdef SERIALIZE
-   real:: peln(is:ie,km+1,js:je)  !< log(pe)
-#else
    real, intent(in):: peln(is:ie,km+1,js:je)  !< log(pe)
-#endif
-#ifdef SERIALIZE
-   real:: cp, rg, r_vir, hlv
-#else
    real, intent(in):: cp, rg, r_vir, hlv
-#endif
    real, intent(in) :: rsin2_l(isd:ied, jsd:jed)
    real, intent(in) :: cosa_s_l(isd:ied, jsd:jed)
    logical, intent(in):: moist_phys, hydrostatic
@@ -1601,16 +1398,8 @@ endif        ! end last_step check
       integer, intent(in) :: kn                !< Target vertical dimension
       integer, intent(in) :: iv
 
-#ifdef SERIALIZE
-      real ::  pe1(i1:i2,km+1)     !< height at layer edges from model top to bottom surface
-#else
       real, intent(in) ::  pe1(i1:i2,km+1)     !< height at layer edges from model top to bottom surface
-#endif
-#ifdef SERIALIZE
-      real ::  pe2(i1:i2,kn+1)     !< height at layer edges from model top to bottom surface
-#else
       real, intent(in) ::  pe2(i1:i2,kn+1)     !< height at layer edges from model top to bottom surface
-#endif
       real, intent(in) ::  q1(i1:i2,km)        !< Field input
 
 ! INPUT/OUTPUT PARAMETERS:
@@ -1694,16 +1483,8 @@ endif        ! end last_step check
  integer, intent(in) :: km                !< Original vertical dimension
  integer, intent(in) :: kn                !< Target vertical dimension
  real, intent(in) ::   qs(i1:i2)       !< bottom BC
-#ifdef SERIALIZE
- real ::  pe1(i1:i2,km+1)  !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
-#else
  real, intent(in) ::  pe1(i1:i2,km+1)  !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
-#endif
-#ifdef SERIALIZE
- real ::  pe2(i1:i2,kn+1)  !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
-#else
  real, intent(in) ::  pe2(i1:i2,kn+1)  !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
-#endif
  real, intent(in) ::    q1(ibeg:iend,jbeg:jend,km) !< Field input
 ! INPUT/OUTPUT PARAMETERS:
  real, intent(inout)::  q2(ibeg:iend,jbeg:jend,kn) !< Field output
@@ -1824,16 +1605,8 @@ endif        ! end last_step check
  integer, intent(in) :: km                !< Original vertical dimension
  integer, intent(in) :: kn                !< Target vertical dimension
  real, intent(in) ::   qs(i1:i2)       !< bottom BC
-#ifdef SERIALIZE
- real ::  pe1(i1:i2,km+1)  !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
-#else
  real, intent(in) ::  pe1(i1:i2,km+1)  !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
-#endif
-#ifdef SERIALIZE
- real ::  pe2(i1:i2,kn+1)  !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
-#else
  real, intent(in) ::  pe2(i1:i2,kn+1)  !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
-#endif
  real, intent(in) ::    q1(ibeg:iend,jbeg:jend,km) !< Field input
 ! INPUT/OUTPUT PARAMETERS:
  real, intent(inout)::  q2(ibeg:iend,jbeg:jend,kn) !< Field output
@@ -1913,28 +1686,12 @@ endif        ! end last_step check
                         i1, i2, isd, ied, jsd, jed, q_min, fill)
 ! INPUT PARAMETERS:
       integer, intent(in):: km                !< vertical dimension
-#ifdef SERIALIZE
-      integer:: j, nq, i1, i2
-#else
       integer, intent(in):: j, nq, i1, i2
-#endif
       integer, intent(in):: isd, ied, jsd, jed
       integer, intent(in):: kord(nq)
-#ifdef SERIALIZE
-      real::  pe1(i1:i2,km+1)     !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
-#else
       real, intent(in)::  pe1(i1:i2,km+1)     !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
-#endif
-#ifdef SERIALIZE
-      real::  pe2(i1:i2,km+1)     !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
-#else
       real, intent(in)::  pe2(i1:i2,km+1)     !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
-#endif
-#ifdef SERIALIZE
-      real::  dp2(i1:i2,km)
-#else
       real, intent(in)::  dp2(i1:i2,km)
-#endif
       real, intent(in)::  q_min
       logical, intent(in):: fill
       real, intent(inout):: q1(isd:ied,jsd:jed,km,nq) ! Field input
@@ -2052,22 +1809,10 @@ endif        ! end last_step check
       integer, intent(in) :: km                !< Original vertical dimension
       integer, intent(in) :: kn                !< Target vertical dimension
 
-#ifdef SERIALIZE
-      real ::  pe1(i1:i2,km+1)     !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
-#else
       real, intent(in) ::  pe1(i1:i2,km+1)     !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
-#endif
-#ifdef SERIALIZE
-      real ::  pe2(i1:i2,kn+1)     !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
-#else
       real, intent(in) ::  pe2(i1:i2,kn+1)     !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
-#endif
       real, intent(in) ::  q1(ibeg:iend,jbeg:jend,km) !< Field input
-#ifdef SERIALIZE
-      real ::  dp2(i1:i2,kn)
-#else
       real, intent(in) ::  dp2(i1:i2,kn)
-#endif
       real, intent(in) ::  q_min
 ! INPUT/OUTPUT PARAMETERS:
       real, intent(inout):: q2(i1:i2,kn) !< Field output
@@ -2147,16 +1892,8 @@ endif        ! end last_step check
    integer, intent(in):: kord
    integer, intent(in):: km               !< Original vertical dimension
    integer, intent(in):: kn               !< Target vertical dimension
-#ifdef SERIALIZE
-   real:: pe1(i1:i2,km+1)     !< Pressure at layer edges from model top to bottom surface in the original vertical coordinate
-#else
    real, intent(in):: pe1(i1:i2,km+1)     !< Pressure at layer edges from model top to bottom surface in the original vertical coordinate
-#endif
-#ifdef SERIALIZE
-   real:: pe2(i1:i2,kn+1)     !< Pressure at layer edges from model top to bottom surface in the new vertical coordinate
-#else
    real, intent(in):: pe2(i1:i2,kn+1)     !< Pressure at layer edges from model top to bottom surface in the new vertical coordinate
-#endif
    real, intent(in) :: q1(i1:i2,km) !< Field input
    real, intent(out):: q2(i1:i2,kn) !< Field output
 ! LOCAL VARIABLES:
@@ -2248,17 +1985,9 @@ endif        ! end last_step check
  integer, intent(in):: iv      !< iv =-1: winds iv = 0: positive definite scalars iv = 1: others
  integer, intent(in):: kord
  real, intent(in)   ::   qs(i1:i2)
-#ifdef SERIALIZE
- real   :: delp(i1:i2,km)     !< Layer pressure thickness
-#else
  real, intent(in)   :: delp(i1:i2,km)     !< Layer pressure thickness
-#endif
  real, intent(inout):: a4(4,i1:i2,km)     !< Interpolated values
-#ifdef SERIALIZE
- real:: qmin
-#else
  real, intent(in):: qmin
-#endif
 !-----------------------------------------------------------------------
  logical, dimension(i1:i2,km):: extm, ext5, ext6
  real  gam(i1:i2,km)
@@ -2669,11 +2398,7 @@ endif        ! end last_step check
                                !< iv = 1: others
  integer, intent(in):: kord
  real, intent(in)   ::   qs(i1:i2)
-#ifdef SERIALIZE
- real   :: delp(i1:i2,km)     !< layer pressure thickness
-#else
  real, intent(in)   :: delp(i1:i2,km)     !< layer pressure thickness
-#endif
  real, intent(inout):: a4(4,i1:i2,km)     !< Interpolated values
 !-----------------------------------------------------------------------
  logical, dimension(i1:i2,km):: extm, ext5, ext6
@@ -3154,11 +2879,7 @@ endif        ! end last_step check
  integer, intent(in):: km      !< Vertical dimension
  integer, intent(in):: kord    !< Order (or more accurately method no.):
                                !
-#ifdef SERIALIZE
- real :: delp(i1:i2,km)     !< Layer pressure thickness
-#else
  real , intent(in):: delp(i1:i2,km)     !< Layer pressure thickness
-#endif
 
 ! !INPUT/OUTPUT PARAMETERS:
  real , intent(inout):: a4(4,i1:i2,km)  !< Interpolated values
@@ -3553,11 +3274,7 @@ endif        ! end last_step check
 ! INPUT PARAMETERS:
   integer, intent(in):: km                    !< Restart z-dimension
   integer, intent(in):: kn                    !< Run time dimension
-#ifdef SERIALIZE
-  integer:: nq, ntp               !< Number of tracers (including H2O)
-#else
   integer, intent(in):: nq, ntp               !< Number of tracers (including H2O)
-#endif
   integer, intent(in):: is,ie,isd,ied         !< Starting & ending X-Dir index
   integer, intent(in):: js,je,jsd,jed         !< Starting & ending Y-Dir index
   logical, intent(in):: hydrostatic, make_nh, square_domain
@@ -4145,18 +3862,10 @@ endif        ! end last_step check
       integer, intent(in) :: km                ! Original vertical dimension
       integer, intent(in) :: kn                ! Target vertical dimension
 
-#ifdef SERIALIZE
-      real ::  pe1(i1:i2,km+1)  ! pressure at layer edges
-#else
       real, intent(in) ::  pe1(i1:i2,km+1)  ! pressure at layer edges
-#endif
                                                ! (from model top to bottom surface)
                                                ! in the original vertical coordinate
-#ifdef SERIALIZE
-      real ::  pe2(i1:i2,kn+1)  ! pressure at layer edges
-#else
       real, intent(in) ::  pe2(i1:i2,kn+1)  ! pressure at layer edges
-#endif
                                                ! (from model top to bottom surface)
                                                ! in the new vertical coordinate
 
@@ -4337,4 +4046,3 @@ endif        ! end last_step check
 
 
 end module fv_mapz_mod
-
