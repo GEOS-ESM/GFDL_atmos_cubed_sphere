@@ -223,9 +223,13 @@ contains
 ! The Flux capacitors: accumulated Mass flux arrays
     real(kind=8), intent(inout)::  mfx(bd%is:bd%ie+1, bd%js:bd%je,   npz)
     real(kind=8), intent(inout)::  mfy(bd%is:bd%ie  , bd%js:bd%je+1, npz)
+    !$ser verbatim real ::  mfx_ser(bd%is:bd%ie+1, bd%js:bd%je,   npz)
+    !$ser verbatim real ::  mfy_ser(bd%is:bd%ie  , bd%js:bd%je+1, npz)
 ! Accumulated Courant number arrays
     real(kind=8), intent(inout)::  cx(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
     real(kind=8), intent(inout)::  cy(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
+    !$ser verbatim real ::  cx_ser(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
+    !$ser verbatim real ::  cy_ser(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
     real, intent(inout),dimension(bd%is:bd%ie,bd%js:bd%je,npz):: pkz
 
     type(fv_grid_type),  intent(INOUT), target :: gridstruct
@@ -685,7 +689,14 @@ contains
             end do
       endif
     !$ser savepoint D_SW-In
-    !$ser data delpcd=vt delpd=delp ptcd=ptc ptd=pt ud=u vd=v wd=w ucd=uc vcd=vc uad=ua vad=va divgdd=divgd mfxd=mfx mfyd=mfy cxd=cx cyd=cy crxd=crx cryd=cry xfxd=xfx yfxd=yfx q_cond=q_con zhd=zh heat_sourced=heat_source diss_estd=diss_est zvir=zvir nq=nq dt=dt nord_v=nord_v damp_vt=damp_vt
+    !$ser verbatim ! Copy back to 32-bit
+    !$ser verbatim mfx_ser = mfx 
+    !$ser verbatim mfy_ser = mfy
+    !$ser verbatim cx_ser = cx
+    !$ser verbatim cy_ser = cy
+    !$ser data delpcd=vt delpd=delp ptcd=ptc ptd=pt ud=u vd=v wd=w ucd=uc vcd=vc uad=ua vad=va divgdd=divgd
+    !$ser data mfxd=mfx_ser mfyd=mfy_ser cxd=cx_ser cyd=cy_ser
+    !$ser data crxd=crx cryd=cry xfxd=xfx yfxd=yfx q_cond=q_con zhd=zh heat_sourced=heat_source diss_estd=diss_est zvir=zvir nq=nq dt=dt nord_v=nord_v damp_vt=damp_vt
 
                                                      call timing_on('d_sw')
 !$OMP parallel do default(none) shared(npz,flagstruct,nord_v,pfull,damp_vt,hydrostatic,last_step, &
@@ -821,7 +832,13 @@ contains
        endif
     enddo           ! end openMP k-loop
     !$ser savepoint D_SW-Out
-    !$ser data delpcd=vt delpd=delp ptcd=ptc ptd=pt ud=u vd=v wd=w ucd=uc vcd=vc uad=ua vad=va divgdd=divgd mfxd=mfx mfyd=mfy cxd=cx cyd=cy crxd=crx cryd=cry xfxd=xfx yfxd=yfx q_cond=q_con heat_sourced=heat_source diss_estd=diss_est nord_vd=nord_v damp_vtd=damp_vt
+    !$ser verbatim mfx_ser = mfx 
+    !$ser verbatim mfy_ser = mfy
+    !$ser verbatim cx_ser = cx
+    !$ser verbatim cy_ser = cy
+    !$ser data delpcd=vt delpd=delp ptcd=ptc ptd=pt ud=u vd=v wd=w ucd=uc vcd=vc uad=ua vad=va divgdd=divgd
+    !$ser data mfxd=mfx_ser mfyd=mfy_ser cxd=cx_ser cyd=cy_ser
+    !Sser data crxd=crx cryd=cry xfxd=xfx yfxd=yfx q_cond=q_con heat_sourced=heat_source diss_estd=diss_est nord_vd=nord_v damp_vtd=damp_vt
     !$ser verbatim call finalize_kbuff()
     if ( (.not. hydrostatic) .and.  flagstruct%fv_debug ) &
     call prt_mxm('W_dsw ', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)

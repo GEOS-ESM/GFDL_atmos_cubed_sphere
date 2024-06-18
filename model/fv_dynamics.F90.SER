@@ -253,6 +253,10 @@ contains
 ! R8 Courant number arrays
       real(kind=8) ::  cxR8(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
       real(kind=8) ::  cyR8(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
+      !$ser verbatim real :: mfxR8_ser(bd%is:bd%ie+1, bd%js:bd%je,   npz)
+      !$ser verbatim real :: mfyR8_ser(bd%is:bd%ie  , bd%js:bd%je+1, npz)
+      !$ser verbatim real :: cxR8_ser(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
+      !$ser verbatim real :: cyR8_ser(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
 #endif
 ! Local Mass flux arrays: the "Flux Capacitor"
       real         ::  mfxL(bd%is:bd%ie+1, bd%js:bd%je,   npz)
@@ -600,7 +604,14 @@ contains
                                            call timing_on('COMM_TOTAL')
     !$ser verbatim n_map_step=n_map
     !$ser savepoint DynCore-In
-    !$ser data nq=nq mdt=mdt n_split=n_split zvir=zvir  akap=akap cappa=cappa u=u v=v w=w delz=delz pt=pt  delp=delp pe=pe pk=pk phis=phis wsd=ws omga=omga ptop=ptop pfull=pfull ua=ua va=va uc=uc vc=vc mfxd=mfxL mfyd=mfyL cxd=cxL cyd=cyL pkz=pkz peln=peln q_con=q_con ak=ak bk=bk ks=ks diss_estd=diss_est n_map=n_map_step                                  
+    !$ser verbatim ! No use before this point, we init to zero
+    !$ser verbatim mfxR8_ser = 0
+    !$ser verbatim mfyR8_ser = 0
+    !$ser verbatim cxR8_ser = 0
+    !$ser verbatim cyR8_ser = 0
+    !$ser data nq=nq mdt=mdt n_split=n_split zvir=zvir  akap=akap cappa=cappa u=u v=v w=w delz=delz pt=pt  delp=delp pe=pe pk=pk phis=phis wsd=ws omga=omga ptop=ptop pfull=pfull ua=ua va=va uc=uc vc=vc
+    !$ser data mfxd=mfxR8_ser mfyd=mfyR8_ser cxd=cxR8_ser cyd=cyR8_ser
+    !$ser data pkz=pkz peln=peln q_con=q_con ak=ak bk=bk ks=ks diss_estd=diss_est n_map=n_map_step                                  
     if (.not. hydrostatic) then
 #ifdef USE_COND
       call start_group_halo_update(i_pack(11), q_con, domain)
@@ -652,7 +663,21 @@ contains
                     domain, n_map==1, i_pack, last_step, diss_est,time_total)
                                            call timing_off('DYN_CORE')
       !$ser savepoint DynCore-Out
-      !$ser data cappa=cappa u=u v=v w=w delz=delz pt=pt delp=delp pe=pe pk=pk phis=phis wsd=ws omga=omga ptop=ptop pfull=pfull ua=ua va=va uc=uc vc=vc mfxd=mfxL mfyd=mfyL cxd=cxL cyd=cyL pkz=pkz peln=peln q_con=q_con diss_estd=diss_est
+      !$ser verbatim ! Copy back to ensure 32-bit save for Serialbox
+#ifdef SINGLE_FV
+      !$ser verbatim mfxR8_ser = mfxR8
+      !$ser verbatim mfyR8_ser = mfyR8
+      !$ser verbatim cxR8_ser = cxR8
+      !$ser verbatim cyR8_ser = cyR8
+#else
+      !$ser verbatim mfxR8_ser = mfxL
+      !$ser verbatim mfyR8_ser = mfyL
+      !$ser verbatim cxR8_ser = cxL
+      !$ser verbatim cyR8_ser = cyL
+#endif
+      !$ser data cappa=cappa u=u v=v w=w delz=delz pt=pt delp=delp pe=pe pk=pk phis=phis wsd=ws omga=omga ptop=ptop pfull=pfull ua=ua va=va uc=uc vc=vc
+      !$ser data mfxd=mfxR8_ser mfyd=mfyR8_ser cxd=cxR8_ser cyd=cyR8_ser 
+      !$ser data pkz=pkz peln=peln q_con=q_con diss_estd=diss_est
 
 !MassFluxRoundoffControl
 #ifdef SINGLE_FV
@@ -707,12 +732,15 @@ contains
        else
          if ( flagstruct%z_tracer ) then
          !$ser savepoint Tracer2D1L-In
-         !$ser data tracers=q dp1=dp1 mfxd=mfxL mfyd=mfyL cxd=cx cyd=cy nq=nq q_split=q_split mdt=mdt
+         !$ser data tracers=q dp1=dp1
+         !$ser data mfxd=mfxL mfyd=mfyL cxd=cxL cyd=cyL
+         !$ser data nq=nq q_split=q_split mdt=mdt
          call tracer_2d_1L(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac)
          !$ser savepoint Tracer2D1L-Out
-         !$ser data tracers=q dp1=dp1 mfxd=mfxL mfyd=mfyL cxd=cx cyd=cy
+         !$ser data tracers=q dp1=dp1
+         !$ser data mfxd=mfxL mfyd=mfyL cxd=cxL cyd=cyL
          else
          call tracer_2d(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), &
