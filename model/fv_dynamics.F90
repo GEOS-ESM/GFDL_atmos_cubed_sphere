@@ -788,16 +788,16 @@ contains
           cy =  cy +  cyL
 
          if( last_step )  then
-            if( .not. hydrostatic ) then
-!$OMP parallel do default(none) shared(is,ie,js,je,npz,omga,delp,delz,w)
-               do k=1,npz
-                  do j=js,je
-                     do i=is,ie
-                        omga(i,j,k) = delp(i,j,k)/delz(i,j,k)*w(i,j,k)
-                     enddo
-                  enddo
-               enddo
-            endif
+!            if( .not. hydrostatic ) then
+!!$OMP parallel do default(none) shared(is,ie,js,je,npz,omga,delp,delz,w)
+!               do k=1,npz
+!                  do j=js,je
+!                     do i=is,ie
+!                        omga(i,j,k) = delp(i,j,k)/delz(i,j,k)*w(i,j,k)
+!                     enddo
+!                  enddo
+!               enddo
+!            endif
 !--------------------------
 ! Filter omega for physics:
 !--------------------------
@@ -929,7 +929,7 @@ contains
        call range_check('VA_dyn', ua, is, ie, js, je, ng, npz, gridstruct%agrid,   &
                          -280., 280., bad_range)
        call range_check('TA_dyn', pt, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         100., 335., bad_range)
+                         100., 375., bad_range)
       !if ( .not. hydrostatic ) then
       !     call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
       !                  -100., 100., bad_range)

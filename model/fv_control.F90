@@ -777,12 +777,8 @@ module fv_control_mod
          dimx = stretch_fac*4.0*(npx-1)
                               ns0 = 4
          if (npx >= 90)       ns0 = 5
-         if (stretch_fac > 1) then
-                              ns0 = 6
-            if (npx >= 1500)  ns0 = 7
-         endif
+         if (stretch_fac > 1) ns0 = 7
 #else
-         offset = 0.49
          dimx = 4.0*(npx-1)
          if ( hydrostatic ) then
             if ( npx >= 120 ) ns0 = 6
