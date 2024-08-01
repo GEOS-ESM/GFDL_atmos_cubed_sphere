@@ -660,6 +660,13 @@ contains
        cyL= cyR8 
 #endif
       
+      if ( flagstruct%range_warn ) then
+         call range_check('CX_dyn', cxL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
+                           -0.5, 0.5, bad_range)
+         call range_check('CY_dyn', cyL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
+                           -0.5, 0.5, bad_range)
+      endif
+
 !DryMassRoundoffControl
       if(last_step) then
          if (hydrostatic) then
@@ -930,10 +937,12 @@ contains
                          -280., 280., bad_range)
        call range_check('TA_dyn', pt, is, ie, js, je, ng, npz, gridstruct%agrid,   &
                          100., 375., bad_range)
-      !if ( .not. hydrostatic ) then
-      !     call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-      !                  -100., 100., bad_range)
-      !endif
+       if ( .not. hydrostatic ) then
+            call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
+                         -100., 100., bad_range)
+            call prt_mxm('DZ_dyn', delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+       endif
+       call prt_mxm('DP_dyn ', delp, is, ie, js, je, ng, npz, 0.01, gridstruct%area_64, domain)
   endif
 
   end subroutine fv_dynamics
