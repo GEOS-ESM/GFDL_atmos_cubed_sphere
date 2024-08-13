@@ -939,10 +939,12 @@ contains
                          100., 375., bad_range)
        if ( .not. hydrostatic ) then
             call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         -100., 100., bad_range)
-            call prt_mxm('DZ_dyn', delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+                             -100., 100., bad_range)
+            call range_check('DZ_dyn', delz, is, ie, js, je, ng, npz, gridstruct%agrid, &
+                             -1.e6, -1.e-6, bad_range)
        endif
-       call prt_mxm('DP_dyn ', delp, is, ie, js, je, ng, npz, 0.01, gridstruct%area_64, domain)
+       call range_check('DP_dyn ', delp, is, ie, js, je, ng, npz, gridstruct%agrid,  &
+                        1.e-6, 1.e6, bad_range)
   endif
 
   end subroutine fv_dynamics
