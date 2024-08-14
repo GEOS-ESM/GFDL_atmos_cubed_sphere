@@ -3141,6 +3141,7 @@ contains
 !
       real qmin, qmax
       integer i,j,k
+      logical :: print_warning
 
       if ( present(bad_range) ) bad_range = .false. 
       qmin = q(is,js,1)
@@ -3175,9 +3176,12 @@ contains
          do k=1,km
             do j=js,je
                do i=is,ie
-                  if( q(i,j,k)<q_low .or. q(i,j,k)>q_hi .or. ieee_is_nan(q(i,j,k)) .or. q(i,j,k)>infinite ) then
+                  print_warning = .false.
+                  if( ieee_is_nan(q(i,j,k))  ) print_warning = .true.
+                  if( ABS(q(i,j,k))>infinite ) print_warning = .true.
+                  if( q(i,j,k)<q_low .or. q(i,j,k)>q_hi ) print_warning = .true.
+                  if ( print_warning ) &
                       write(6,106) qname, i, j, k, q(i,j,k), pos(i,j,1)*rad2deg, pos(i,j,2)*rad2deg
-                  endif
                enddo
             enddo
          enddo
