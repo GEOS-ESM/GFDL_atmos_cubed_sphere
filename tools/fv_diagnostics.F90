@@ -91,10 +91,6 @@ module fv_diagnostics_mod
 !     <td>timing_on, timing_off</td>
 !   </tr>
 !   <tr>
-!     <td>gfdl_lin_cloud_microphys_mod</td>
-!     <td>wqs1, qsmith_init</td>
-!   </tr>
-!   <tr>
 !     <td>mpp_mod</td>
 !     <td>mpp_error, FATAL, stdlog, mpp_pe, mpp_root_pe, mpp_sum, mpp_max, NOTE</td>
 !   </tr>
@@ -141,7 +137,6 @@ module fv_diagnostics_mod
  use sat_vapor_pres_mod, only: compute_qs, lookup_es
 
  use fv_arrays_mod, only: max_step 
- use gfdl_lin_cloud_microphys_mod, only: wqs1, qsmith_init
 
  use ieee_arithmetic
 
@@ -1010,9 +1005,6 @@ contains
 
     module_is_initialized=.true.
     istep = 0
-#ifndef GFS_PHYS
-    if(idiag%id_theta_e >0 ) call qsmith_init
-#endif
  end subroutine fv_diag_init
 
 

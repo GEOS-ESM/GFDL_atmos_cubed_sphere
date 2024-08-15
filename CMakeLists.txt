@@ -2,7 +2,6 @@ esma_set_this ()
 
 set (srcs
   tools/fv_treat_da_inc.F90
-  model/lin_cloud_microphys.F90
   model/fv_cmp.F90
   geos_utils/fill_corner.F90
   geos_utils/flow_proj.F90

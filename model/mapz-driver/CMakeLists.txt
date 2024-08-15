@@ -5,7 +5,6 @@ set(srcs
   ../fv_fill.F90
   ../fv_arrays.F90
   ../fv_cmp.F90
-  ../lin_cloud_microphys.F90
 
   ../../tools/fv_timing.F90
   ../../tools/fv_mp_mod.F90
