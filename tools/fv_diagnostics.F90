@@ -144,7 +144,6 @@ module fv_diagnostics_mod
  private
 
 
- real, parameter:: infinite = huge(1.d0)
  real, parameter:: missing_value = -1.e10
  real, parameter:: missing_value2 = -1.e3 !< for variables with many missing values
  real, parameter:: missing_value3 = 1.e10 !< for variables where we look for smallest values
@@ -3133,9 +3132,13 @@ contains
 !
       real qmin, qmax
       integer i,j,k
-      logical :: print_warning
 
       if ( present(bad_range) ) bad_range = .false. 
+      if (any(.not.ieee_is_finite(q))) then
+         qmax = huge(1.0)
+         qmin = -qmax
+      else
+
       qmin = q(is,js,1)
       qmax = qmin
 
@@ -3150,6 +3153,7 @@ contains
           enddo
       enddo
       enddo
+      endif
 
       call mp_reduce_min(qmin)
       call mp_reduce_max(qmax)
@@ -3168,12 +3172,9 @@ contains
          do k=1,km
             do j=js,je
                do i=is,ie
-                  print_warning = .false.
-                  if( ieee_is_nan(q(i,j,k))  ) print_warning = .true.
-                  if( ABS(q(i,j,k))>infinite ) print_warning = .true.
-                  if( q(i,j,k)<q_low .or. q(i,j,k)>q_hi ) print_warning = .true.
-                  if ( print_warning ) &
-                      write(6,106) qname, i, j, k, q(i,j,k), pos(i,j,1)*rad2deg, pos(i,j,2)*rad2deg
+                  if( q(i,j,k)<q_low .or. q(i,j,k)>q_hi .or. .not.ieee_is_finite(q(i,j,k))) then
+                     write(6,106) qname, i, j, k, q(i,j,k), pos(i,j,1)*rad2deg, pos(i,j,2)*rad2deg
+                  endif
                enddo
             enddo
          enddo
