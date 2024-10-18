@@ -660,12 +660,12 @@ contains
        cyL= cyR8 
 #endif
       
-      if ( flagstruct%range_warn ) then
-         call range_check('CX_dyn', cxL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
-                           -0.5, 0.5, bad_range)
-         call range_check('CY_dyn', cyL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
-                           -0.5, 0.5, bad_range)
-      endif
+!     if ( flagstruct%range_warn ) then
+!        call range_check('CX_dyn', cxL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
+!                          -0.5, 0.5, bad_range)
+!        call range_check('CY_dyn', cyL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
+!                          -0.5, 0.5, bad_range)
+!     endif
 
 !DryMassRoundoffControl
       if(last_step) then
