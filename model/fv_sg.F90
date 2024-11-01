@@ -151,19 +151,10 @@ contains
       else
            kbot = km
       endif
-      if ( pe(is,1,js) < 2. ) then
-           t_min = t1_min
-      else
-           t_min = t2_min
-      endif
-
-      if ( k_bot < min(km,24)  ) then
-         t_max = t2_max
-      else
-         t_max = t3_max
-      endif
 
 #ifdef MAPL_MODE
+      t_min = t1_min
+      t_max = t3_max
       if ( nwat == 0 ) then
          sphum = 1
          xvir = 0.
@@ -199,6 +190,16 @@ contains
          end select
       endif
 #else
+      if ( pe(is,1,js) < 2. ) then
+           t_min = t1_min
+      else
+           t_min = t2_min 
+      endif
+      if ( k_bot < min(km,24)  ) then 
+         t_max = t2_max
+      else
+         t_max = t3_max
+      endif
       sphum = get_tracer_index (MODEL_ATMOS, 'sphum')
       if ( nwat == 0 ) then
          xvir = 0.
@@ -379,24 +380,20 @@ contains
          do i=is,ie
 ! Richardson number = g*delz * del_theta/theta / (del_u**2 + del_v**2)
 ! Use exact form for "density temperature"
-            tv1 = t0(i,km1)*(1.+xvir*q0(i,km1,sphum)-qcon(i,km1))
-            tv2 = t0(i,k  )*(1.+xvir*q0(i,k  ,sphum)-qcon(i,k))
+            tv1 = max(t_min,min(t_max,t0(i,km1)*(1.+xvir*q0(i,km1,sphum)-qcon(i,km1))))
+            tv2 = max(t_min,min(t_max,t0(i,k  )*(1.+xvir*q0(i,k  ,sphum)-qcon(i,k  ))))
             pt1 = tv1 / pkz(i,j,km1)
             pt2 = tv2 / pkz(i,j,k  )
 !
             ri = (gz(i,km1)-gz(i,k))*(pt1-pt2)/( 0.5*(pt1+pt2)*        &
                  ((u0(i,km1)-u0(i,k))**2+(v0(i,km1)-v0(i,k))**2+ustar2) )
-            if ( tv1>t_max .and. tv1>tv2 ) then
-! top layer unphysically warm
-               ri = 0.
-            elseif ( tv2<t_min ) then
-               ri = min(ri, 0.1)
-            endif
 ! Adjustment for K-H instability:
 ! Compute equivalent mass flux: mc
 ! Add moist 2-dz instability consideration:
 !!!         ri_ref = min(ri_max, ri_min + (ri_max-ri_min)*dim(500.e2,pm(i,k))/250.e2 )
             ri_ref = min(ri_max, ri_min + (ri_max-ri_min)*dim(400.e2,pm(i,k))/200.e2 )
+
+#ifdef MAPL_MODE 
 ! Enhancing mixing at the model top
             if ( k==2 ) then
                  ri_ref = 4.*ri_ref
@@ -405,6 +402,7 @@ contains
             elseif ( k==4 ) then
                  ri_ref = 1.5*ri_ref
             endif
+#endif
 
             if ( ri < ri_ref ) then
                mc = ratio*delp(i,j,km1)*delp(i,j,k)/(delp(i,j,km1)+delp(i,j,k))*(1.-max(0.0,ri/ri_ref))**2
