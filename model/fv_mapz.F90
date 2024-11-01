@@ -301,13 +301,13 @@ contains
         snowwat = -1
         graupel = -1
         cld_amt = -1
-       case(3)
+       case(3:4)
         liq_wat = 2
         ice_wat = 3
         rainwat = -1
         snowwat = -1
         graupel = -1
-        cld_amt = -1
+        cld_amt = 4
        case(6:7)
         liq_wat = 2
         ice_wat = 3
