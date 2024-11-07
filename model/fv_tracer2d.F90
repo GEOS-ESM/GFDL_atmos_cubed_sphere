@@ -844,7 +844,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                                     npx, npy, npz,   &
                                     nq, dt)
 
-      use fv_mapz_mod,        only: mapn_tracer, map1_q2
+      use fv_mapz_mod,        only: mapn_tracer, map_scalar
       use fv_fill_mod,        only: fillz
 
       integer, intent(IN) :: npx
@@ -982,10 +982,9 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
              do k=1,npz
                 dp2(:,j,k) = pe2(:,k+1) - pe2(:,k)
              enddo
-             call map1_q2(npz, pe1, q3(isd,jsd,1,iq),      &
-                          npz, pe2, q1(:,j,:), dp2(:,j,:), &
-                          is, ie, 0, flagstruct%kord_tr, j,&
-                          isd, ied, jsd, jed, 0.) 
+             call map_scalar(npz, pe1, q3(isd,jsd,1,iq),      &
+                            npz, pe2, q1(:,j,:),             &
+                            is, ie, j, isd, ied, jsd, jed, 0, flagstruct%kord_tr, 0.)
              if (flagstruct%fill) call fillz(ie-is+1, npz, 1, q1(:,j,:), dp2(:,j,:))
              q3(is:ie,j,1:npz,iq) = q1(:,j,:)
           enddo
