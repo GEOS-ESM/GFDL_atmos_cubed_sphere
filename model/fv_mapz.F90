@@ -212,16 +212,25 @@ contains
 !-----------------------------------------------------------------------
   real(kind=8), dimension(is:ie,js:je):: tmp_2D, te_2d, zsum0, zsum1
   real, dimension(is:ie,js:je):: dpln
-  real, dimension(is:ie,km)  :: q2, dp2, w2
+  real, dimension(is:ie,km)  :: q2, dp2, dpe1,dpe2, dpn1,dpn2, w2
   real, dimension(is:ie,km+1):: pe1, pe2, pk1, pk2, pn1, pn2, phis
   real, dimension(is:ie+1,km+1):: pe0, pe3
+  real, dimension(is:ie+1,km)  :: dpe0,dpe3 
   real, dimension(is:ie):: gz, cvm
   real(kind=8):: tesum, zsum, dtmp
   real   :: rcp, rg, tmp, tpe, rrg, bkh, k1k, dlnp
   logical:: fast_mp_consv
+  integer:: kord(3)
+  integer:: ikord_tm = 1
+  integer:: ikord_wz = 2
+  integer:: ikord_mt = 3
   integer:: i,j,k
   integer:: nt, liq_wat, ice_wat, rainwat, snowwat, cld_amt, graupel, iq, n, kmp, kp, k_next
   logical:: remap_t, remap_pt, remap_te
+
+  kord(ikord_tm) = kord_tm
+  kord(ikord_wz) = kord_wz
+  kord(ikord_mt) = kord_mt
 
   remap_t  = .false.
   remap_pt = .false.
@@ -334,14 +343,15 @@ contains
             call qs_init(kmp)
        endif
 
-!$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,kord_tm,remap_t, &
+!$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,kord,remap_t, &
+!$OMP                                  ikord_tm,ikord_mt,ikord_wz, &
 !$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic, &
 !$OMP                                  pt,pk,rg,peln,q,nwat,liq_wat,rainwat,ice_wat,snowwat,    &
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, adiabatic, &
-!$OMP                                  hs,w,ws,kord_wz,rrg,kord_mt,consv,remap_option,gmao_remap)    &
-!$OMP                          private(gz,cvm,bkh,dp2,   &
+!$OMP                                  hs,w,ws,rrg,consv,remap_option,gmao_remap)    &
+!$OMP                          private(gz,cvm,bkh,dpe1,dpe2,dpn1,dpn2,dpe0,dpe3,   &
 !$OMP                                  pe0,pe1,pe2,pe3,pk1,pk2,pn1,pn2,phis,q2,w2)
   do 1000 j=js,je+1
 
@@ -472,9 +482,11 @@ contains
          pe2(i,k) = ak(k) + bk(k)*pe(i,km+1,j)
       enddo
    enddo
+
    do k=1,km
       do i=is,ie
-         dp2(i,k) = pe2(i,k+1) - pe2(i,k)
+         dpe1(i,k) = pe1(i,k+1) - pe1(i,k)
+         dpe2(i,k) = pe2(i,k+1) - pe2(i,k)
       enddo
    enddo
 
@@ -502,6 +514,13 @@ contains
       enddo
    enddo
 
+   do k=1,km
+      do i=is,ie
+         dpn1(i,k) = pn1(i,k+1) - pn1(i,k)
+         dpn2(i,k) = pn2(i,k+1) - pn2(i,k)
+      enddo
+   enddo
+
    if (remap_te) then
 !----------------------------------
 ! map TE in log P
@@ -513,7 +532,8 @@ contains
       else
          call map_scalar(km,  pn1,  te,       &
                          km,  pn2,  te,       &
-                         is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), no_min)
+                         dpn1, dpn2, 1,       &
+                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), no_min)
       endif
    else
 !----------------------------------
@@ -526,55 +546,39 @@ contains
       else
          call map_scalar(km,  pn1,  pt,       &
                          km,  pn2,  pt,       &
-                         is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), t_min)
+                         dpn1, dpn2, 1,       &
+                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), t_min)
       endif
    endif
 
 !----------------
 ! Map constituents
 !----------------
-      if( nq > 10 ) then
-           call mapn_tracer(nq, km, pe1, pe2, q, dp2, kord_tr, j,     &
-                            is, ie, isd, ied, jsd, jed, 0., fill)
-      elseif ( nq > 0 ) then
-! Remap one tracer at a time
-         do iq=1,nq
-            call map_scalar(km,  pe1,  q(isd,jsd,1,iq),     &
-                            km,  pe2,  q(isd,jsd,1,iq),     &
-                            is, ie, j, isd, ied, jsd, jed, 0, kord_tr(iq), 0.)
-            if (fill) then
-              do k=1,km
-                 do i=is,ie
-                    q2(i,k) = q(i,j,k,iq)
-                 enddo
-              enddo
-              call fillz(ie-is+1, km, 1, q2, dp2)
-              do k=1,km
-                 do i=is,ie
-                    q(i,j,k,iq) = q2(i,k)
-                 enddo
-              enddo
-            endif
-         enddo
-      endif
+   call map_scalar(km,  pe1,  q(isd,jsd,1,1),     &
+                   km,  pe2,  q(isd,jsd,1,1),     &
+                   dpe1, dpe2,            nq,     &
+                   is, ie, j, isd, ied, jsd, jed, 0, kord_tr, 0.)
+   if (fill) call fillz(ie-is+1, km, nq, q(is:ie,j:j,1:km,1:nq), dpe2)
 
    if ( .not. hydrostatic ) then
 ! Remap vertical wind:
-        call map_scalar(km,   pe1,  w,              &
-                        km,   pe2,  w,              &
-                        is, ie, j, isd, ied, jsd, jed, -2, kord_wz, no_min, q_bot=ws(is,j))
+        call map_scalar(km,   pe1,  w,      &
+                        km,   pe2,  w,      &
+                        dpe1, dpe2, 1,      &
+                        is, ie, j, isd, ied, jsd, jed, -2, kord(ikord_wz), no_min, q_bot=ws(is,j))
 ! Remap delz for hybrid sigma-p coordinate
         do k=1,km
            do i=is,ie
               delz(i,j,k) = -delz(i,j,k) / delp(i,j,k) ! ="specific volume"/grav
            enddo
         enddo
-        call map_scalar(km,   pe1, delz,            &
-                        km,   pe2, delz,            &
-                        is, ie, j, isd,  ied,  jsd,  jed,  1, abs(kord_wz), no_min)
+        call map_scalar(km,   pe1, delz,    &
+                        km,   pe2, delz,    &
+                        dpe1, dpe2,   1,    &
+                        is, ie, j, isd,  ied,  jsd,  jed,  1, kord(ikord_wz), no_min)
         do k=1,km
            do i=is,ie
-              delz(i,j,k) = -delz(i,j,k)*dp2(i,k)
+              delz(i,j,k) = -delz(i,j,k)*dpe2(i,k)
            enddo
         enddo
 
@@ -589,14 +593,14 @@ contains
             do k=1, km-1
                do i=is,ie
                   if ( w2(i,k) > w_max ) then
-                     gz(i) = (w2(i,k)-w_max) * dp2(i,k)
+                     gz(i) = (w2(i,k)-w_max) * dpe2(i,k)
                      w2(i,k  ) = w_max
-                     w2(i,k+1) = w2(i,k+1) + gz(i)/dp2(i,k+1)
+                     w2(i,k+1) = w2(i,k+1) + gz(i)/dpe2(i,k+1)
                      !print*, ' W_LIMITER down: ', i,j,k, w2(i,k:k+1), w(i,j,k:k+1)
                   elseif ( w2(i,k) < w_min ) then
-                     gz(i) = (w2(i,k)-w_min) * dp2(i,k)
+                     gz(i) = (w2(i,k)-w_min) * dpe2(i,k)
                      w2(i,k  ) = w_min
-                     w2(i,k+1) = w2(i,k+1) + gz(i)/dp2(i,k+1)
+                     w2(i,k+1) = w2(i,k+1) + gz(i)/dpe2(i,k+1)
                      !print*, ' W_LIMITER down: ', i,j,k, w2(i,k:k+1), w(i,j,k:k+1)
                   endif
                enddo
@@ -604,14 +608,14 @@ contains
             do k=km, 2, -1
                do i=is,ie
                   if ( w2(i,k) > w_max ) then
-                     gz(i) = (w2(i,k)-w_max) * dp2(i,k)
+                     gz(i) = (w2(i,k)-w_max) * dpe2(i,k)
                      w2(i,k  ) = w_max
-                     w2(i,k-1) = w2(i,k-1) + gz(i)/dp2(i,k-1)
+                     w2(i,k-1) = w2(i,k-1) + gz(i)/dpe2(i,k-1)
                      !print*, ' W_LIMITER up: ', i,j,k, w2(i,k-1:k), w(i,j,k-1:k)
                   elseif ( w2(i,k) < w_min ) then
-                     gz(i) = (w2(i,k)-w_min) * dp2(i,k)
+                     gz(i) = (w2(i,k)-w_min) * dpe2(i,k)
                      w2(i,k  ) = w_min
-                     w2(i,k-1) = w2(i,k-1) + gz(i)/dp2(i,k-1)
+                     w2(i,k-1) = w2(i,k-1) + gz(i)/dpe2(i,k-1)
                      !print*, ' W_LIMITER up: ', i,j,k, w2(i,k-1:k), w(i,j,k-1:k)
                   endif
                enddo
@@ -645,29 +649,39 @@ contains
 
       do k=2,km+1
          do i=is,ie
-            pe0(i,k) = 0.5*(pe(i,k,j-1)+pe(i,k,j))
+            pe1(i,k) = 0.5*(pe(i,k,j-1)+pe(i,k,j))
          enddo
       enddo
 
       do k=1,km+1
          bkh = 0.5*bk(k)
          do i=is,ie
-            pe3(i,k) = ak(k) + bkh*(pe(i,km+1,j-1)+pe(i,km+1,j))
+            pe2(i,k) = ak(k) + bkh*(pe(i,km+1,j-1)+pe(i,km+1,j))
          enddo
       enddo
 
-      call map_scalar(km, pe0(is:ie,:),   u,         &
-                      km, pe3(is:ie,:),   u,               &
-                      is, ie, j, isd, ied, jsd, jed+1, -1, kord_mt, no_min)
+      do k=1,km
+         do i=is,ie
+            dpe1(i,k) = pe1(i,k+1) - pe1(i,k)
+            dpe2(i,k) = pe2(i,k+1) - pe2(i,k)
+         enddo
+      enddo
+
+      call map_scalar(km, pe1,   u,         &
+                      km, pe2,   u,         &
+                      dpe1, dpe2, 1,        &
+                      is, ie, j, isd, ied, jsd, jed+1, -1, kord(ikord_mt), no_min)
       if (present(mfy)) then
-         call map_scalar(km, pe0(is:ie,:), mfy,       &
-                         km, pe3(is:ie,:), mfy,       &
-                         is, ie, j, is, ie, js, je+1, -1, kord_mt, no_min)
+         call map_scalar(km, pe1, mfy,      &
+                         km, pe2, mfy,      &
+                         dpe1, dpe2, 1,     &
+                         is, ie, j, is, ie, js, je+1, -1, kord(ikord_mt), no_min)
       endif
       if (present(cy)) then
-         call map_scalar(km, pe0(is:ie,:), cy,       &
-                         km, pe3(is:ie,:), cy,       &
-                         is, ie, j, isd, ied, js, je+1, -1, kord_mt, no_min)
+         call map_scalar(km, pe1, cy,       &
+                         km, pe2, cy,       &
+                         dpe1, dpe2, 1,     &
+                         is, ie, j, isd, ied, js, je+1, -1, kord(ikord_mt), no_min)
       endif
 
 !------
@@ -687,18 +701,28 @@ contains
          enddo
       enddo
 
-      call map_scalar(km, pe0,  v,        &
-                      km, pe3,  v, is, ie+1,    &
-                      j, isd, ied+1, jsd, jed, -1, kord_mt, no_min)
+      do k=1,km
+         do i=is,ie+1
+            dpe0(i,k) = pe0(i,k+1) - pe0(i,k)
+            dpe3(i,k) = pe3(i,k+1) - pe3(i,k)
+         enddo
+      enddo
+
+      call map_scalar(km, pe0,  v,               &
+                      km, pe3,  v,               &
+                      dpe0, dpe3, 1, is, ie+1,      &
+                      j, isd, ied+1, jsd, jed, -1, kord(ikord_mt), no_min)
       if (present(mfx)) then
-         call map_scalar(km, pe0, mfx,              &
-                         km, pe3, mfx, is, ie+1,    &
-                         j, is, ie+1, js, je, -1, kord_mt, no_min)
+         call map_scalar(km, pe0, mfx,           &
+                         km, pe3, mfx,           &
+                         dpe0, dpe3, 1, is, ie+1,   &
+                         j, is, ie+1, js, je, -1, kord(ikord_mt), no_min)
       endif
       if (present(cx)) then
-         call map_scalar(km, pe0, cx,              &
-                         km, pe3, cx, is, ie+1,    &
-                         j, is, ie+1, jsd, jed, -1, kord_mt, no_min)
+         call map_scalar(km, pe0, cx,            &
+                         km, pe3, cx,            &
+                         dpe0, dpe3, 1, is, ie+1,   &
+                         j, is, ie+1, jsd, jed, -1, kord(ikord_mt), no_min)
       endif
     endif ! (j < je+1)
 
@@ -706,13 +730,13 @@ contains
 
 ! Update pressure variables and get new pkz, T_v, and omega
 
-!$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,kord_tm,remap_t, &
+!$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,remap_t, &
 !$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic, &
 !$OMP                                  pt,pk,rg,peln,q,nwat,liq_wat,rainwat,ice_wat,snowwat,    &
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
-!$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, &
-!$OMP                                  hs,w,ws,kord_wz,do_omega,omga,rrg,kord_mt)    &
+!$OMP                                  ak,bk,nq,isd,ied,jsd,jed,fill, &
+!$OMP                                  hs,w,ws,do_omega,omga,rrg)    &
 !$OMP                          private(gz,cvm,kp,k_next,bkh,dp2,   &
 !$OMP                                  pe2,pe3,pk2,pn2,phis,tpe,dlnp,tmp)
   do 2000 j=js,je
@@ -917,7 +941,7 @@ contains
 ! Do total energy conservation and fast saturation adjustment as requested
 ! and fill new PT (Theta_V) for next k_split step or export dry T
 
-!$OMP parallel default(none) shared(is,ie,js,je,km,kmp,ptop,u,v,pe,isd,ied,jsd,jed,kord_mt, &
+!$OMP parallel default(none) shared(is,ie,js,je,km,kmp,ptop,u,v,pe,isd,ied,jsd,jed, &
 !$OMP                               remap_t,remap_pt,remap_te, tmp_2D, &
 !$OMP                               te_2d,te,delp,hydrostatic,hs,rg,pt,peln, adiabatic, &
 !$OMP                               cp,delz,nwat,rainwat,liq_wat,ice_wat,snowwat,       &
@@ -925,7 +949,7 @@ contains
 !$OMP                               do_adiabatic_init,zsum1,zsum0,te0_2d,domain,        &
 !$OMP                               ng,sflag,gridstruct,E_Flux,pdt,dtmp,q,              &
 !$OMP                               mdt,cld_amt,cappa,dtdt,out_dt,rrg,akap,do_sat_adj,  &
-!$OMP                               fast_mp_consv,kord_tm) &
+!$OMP                               fast_mp_consv) &
 !$OMP                       private(pe0,pe1,pe2,pe3,cvm,gz,phis,tesum,zsum,dpln,dlnp,tmp)
 
 dtmp = 0.
@@ -1363,22 +1387,26 @@ endif        ! end last_step check
  end subroutine pkez
 
  subroutine map_scalar( km,   pe1,    q1,                 &
-                        kn,   pe2,    q2,   i1, i2,       &
-                         j,  ibeg, iend, jbeg, jend, iv,  kord, q_min, q_bot)
+                        kn,   pe2,    q2,                 &
+                        dpe1, dpe2,   nq,   i1,  i2,      &
+                         j,  ibeg, iend, jbeg, jend, iv, kord, q_min, q_bot)
 ! iv=1
+ integer, intent(in) :: nq                !< total number of species to be mapped
  integer, intent(in) :: i1                !< Starting longitude
  integer, intent(in) :: i2                !< Finishing longitude
  integer, intent(in) :: iv                !< Mode: 0 == constituents 1 == temp 2 == remap temp with cs scheme
- integer, intent(in) :: kord              !< Method order
+ integer, intent(in) :: kord(nq)          !< Method order
  integer, intent(in) :: j                 !< Current latitude
  integer, intent(in) :: ibeg, iend, jbeg, jend
  integer, intent(in) :: km                !< Original vertical dimension
  integer, intent(in) :: kn                !< Target vertical dimension
  real, intent(in) ::  pe1(i1:i2,km+1)  !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
  real, intent(in) ::  pe2(i1:i2,kn+1)  !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
- real, intent(in) ::    q1(ibeg:iend,jbeg:jend,km) !< Field input
+ real, intent(in) :: dpe1(i1:i2,km)    !< pressure thickness in the original vertical coordinate
+ real, intent(in) :: dpe2(i1:i2,kn)    !< pressure thickness in the new vertical coordinate
+ real, intent(in) ::    q1(ibeg:iend,jbeg:jend,1:km,1:nq) !< Field input
 ! INPUT/OUTPUT PARAMETERS:
- real, intent(inout)::  q2(ibeg:iend,jbeg:jend,kn) !< Field output
+ real, intent(inout)::  q2(ibeg:iend,jbeg:jend,1:kn,1:nq) !< Field output
  real, intent(in):: q_min              !< minimum for scheme
 ! Optional aruguments:
  real, optional, intent(in):: q_bot(i1:i2)       !< bottom BC
@@ -1390,25 +1418,27 @@ endif        ! end last_step check
 ! pe2: pressure at layer edges (from model top to bottom surface)
 !      in the new vertical coordinate
 ! LOCAL VARIABLES:
-   real    dp1(i1:i2,km)
-   real   q4(4,i1:i2,km)
-   real    pl, pr, qsum, dp, esl
-   integer i, k, l, m, k0
+   real, allocatable :: q4(:,:,:,:)
+   real, allocatable :: qsum(:)
+   real    pl, pr, pfac0, pfac1, pfac2, dp, esl
+   integer i, k, l, m, k0, iq
    integer LM1,LP0,LP1 
 
-   do k=1,km
-      do i=i1,i2
-         dp1(i,k) = pe1(i,k+1) - pe1(i,k)
-         q4(1,i,k) = q1(i,j,k)
-      enddo
-   enddo
+   allocate ( q4(4,i1:i2,km,nq) )
+   allocate ( qsum(nq) )
 
-! Compute vertical subgrid distribution
-   if ( kord >  7 ) then
-        call scalar_profile( q4, dp1, km, i1, i2, iv, kord, q_min, qs=q_bot )
-   else
-        call ppm_profile( q4, dp1, km, i1, i2, iv, kord )
-   endif
+   do iq=1,nq
+      do k=1,km
+         do i=i1,i2
+            q4(1,i,k,iq) = q1(i,j,k,iq)
+         enddo
+      enddo
+      if ( kord(iq) >  7 ) then
+        call scalar_profile( q4(1,i1,1,iq), dpe1, km, i1, i2, 0, kord(iq), q_min, qs=q_bot)
+      else
+        call ppm_profile( q4(1,i1,1,iq), dpe1, km, i1, i2, 0, kord(iq))
+      endif
+   enddo
 
 ! Interpolate field onto target Pressures
 ! ---------------------------------------
@@ -1430,50 +1460,55 @@ endif        ! end last_step check
 ! Entire grid below old ps
 ! ----------------------------------------------------
       if( pe2(i,k) .ge. pe1(i,km+1)) then
-            q2(i,j,k) = q1(i,j,km)
+            q2(i,j,k,:) = q1(i,j,km,:)
 ! Extrapolate Linearly above first model level
 ! ----------------------------------------------------
       else if( LM1.eq.1 .and. LP0.eq.1 ) then
-             q2(i,j,k) = q1(i,j,1) + ( q1(i,j,2)-q1(i,j,1) )*( pe2(i,k)-pe1(i,1) ) &
-                                                            /( pe1(i,2)-pe1(i,1) )
+            pfac0=(pe2(i,k)-pe1(i,1))/(pe1(i,2)-pe1(i,1))
+            q2(i,j,k,:) = q1(i,j,1,:) + ( q1(i,j,2,:)-q1(i,j,1,:) )*pfac0
 ! Extrapolate Linearly below last model level
 ! ----------------------------------------------------
       else if( LM1.eq.km .and. LP0.eq.km ) then
-             q2(i,j,k) = q1(i,j,km) + ( q1(i,j,km)-q1(i,j,km-1) )*( pe2(i,k )-pe1(i,km  ) ) &
-                                                                 /( pe1(i,km)-pe1(i,km-1) )
+            pfac0=(pe2(i,k )-pe1(i,km  ))/(pe1(i,km)-pe1(i,km-1))
+            q2(i,j,k,:) = q1(i,j,km,:) + ( q1(i,j,km,:)-q1(i,j,km-1,:) )*pfac0
 ! Interpolate Linearly between levels 1 => 2 and km-1 => km
 ! -----------------------------------------------------------------
       else if( LM1.eq.1 .or. LP0.eq.km ) then
-             q2(i,j,k) = q1(i,j,LP0) + ( q1(i,j,LM1)-q1(i,j,LP0) )*( pe2(i,k  )-pe1(i,LP0) ) &
-                                                                  /( pe1(i,LM1)-pe1(i,LP0) )
+            pfac0=(pe2(i,k  )-pe1(i,LP0))/(pe1(i,LM1)-pe1(i,LP0))
+            q2(i,j,k,:) = q1(i,j,LP0,:) + ( q1(i,j,LM1,:)-q1(i,j,LP0,:) )*pfac0
       else
          
       do l=k0,km
 ! locate the top edge: pe2(i,k)
       if( pe2(i,k) >= pe1(i,l) .and. pe2(i,k) <= pe1(i,l+1) ) then
-         pl = (pe2(i,k)-pe1(i,l)) / dp1(i,l)
+         pl = (pe2(i,k)-pe1(i,l)) / dpe1(i,l)
          if( pe2(i,k+1) <= pe1(i,l+1) ) then
 ! entire new grid is within the original grid
-            pr = (pe2(i,k+1)-pe1(i,l)) / dp1(i,l)
-            q2(i,j,k) = q4(2,i,l) + 0.5*(q4(4,i,l)+q4(3,i,l)-q4(2,i,l))  &
-                       *(pr+pl)-q4(4,i,l)*r3*(pr*(pr+pl)+pl**2)
+            pr = (pe2(i,k+1)-pe1(i,l)) / dpe1(i,l)
+            pfac1 = (pr+pl)
+            pfac2 = r3*(pr*pfac1+pl**2)
+            q2(i,j,k,:) = q4(2,i,l,:) + 0.5*(q4(4,i,l,:)+q4(3,i,l,:)-q4(2,i,l,:))  &
+                       *pfac1-q4(4,i,l,:)*pfac2
                k0 = l
                goto 555
          else
 ! Fractional area...
-            qsum = (pe1(i,l+1)-pe2(i,k))*(q4(2,i,l)+0.5*(q4(4,i,l)+   &
-                    q4(3,i,l)-q4(2,i,l))*(1.+pl)-q4(4,i,l)*           &
-                     (r3*(1.+pl*(1.+pl))))
+            pfac0 = pe1(i,l+1)-pe2(i,k)
+            pfac1 = (1.+pl)
+            pfac2 = r3*(1.+pl*pfac1)
+            qsum(:) = pfac0*(q4(2,i,l,:)+0.5*(q4(4,i,l,:)+   &
+                      q4(3,i,l,:)-q4(2,i,l,:))*pfac1-q4(4,i,l,:)*pfac2)
               do m=l+1,km
 ! locate the bottom edge: pe2(i,k+1)
                  if( pe2(i,k+1) > pe1(i,m+1) ) then
 ! Whole layer
-                     qsum = qsum + dp1(i,m)*q4(1,i,m)
+                     qsum(:) = qsum(:) + dpe1(i,m)*q4(1,i,m,:)
                  else
                      dp = pe2(i,k+1)-pe1(i,m)
-                     esl = dp / dp1(i,m)
-                     qsum = qsum + dp*(q4(2,i,m)+0.5*esl*               &
-                           (q4(3,i,m)-q4(2,i,m)+q4(4,i,m)*(1.-r23*esl)))
+                     esl = (dp / dpe1(i,m))
+                     pfac0 = (1.-r23*esl)
+                     qsum(:) = qsum(:) + dp*(q4(2,i,m,:)+0.5*esl*               &
+                              (q4(3,i,m,:)-q4(2,i,m,:)+q4(4,i,m,:)*pfac0))
                      k0 = m
                      goto 123
                  endif
@@ -1482,11 +1517,14 @@ endif        ! end last_step check
          endif
       endif
       enddo
-123   q2(i,j,k) = qsum / ( pe2(i,k+1) - pe2(i,k) )
+123   q2(i,j,k,:) = qsum(:) / dpe2(i,k)
 
       endif
 555   continue
   enddo
+
+  deallocate( q4 )
+  deallocate( qsum )
 
  end subroutine map_scalar
 
@@ -1593,7 +1631,6 @@ endif        ! end last_step check
   if (fill) call fillz(i2-i1+1, km, nq, q2, dp2)
 
   do iq=1,nq
-!    if (fill) call fillz(i2-i1+1, km, 1, q2(i1,1,iq), dp2)
      do k=1,km
         do i=i1,i2
            q1(i,j,k,iq) = q2(i,k,iq)
