@@ -68,10 +68,6 @@ module fv_nesting_mod
 !     <td>fv_restart_mod</td>
 !     <td>d2a_setup, d2c_setup</td>
 !   </tr>
-!   <tr>
-!     <td>fv_sg_mod</td>
-!     <td>neg_adj3</td>
-!   </tr>
 !  <tr>
 !     <td>fv_timing_mod</td>
 !     <td>timing_on, timing_off</td>
@@ -103,7 +99,6 @@ module fv_nesting_mod
    use mpp_domains_mod,     only: mpp_update_domains
    use field_manager_mod,   only: MODEL_ATMOS
    use tracer_manager_mod,  only: get_tracer_index
-   use fv_sg_mod,           only: neg_adj3
    use mpp_domains_mod,     only: mpp_get_data_domain, mpp_get_compute_domain, mpp_get_global_domain
    use mpp_domains_mod,     only: DGRID_NE, mpp_update_domains, domain2D
    use fv_restart_mod,      only: d2a_setup, d2c_setup

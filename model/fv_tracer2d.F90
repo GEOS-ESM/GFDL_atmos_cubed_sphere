@@ -844,7 +844,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                                     npx, npy, npz,   &
                                     nq, dt)
 
-      use fv_mapz_mod,        only: mapn_tracer, map_scalar
+      use fv_mapz_mod,        only: map_scalar
       use fv_fill_mod,        only: fillz
 
       integer, intent(IN) :: npx
@@ -874,7 +874,8 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real ::  dpL(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  ! Pressure Thickness
       real ::  dpA(bd%is :bd%ie   ,bd%js :bd%je   ,npz)  ! Pressure Thickness
 ! Local Tracer Arrays
-      real ::   q3(bd%isd:bd%ied,bd%jsd:bd%jed, npz,nq)! 3D Tracers
+      real ::   q3(bd%isd:bd%ied,bd%jsd:bd%jed, npz,nq)! Ghosted 3D Tracers
+      real ::   q2(bd%is :bd%ie ,               npz   )! 2D Tmp
 ! Local Buffer Arrarys
       real :: wbuffer(bd%js:bd%je,npz)
       real :: sbuffer(bd%is:bd%ie,npz)
@@ -968,11 +969,14 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
           do k=1,npz
              dp2(:,k) = pe2(:,k+1) - pe2(:,k)
           enddo
-          call map_scalar(npz, pe1, q3,                    &
-                          npz, pe2, q3,                    &
-                          dp1, dp2, nq,                    & 
-                          is, ie, j, isd, ied, jsd, jed, 0, kord_tracers, 0.)
-          if (flagstruct%fill) call fillz(ie-is+1, npz, nq, q3(is:ie,j,1:npz,1:nq), dp2)
+          do iq=1,nq
+            call map_scalar(npz, pe1, q3(isd,jsd,1,iq),                    &
+                            npz, pe2, q2,                                 &
+                            dp1, dp2,                        & 
+                            is, ie, j, isd, ied, jsd, jed, 0, kord_tracers(iq), 0.)
+            q3(is:ie,j,1:npz,iq) = q2
+         enddo
+          if (flagstruct%fill) call fillz(ie-is+1, npz, nq, q3, dp2)
        enddo
 
        ! Rescale tracers based on pleA at destination timestep
