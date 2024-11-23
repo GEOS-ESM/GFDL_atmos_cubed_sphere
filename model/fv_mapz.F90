@@ -630,12 +630,7 @@ contains
             enddo
          endif
         ! fill new W
-         do k=1,km
-            do i=is,ie
-               w(i,j,k) = w2(i,k)
-            enddo
-         enddo
-
+         w(is:ie,j,:) = w2
     endif
 
   endif !(j < je+1)
@@ -643,10 +638,9 @@ contains
 !------
 ! map u
 !------
-      do i=is,ie+1
+      do i=is,ie
          pe1(i,1) = ptop
       enddo
-
       do k=2,km+1
          do i=is,ie
             pe1(i,k) = 0.5*(pe(i,k,j-1)+pe(i,k,j))
@@ -691,9 +685,12 @@ contains
 ! map v
 !------
     if (j < je+1) then
+      do i=is,ie+1
+         pe0(i,1) = 0.5*(pe(i-1,1,j)+pe(i,1,j))
+      enddo
       do k=2,km+1
          do i=is,ie+1
-            pe0(i,k) = 0.5*(pe(i-1,k,   j)+pe(i,k,   j))
+            pe0(i,k) = 0.5*(pe(i-1,k,j)+pe(i,k,j))
          enddo
       enddo
 
