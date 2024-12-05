@@ -610,7 +610,7 @@ contains
     !$ser verbatim cxR8_ser = 0
     !$ser verbatim cyR8_ser = 0
     !$ser data nq=nq mdt=mdt n_split=n_split zvir=zvir  akap=akap cappa=cappa u=u v=v w=w delz=delz pt=pt  delp=delp pe=pe pk=pk phis=phis wsd=ws omga=omga ptop=ptop pfull=pfull ua=ua va=va uc=uc vc=vc
-    !$ser data mfxd=mfxR8_ser mfyd=mfyR8_ser cxd=cxR8_ser cyd=cyR8_ser
+    !$ser data mfxd_R8=mfxR8 mfyd_R8=mfyR8 cxd_R8=cxR8 cyd_R8=cyR8
     !$ser data pkz=pkz peln=peln q_con=q_con ak=ak bk=bk ks=ks diss_estd=diss_est n_map=n_map_step                                  
     if (.not. hydrostatic) then
 #ifdef USE_COND
@@ -675,9 +675,6 @@ contains
       !$ser verbatim cxR8_ser = cxL
       !$ser verbatim cyR8_ser = cyL
 #endif
-      !$ser data cappa=cappa u=u v=v w=w delz=delz pt=pt delp=delp pe=pe pk=pk phis=phis wsd=ws omga=omga ptop=ptop pfull=pfull ua=ua va=va uc=uc vc=vc
-      !$ser data mfxd=mfxR8_ser mfyd=mfyR8_ser cxd=cxR8_ser cyd=cyR8_ser 
-      !$ser data pkz=pkz peln=peln q_con=q_con diss_estd=diss_est
 
 !MassFluxRoundoffControl
 #ifdef SINGLE_FV
@@ -686,6 +683,10 @@ contains
        cxL= cxR8
        cyL= cyR8 
 #endif
+      !$ser data cappa=cappa u=u v=v w=w delz=delz pt=pt delp=delp pe=pe pk=pk phis=phis wsd=ws omga=omga ptop=ptop pfull=pfull ua=ua va=va uc=uc vc=vc
+      !$ser data mfxd_R8=mfxR8 mfyd_R8=mfyR8 cxd_R8=cxR8 cyd_R8=cyR8
+      !$ser data mfxL=mfxL mfyL=mfyL cxL=cxL cyL=cyL
+      !$ser data pkz=pkz peln=peln q_con=q_con diss_estd=diss_est
       
 !DryMassRoundoffControl
       if(last_step) then
@@ -733,14 +734,14 @@ contains
          if ( flagstruct%z_tracer ) then
          !$ser savepoint Tracer2D1L-In
          !$ser data tracers=q dp1=dp1
-         !$ser data mfxd=mfxL mfyd=mfyL cxd=cxL cyd=cyL
+         !$ser data mfxd_R4=mfxL mfyd_R4=mfyL cxd_R4=cxL cyd_R4=cyL
          !$ser data nq=nq q_split=q_split mdt=mdt
          call tracer_2d_1L(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac)
          !$ser savepoint Tracer2D1L-Out
          !$ser data tracers=q dp1=dp1
-         !$ser data mfxd=mfxL mfyd=mfyL cxd=cxL cyd=cyL
+         !$ser data mfxd_R4=mfxL mfyd_R4=mfyL cxd_R4=cxL cyd_R4=cyL
          else
          call tracer_2d(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), &
