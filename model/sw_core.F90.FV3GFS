@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License
+!*                   GNU Lesser General Public License                 
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it
+!* The FV3 dynamical core is free software: you can redistribute it 
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or
+!* Free Software Foundation, either version 3 of the License, or 
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+!* The FV3 dynamical core is distributed in the hope that it will be 
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.
+!* License along with the FV3 dynamical core.  
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -23,7 +23,7 @@
 !! as described by \cite lin1997explicit, \cite lin2004vertically, and \cite harris2013two.
 !>@details The step is applied to the cubed sphere.
 
-module sw_core_mod
+ module sw_core_mod
 
 ! Modules Included:
 ! <table>
@@ -43,7 +43,6 @@ module sw_core_mod
 !     <td>ng,fill_corners, XDir, YDir</td>
 !   </tr>
 ! </table>
- 
  !$ser verbatim use mpi
  use fv_mp_mod,         only: ng
  use tp_core_mod,       only: fv_tp_2d, pert_ppm, copy_corners
@@ -51,7 +50,6 @@ module sw_core_mod
  use fv_arrays_mod, only: fv_grid_type, fv_grid_bounds_type, fv_flags_type
  use a2b_edge_mod, only: a2b_ord4
  !$ser verbatim use k_checkpoint, only: get_k,get_nz
-
 #ifdef SW_DYNAMICS
  use test_cases_mod,   only: test_case
 #endif
@@ -97,7 +95,6 @@ module sw_core_mod
 
       private
       public :: c_sw, d_sw, fill_4corners, del6_vt_flux, divergence_corner, divergence_corner_nest
-      public :: d2a2c_vect
 
   contains
 
@@ -121,7 +118,7 @@ module sw_core_mod
       type(fv_flags_type), intent(IN), target :: flagstruct
 
 ! Local:
-      logical:: sw_corner, se_corner, ne_corner, nw_corner
+      logical:: sw_corner, se_corner, ne_corner, nw_corner 
       real, dimension(bd%is-1:bd%ie+1,bd%js-1:bd%je+1):: vort, ke
       real, dimension(bd%is-1:bd%ie+2,bd%js-1:bd%je+1):: fx, fx1, fx2
       real, dimension(bd%is-1:bd%ie+1,bd%js-1:bd%je+2):: fy, fy1, fy2
@@ -132,7 +129,7 @@ module sw_core_mod
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
       integer :: npx, npy
-      logical :: nested
+      logical :: nested,regional
 
       real, pointer, dimension(:,:,:) :: sin_sg, cos_sg
       real, pointer, dimension(:,:)   :: cosa_u, cosa_v
@@ -155,6 +152,7 @@ module sw_core_mod
       npx = flagstruct%npx
       npy = flagstruct%npy
       nested = gridstruct%nested
+      regional = gridstruct%regional
 
       sin_sg  => gridstruct%sin_sg
       cos_sg  => gridstruct%cos_sg
@@ -173,19 +171,20 @@ module sw_core_mod
       ne_corner = gridstruct%ne_corner
 
       iep1 = ie+1; jep1 = je+1
-
       !$ser savepoint D2A2C_Vect-In
       !$ser data_kbuff k=k k_size=nz uc=uc vc=vc u=u v=v ua=ua va=va utc=ut vtc=vt
       !$ser verbatim if (k == nz) then 
       !$ser data dord4=dord4
       !$ser verbatim endif
+    
       call d2a2c_vect(u, v, ua, va, uc, vc, ut, vt, dord4, gridstruct, bd, &
-                      npx, npy, nested, flagstruct%grid_type)
+           npx, npy, nested, flagstruct%grid_type, regional )
       !$ser savepoint D2A2C_Vect-Out
       !$ser data_kbuff k=k k_size=nz uc=uc vc=vc ua=ua va=va utc=ut vtc=vt
 
+
       if( nord > 0 ) then
-         if (nested) then
+         if (nested .or. regional) then
             call divergence_corner_nest(u, v, ua, va, divg_d, gridstruct, flagstruct, bd)
          else
             !$ser savepoint DivergenceCorner-In
@@ -199,7 +198,7 @@ module sw_core_mod
       do j=js-1,jep1
          do i=is-1,iep1+1
             if (ut(i,j) > 0.) then
-                ut(i,j) = dt2*ut(i,j)*dy(i,j)*sin_sg(i-1,j,3)
+                ut(i,j) = dt2*ut(i,j)*dy(i,j)*sin_sg(i-1,j,3) 
             else
                 ut(i,j) = dt2*ut(i,j)*dy(i,j)*sin_sg(i,j,1)
             end if
@@ -208,7 +207,7 @@ module sw_core_mod
       do j=js-1,je+2
          do i=is-1,iep1
             if (vt(i,j) > 0.) then
-                vt(i,j) = dt2*vt(i,j)*dx(i,j)*sin_sg(i,j-1,4)
+                vt(i,j) = dt2*vt(i,j)*dx(i,j)*sin_sg(i,j-1,4) 
             else
                 vt(i,j) = dt2*vt(i,j)*dx(i,j)*sin_sg(i,j,  2)
             end if
@@ -219,8 +218,8 @@ module sw_core_mod
 ! Transport delp:
 !----------------
 ! Xdir:
-      if (flagstruct%grid_type < 3 .and. .not. nested) call fill2_4corners(delp, pt, 1, bd, npx, npy, sw_corner, se_corner, ne_corner, nw_corner)
-
+      if (flagstruct%grid_type < 3 .and. .not. (nested .or. regional)) &
+       call fill2_4corners(delp, pt, 1, bd, npx, npy, sw_corner, se_corner, ne_corner, nw_corner)
       if ( hydrostatic ) then
 #ifdef SW_DYNAMICS
            do j=js-1,jep1
@@ -248,11 +247,11 @@ module sw_core_mod
               enddo
            enddo
 #endif
-      else
+        else
            if (flagstruct%grid_type < 3)   &
-               call fill_4corners(w, 1, bd, npx, npy, sw_corner, se_corner, ne_corner, nw_corner)
+                call fill_4corners(w, 1, bd, npx, npy, sw_corner, se_corner, ne_corner, nw_corner)
            do j=js-1,je+1
-              do i=is-1,ie+2
+              do i=is-1,ie+2      
                  if ( ut(i,j) > 0. ) then
                       fx1(i,j) = delp(i-1,j)
                        fx(i,j) =   pt(i-1,j)
@@ -267,19 +266,21 @@ module sw_core_mod
                  fx2(i,j) = fx1(i,j)*fx2(i,j)
               enddo
            enddo
+          
       endif
 
 ! Ydir:
       !$ser verbatim dir=2
-      !$ser verbatim if (flagstruct%grid_type < 3 .and. .not. nested) then
+      !$ser verbatim if (flagstruct%grid_type < 3 .and. .not. (nested .or. regional)) then
       !$ser verbatim if (k == nz) then 
       !$ser data dir=dir
       !$ser verbatim endif
-      if (flagstruct%grid_type < 3 .and. .not. nested) call fill2_4corners(delp, pt, 2, bd, npx, npy, sw_corner, se_corner, ne_corner, nw_corner)
-      !$ser verbatim endif
+      if (flagstruct%grid_type < 3 .and. .not. (nested .or. regional))  &
+       call fill2_4corners(delp, pt, 2, bd, npx, npy, sw_corner, se_corner, ne_corner, nw_corner)
+       !$ser verbatim endif
       if ( hydrostatic ) then
            do j=js-1,jep1+1
-              do i=is-1,iep1
+              do i=is-1,iep1      
                  if ( vt(i,j) > 0. ) then
                       fy1(i,j) = delp(i,j-1)
                        fy(i,j) =   pt(i,j-1)
@@ -292,7 +293,7 @@ module sw_core_mod
               enddo
            enddo
            do j=js-1,jep1
-              do i=is-1,iep1
+              do i=is-1,iep1    
                  delpc(i,j) = delp(i,j) + (fx1(i,j)-fx1(i+1,j)+fy1(i,j)-fy1(i,j+1))*gridstruct%rarea(i,j)
 #ifdef SW_DYNAMICS
                    ptc(i,j) = pt(i,j)
@@ -305,7 +306,7 @@ module sw_core_mod
       else
            if (flagstruct%grid_type < 3) call fill_4corners(w, 2, bd, npx, npy, sw_corner, se_corner, ne_corner, nw_corner)
            do j=js-1,je+2
-              do i=is-1,ie+1
+              do i=is-1,ie+1      
                  if ( vt(i,j) > 0. ) then
                       fy1(i,j) = delp(i,j-1)
                        fy(i,j) =   pt(i,j-1)
@@ -321,7 +322,7 @@ module sw_core_mod
               enddo
            enddo
            do j=js-1,je+1
-              do i=is-1,ie+1
+              do i=is-1,ie+1    
                  delpc(i,j) = delp(i,j) + (fx1(i,j)-fx1(i+1,j)+fy1(i,j)-fy1(i,j+1))*gridstruct%rarea(i,j)
                    ptc(i,j) = (pt(i,j)*delp(i,j) +   &
                               (fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*gridstruct%rarea(i,j))/delpc(i,j)
@@ -330,17 +331,16 @@ module sw_core_mod
               enddo
            enddo
       endif
-
 !------------
 ! Compute KE:
 !------------
 
-!Since uc = u*, i.e. the covariant wind perpendicular to the face edge, if we want to compute kinetic energy we will need the true coordinate-parallel covariant wind, computed through u = uc*sina + v*cosa.
+!Since uc = u*, i.e. the covariant wind perpendicular to the face edge, if we want to compute kinetic energy we will need the true coordinate-parallel covariant wind, computed through u = uc*sina + v*cosa. 
 !Use the alpha for the cell KE is being computed in.
 !!! TO DO:
 !!! Need separate versions for nesting/single-tile
 !!!   and for cubed-sphere
-      if (nested .or. flagstruct%grid_type >=3 ) then
+      if (nested .or. regional .or. flagstruct%grid_type >=3 ) then
          do j=js-1,jep1
          do i=is-1,iep1
             if ( ua(i,j) > 0. ) then
@@ -407,10 +407,9 @@ module sw_core_mod
       dt4 = 0.5*dt2
       do j=js-1,jep1
          do i=is-1,iep1
-            ke(i,j) = dt4*(ua(i,j)*ke(i,j) + va(i,j)*vort(i,j))
+            ke(i,j) = dt4*(ua(i,j)*ke(i,j) + va(i,j)*vort(i,j)) 
          enddo
       enddo
-
 !------------------------------
 ! Compute circulation on C grid
 !------------------------------
@@ -458,14 +457,13 @@ module sw_core_mod
 ! but we then must multiply by sin_sg to get the proper flux.
 ! These cancel, leaving us with fy1 = dt2*v at the edges.
 ! (For the same reason we only divide by sin instead of sin**2 in the interior)
-
       !$ser savepoint VorticityTransport_Cgrid-In
       !$ser data_kbuff k=k k_size=nz uc=uc vc=vc vort_c=vort ke_c=ke v=v u=u fxv=fx fyv=fy
       !$ser verbatim if (k == nz) then 
       !$ser data dt2=dt2
       !$ser verbatim endif
-!! TO DO: separate versions for nesting/single-tile and cubed-sphere
-      if (nested .or. flagstruct%grid_type >= 3) then
+      !! TO DO: separate versions for nesting/single-tile and cubed-sphere
+        if (nested .or. regional .or. flagstruct%grid_type >= 3) then
          do j=js,je
             do i=is,iep1
                fy1(i,j) = dt2*(v(i,j)-uc(i,j)*cosa_u(i,j))/sina_u(i,j)
@@ -540,18 +538,17 @@ module sw_core_mod
       enddo
       !$ser savepoint VorticityTransport_Cgrid-Out
       !$ser data_kbuff k=k k_size=nz uc=uc vc=vc
-
    end subroutine c_sw
 
 
 
-!     d_sw :: D-Grid Shallow Water Routine
+! d_sw :: D-Grid Shallow Water Routine
 
 !>@brief The subroutine 'd_sw' peforms a full-timestep advance of the D-grid winds
 !! and other prognostic varaiables. 
    subroutine d_sw(delpc, delp,  ptc,   pt, u,  v, w, uc,vc, &
                    ua, va, divg_d, xflux, yflux, cx, cy,              &
-                   crx_adv, cry_adv,  xfx_adv, yfx_adv, q_con, z_rat, kgb, heat_source, diss_est, dpx,  &
+                   crx_adv, cry_adv,  xfx_adv, yfx_adv, q_con, z_rat, kgb, heat_source,diss_est,  &
                    zvir, sphum, nq, q, k, km, inline_q,  &
                    dt, hord_tr, hord_mt, hord_vt, hord_tm, hord_dp, nord,   &
                    nord_v, nord_w, nord_t, dddmp, d2_bg, d4_bg, damp_v, damp_w, &
@@ -578,12 +575,11 @@ module sw_core_mod
       real, intent(OUT),   dimension(bd%is:bd%ie,bd%js:bd%je):: heat_source
       real, intent(OUT),   dimension(bd%is:bd%ie,bd%js:bd%je):: diss_est
 ! The flux capacitors:
-      real(kind=8), intent(INOUT),  dimension(bd%is:bd%ie,bd%js:bd%je):: dpx
-      real(kind=8), intent(INOUT):: xflux(bd%is:bd%ie+1,bd%js:bd%je  )
-      real(kind=8), intent(INOUT):: yflux(bd%is:bd%ie  ,bd%js:bd%je+1)
+      real, intent(INOUT):: xflux(bd%is:bd%ie+1,bd%js:bd%je  )
+      real, intent(INOUT):: yflux(bd%is:bd%ie  ,bd%js:bd%je+1)
 !------------------------
-      real(kind=8), intent(INOUT)::    cx(bd%is:bd%ie+1,bd%jsd:bd%jed  )
-      real(kind=8), intent(INOUT)::    cy(bd%isd:bd%ied,bd%js:bd%je+1)
+      real, intent(INOUT)::    cx(bd%is:bd%ie+1,bd%jsd:bd%jed  )
+      real, intent(INOUT)::    cy(bd%isd:bd%ied,bd%js:bd%je+1)
       logical, intent(IN):: hydrostatic
       logical, intent(IN):: inline_q
       real, intent(OUT), dimension(bd%is:bd%ie+1,bd%jsd:bd%jed):: crx_adv, xfx_adv
@@ -591,7 +587,7 @@ module sw_core_mod
       type(fv_grid_type), intent(IN), target :: gridstruct
       type(fv_flags_type), intent(IN), target :: flagstruct
 ! Local:
-      logical:: sw_corner, se_corner, ne_corner, nw_corner
+      logical:: sw_corner, se_corner, ne_corner, nw_corner 
       real :: ut(bd%isd:bd%ied+1,bd%jsd:bd%jed)
       real :: vt(bd%isd:bd%ied,  bd%jsd:bd%jed+1)
 !---
@@ -607,7 +603,7 @@ module sw_core_mod
       real ::   fy(bd%is:bd%ie  ,bd%js:bd%je+1)  !< 1-D Y-direction Fluxes
       real :: ra_x(bd%is:bd%ie,bd%jsd:bd%jed)
       real :: ra_y(bd%isd:bd%ied,bd%js:bd%je)
-      real :: gx(bd%is:bd%ie+1,bd%js:bd%je  )
+      real :: gx(bd%is:bd%ie+1,bd%js:bd%je  ) 
       real :: gy(bd%is:bd%ie  ,bd%js:bd%je+1)  !< work Y-dir flux array
       logical :: fill_c
 
@@ -629,7 +625,7 @@ module sw_core_mod
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
       integer :: npx, npy
-      logical :: nested
+      logical :: nested,regional
       !$ser verbatim integer :: mpi_rank,ier
       !$ser verbatim integer :: nz, dir
       !$ser verbatim real, dimension(1,1) :: damp_v_dup, nord_v_dup, nord_dup, nord_w_dup, damp4_dup, d2_bg_dup
@@ -640,7 +636,6 @@ module sw_core_mod
       !$ser verbatim d2_bg_dup(1,1)=d2_bg
       !$ser verbatim  call mpi_comm_rank(MPI_COMM_WORLD, mpi_rank,ier)
       !$ser verbatim call get_nz(nz)
-
       is  = bd%is
       ie  = bd%ie
       js  = bd%js
@@ -653,38 +648,39 @@ module sw_core_mod
       npx      = flagstruct%npx
       npy      = flagstruct%npy
       nested   = gridstruct%nested
+      regional = gridstruct%regional
 
-      area      => gridstruct%area
-      rarea     => gridstruct%rarea
-      sin_sg    => gridstruct%sin_sg
-      cosa_u    => gridstruct%cosa_u
-      cosa_v    => gridstruct%cosa_v
-      cosa_s    => gridstruct%cosa_s
-      sina_u    => gridstruct%sina_u
-      sina_v    => gridstruct%sina_v
-      rsin_u    => gridstruct%rsin_u
-      rsin_v    => gridstruct%rsin_v
-      rsina     => gridstruct%rsina
-      f0        => gridstruct%f0
-      rsin2     => gridstruct%rsin2
-      divg_u    => gridstruct%divg_u
-      divg_v    => gridstruct%divg_v
-      cosa      => gridstruct%cosa
-      dx        => gridstruct%dx
-      dy        => gridstruct%dy
-      dxc       => gridstruct%dxc
-      dyc       => gridstruct%dyc
-      rdxa      => gridstruct%rdxa
-      rdya      => gridstruct%rdya
-      rdx       => gridstruct%rdx
-      rdy       => gridstruct%rdy
+      area      => gridstruct%area   
+      rarea     => gridstruct%rarea  
+      sin_sg    => gridstruct%sin_sg 
+      cosa_u    => gridstruct%cosa_u 
+      cosa_v    => gridstruct%cosa_v 
+      cosa_s    => gridstruct%cosa_s 
+      sina_u    => gridstruct%sina_u 
+      sina_v    => gridstruct%sina_v 
+      rsin_u    => gridstruct%rsin_u 
+      rsin_v    => gridstruct%rsin_v 
+      rsina     => gridstruct%rsina  
+      f0        => gridstruct%f0     
+      rsin2     => gridstruct%rsin2  
+      divg_u    => gridstruct%divg_u 
+      divg_v    => gridstruct%divg_v 
+      cosa      => gridstruct%cosa   
+      dx        => gridstruct%dx     
+      dy        => gridstruct%dy     
+      dxc       => gridstruct%dxc    
+      dyc       => gridstruct%dyc    
+      rdxa      => gridstruct%rdxa   
+      rdya      => gridstruct%rdya   
+      rdx       => gridstruct%rdx    
+      rdy       => gridstruct%rdy    
 
       sw_corner = gridstruct%sw_corner
       se_corner = gridstruct%se_corner
       nw_corner = gridstruct%nw_corner
       ne_corner = gridstruct%ne_corner
 
-#ifdef SW_DYNAMICS
+#ifdef SW_DYNAMICS 
       if ( test_case == 1 ) then
         do j=jsd,jed
            do i=is,ie+1
@@ -719,14 +715,14 @@ module sw_core_mod
      if ( flagstruct%grid_type < 3 ) then
 
 !!! TO DO: separate versions for nesting and for cubed-sphere
-        if (nested) then
+        if (nested .or. regional) then
            do j=jsd,jed
-              do i=is,ie+1
+              do i=is-1,ie+2
                  ut(i,j) = ( uc(i,j) - 0.25 * cosa_u(i,j) *     &
                       (vc(i-1,j)+vc(i,j)+vc(i-1,j+1)+vc(i,j+1)))*rsin_u(i,j)
               enddo
            enddo
-           do j=js,je+1
+           do j=js-1,je+2
               do i=isd,ied
                  vt(i,j) = ( vc(i,j) - 0.25 * cosa_v(i,j) *     &
                       (uc(i,j-1)+uc(i+1,j-1)+uc(i,j)+uc(i+1,j)))*rsin_v(i,j)
@@ -753,7 +749,7 @@ module sw_core_mod
            enddo
         endif
 
-      if (.not. nested) then
+      if (.not. (nested .or. regional)) then
 ! West edge:
        if ( is==1 ) then
           do j=jsd,jed
@@ -825,10 +821,10 @@ module sw_core_mod
            enddo
        endif
 
-! The following code solves a 2x2 system to get the interior parallel-to-edge uc,vc values
-! near the corners (ex: for the sw corner ut(2,1) and vt(1,2) are solved for simultaneously).
-! It then computes the halo uc, vc values so as to be consistent with the computations on
-! the facing panel.
+! The following code solves a 2x2 system to get the interior parallel-to-edge uc,vc values 
+! near the corners (ex: for the sw corner ut(2,1) and vt(1,2) are solved for simultaneously). 
+! It then computes the halo uc, vc values so as to be consistent with the computations on 
+! the facing panel. 
 
        !The system solved is:
        !  ut(2,1) = uc(2,1) - avg(vt)*cosa_u(2,1)
@@ -909,7 +905,7 @@ module sw_core_mod
                       0.25*cosa_u(2,npy-1)*(vt(1,npy)+vt(2,npy)+vt(2,npy-1))) ) * damp
         endif
 
-       end if !.not. nested
+       end if !.not. (nested .or. regional)
 
      else
 ! flagstruct%grid_type >= 3
@@ -918,10 +914,10 @@ module sw_core_mod
               ut(i,j) =  uc(i,j)
            enddo
         enddo
-
+        
         do j=js,je+1
            do i=isd,ied
-              vt(i,j) = vc(i,j)
+              vt(i,j) = vc(i,j) 
            enddo
         enddo
      endif      ! end grid_type choices
@@ -939,7 +935,7 @@ module sw_core_mod
         enddo
 
 ! Explanation of the following code:
-!    xfx_adv = dt*ut*dy
+!    xfx_adv = dt*ut*dy   
 !    crx_adv = dt*ut/dx
 
         do j=jsd,jed
@@ -962,7 +958,7 @@ module sw_core_mod
                    yfx_adv(i,j) = dx(i,j)*yfx_adv(i,j)*sin_sg(i,j-1,4)
               else
                    cry_adv(i,j) = yfx_adv(i,j) * rdya(i,j)
-                   yfx_adv(i,j) = dx(i,j)*yfx_adv(i,j)*sin_sg(i,j,2)
+                   yfx_adv(i,j) = dx(i,j)*yfx_adv(i,j)*sin_sg(i,j,2) 
               endif
            enddo
         enddo
@@ -984,31 +980,32 @@ module sw_core_mod
 
       !$ser savepoint FxAdv-Out
       !$ser data_kbuff k=k k_size=nz ut=ut vt=vt yfx_adv=yfx_adv xfx_adv=xfx_adv  cry_adv=cry_adv  crx_adv=crx_adv ra_x=ra_x ra_y=ra_y
-
+     
       !$ser savepoint FvTp2d-2-In
       !$ser data_kbuff k=k k_size=nz q=delp crx=crx_adv cry=cry_adv fx=fx fy=fy xfx=xfx_adv yfx=yfx_adv ra_x=ra_x ra_y=ra_y damp_c=damp_v_dup nord_column=nord_v_dup
       !$ser verbatim if (k == nz) then 
       !$ser data hord=hord_dp
       !$ser verbatim endif
       call fv_tp_2d(delp, crx_adv, cry_adv, npx, npy, hord_dp, fx, fy,  &
-                    xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, nord=nord_v, damp_c=damp_v)
+                    xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, & 
+                    regional,nord=nord_v, damp_c=damp_v)
       !$ser savepoint FvTp2d-2-Out
       !$ser data_kbuff k=k k_size=nz q=delp fx=fx fy=fy
-
-! <<< Save the mass fluxes to the "Flux Capacitor" for tracer transport >>>
-       !$ser savepoint FluxCapacitor-In
-       !$ser data_kbuff k=k k_size=nz crx_adv=crx_adv fx=fx cry_adv=cry_adv fy=fy
-       !$ser data_kbuff k=k k_size=nz cx_R8=cx xflux_R8=xflux cy_R8=cy yflux_R8=yflux
+      
+      ! <<< Save the mass fluxes to the "Flux Capacitor" for tracer transport >>>
+      
+      !$ser savepoint FluxCapacitor-In
+      !$ser data_kbuff k=k k_size=nz cx=cx crx_adv=crx_adv xflux=xflux fx=fx cy=cy cry_adv=cry_adv yflux=yflux fy=fy
         do j=jsd,jed
             do i=is,ie+1
               cx(i,j) = cx(i,j) + crx_adv(i,j)
            enddo
-        enddo
+        enddo       
         do j=js,je
            do i=is,ie+1
               xflux(i,j) = xflux(i,j) + fx(i,j)
            enddo
-        enddo
+        enddo       
         do j=js,je+1
            do i=isd,ied
               cy(i,j) = cy(i,j) + cry_adv(i,j)
@@ -1016,10 +1013,9 @@ module sw_core_mod
            do i=is,ie
               yflux(i,j) = yflux(i,j) + fy(i,j)
            enddo
-        enddo
+        enddo 
         !$ser savepoint FluxCapacitor-Out
-        !$ser data_kbuff k=k k_size=nz cx_R8=cx xflux_R8=xflux cy_R8=cy yflux_R8=yflux
-
+        !$ser data_kbuff k=k k_size=nz cx=cx  xflux=xflux cy=cy yflux=yflux
 #ifndef SW_DYNAMICS
         do j=js,je
            do i=is,ie
@@ -1038,28 +1034,28 @@ module sw_core_mod
                  call del6_vt_flux(nord_w, npx, npy, damp4, w, wk, fx2, fy2, gridstruct, bd)
                  !$ser savepoint Del6VtFlux-Out
                  !$ser data_kbuff k=k k_size=nz fx2=fx2 fy2=fy2 wq=w wd2=wk
-
+                 
                  !$ser savepoint HeatDiss-In
                  !$ser data_kbuff k=k k_size=nz heat_source=heat_source diss_est=diss_est fx2=fx2 fy2=fy2 dw=dw w=w 
                  !$ser verbatim if (k == nz) then 
                  !$ser data dd8=dd8
                  !$ser verbatim endif
-                 do j=js,je
+                
+                do j=js,je
                    do i=is,ie
                       dw(i,j) = (fx2(i,j)-fx2(i+1,j)+fy2(i,j)-fy2(i,j+1))*rarea(i,j)
 ! 0.5 * [ (w+dw)**2 - w**2 ] = w*dw + 0.5*dw*dw
 !                   heat_source(i,j) = -d_con*dw(i,j)*(w(i,j)+0.5*dw(i,j))
                     heat_source(i,j) = dd8 - dw(i,j)*(w(i,j)+0.5*dw(i,j))
-                    if ( flagstruct%do_skeb ) then
-                       diss_est(i,j) = heat_source(i,j)
-                    endif
+                    diss_est(i,j) = heat_source(i,j)
                    enddo
-                 enddo
-                 !$ser savepoint HeatDiss-Out
-                 !$ser data_kbuff k=k k_size=nz heat_source=heat_source diss_est=diss_est dw=dw
+                enddo
+                !$ser savepoint HeatDiss-Out
+                !$ser data_kbuff k=k k_size=nz heat_source=heat_source diss_est=diss_est dw=dw
             endif
             call fv_tp_2d(w, crx_adv,cry_adv, npx, npy, hord_vt, gx, gy, xfx_adv, yfx_adv, &
-                          gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy)
+                          gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac,                  &
+                          regional,mfx=fx, mfy=fy)
             !$ser savepoint Wdivergence-In
             !$ser data_kbuff k=k k_size=nz delp=delp w=w gx=gx gy=gy
             do j=js,je
@@ -1069,11 +1065,12 @@ module sw_core_mod
             enddo
             !$ser savepoint Wdivergence-Out
             !$ser data_kbuff k=k k_size=nz w=w 
-         endif
+        endif
 
 #ifdef USE_COND
            call fv_tp_2d(q_con, crx_adv,cry_adv, npx, npy, hord_dp, gx, gy,  &
-                xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
+                xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac,&
+                regional, mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
             do j=js,je
                do i=is,ie
                   q_con(i,j) = delp(i,j)*q_con(i,j) + (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
@@ -1081,18 +1078,24 @@ module sw_core_mod
             enddo
 #endif
 
-        !$ser savepoint FvTp2d-In
-        !$ser data_kbuff k=k k_size=nz q=pt crx=crx_adv cry=cry_adv fx=gx fy=gy xfx=xfx_adv yfx=yfx_adv ra_x=ra_x ra_y=ra_y mass=delp damp_c=damp_v_dup nord_column=nord_v_dup
-        !$ser data_kbuff k=k k_size=nz mfx_R4=fx mfy_R4=fy
-        !$ser verbatim if (k == nz) then 
-        !$ser data hord=hord_tm
-        !$ser verbatim endif
+!    if ( inline_q .and. zvir>0.01 ) then
+!       do j=jsd,jed
+!          do i=isd,ied
+!             pt(i,j) = pt(i,j)/(1.+zvir*q(i,j,k,sphum))
+!          enddo
+!       enddo
+!    endif
+      !$ser savepoint FvTp2d-In
+      !$ser data_kbuff k=k k_size=nz q=pt crx=crx_adv cry=cry_adv fx=gx fy=gy xfx=xfx_adv yfx=yfx_adv ra_x=ra_x ra_y=ra_y mfx=fx mfy=fy mass=delp damp_c=damp_v_dup nord_column=nord_v_dup
+      !$ser verbatim if (k == nz) then 
+      !$ser data hord=hord_tm
+      !$ser verbatim endif
         call fv_tp_2d(pt, crx_adv,cry_adv, npx, npy, hord_tm, gx, gy,  &
                       xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
-                      mfx=fx, mfy=fy, mass=delp, nord=nord_v, damp_c=damp_v)
-        !$ser savepoint FvTp2d-Out
-        !$ser data_kbuff k=k k_size=nz q=pt fx=gx fy=gy
-
+                      regional,mfx=fx, mfy=fy, mass=delp, nord=nord_v, damp_c=damp_v)
+!                     mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
+      !$ser savepoint FvTp2d-Out
+      !$ser data_kbuff k=k k_size=nz q=pt fx=gx fy=gy
 #endif
 
      if ( inline_q ) then
@@ -1111,7 +1114,7 @@ module sw_core_mod
         do iq=1,nq
            call fv_tp_2d(q(isd,jsd,k,iq), crx_adv,cry_adv, npx, npy, hord_tr, gx, gy,  &
                          xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
-                         mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
+                         regional,mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
            do j=js,je
               do i=is,ie
                  q(i,j,k,iq) = (q(i,j,k,iq)*wk(i,j) +               &
@@ -1144,12 +1147,6 @@ module sw_core_mod
         enddo
      endif
 
-     do j=js,je
-        do i=is,ie
-           dpx(i,j) = dpx(i,j) + ( (fx(i,j)-fx(i+1,j)) + (fy(i,j)-fy(i,j+1)) )*rarea(i,j)
-        end do
-     end do
-
 #ifdef SW_DYNAMICS
       if (test_case > 1) then
 #endif
@@ -1162,14 +1159,13 @@ module sw_core_mod
       dt5 = 0.5 *dt
       dt4 = 0.25*dt
 
-      if (nested) then
+      if (nested .or. regional) then
          is2 = is;        ie1 = ie+1
          js2 = js;        je1 = je+1
       else
          is2 = max(2,is); ie1 = min(npx-1,ie+1)
          js2 = max(2,js); je1 = min(npy-1,je+1)
       end if
-
       !$ser savepoint VbKE-In 
       !$ser data_kbuff k=k k_size=nz vt=vt vc=vc uc=uc vb=vb 
       !$ser verbatim if (k == nz) then 
@@ -1178,7 +1174,7 @@ module sw_core_mod
 !!! TO DO: separate versions for nested and for cubed-sphere
       if (flagstruct%grid_type < 3) then
 
-         if (nested) then
+         if (nested .or. regional) then
             do j=js2,je1
                do i=is2,ie1
                   vb(i,j) = dt5*(vc(i-1,j)+vc(i,j)-(uc(i,j-1)+uc(i,j))*cosa(i,j))*rsina(i,j)
@@ -1212,7 +1208,7 @@ module sw_core_mod
                enddo
             endif
          endif
-
+         
       else
          do j=js,je+1
             do i=is,ie+1
@@ -1222,31 +1218,29 @@ module sw_core_mod
       endif
       !$ser savepoint VbKE-Out 
       !$ser data_kbuff k=k k_size=nz vb=vb
-      
       !$ser savepoint YTP_V-In 
       !$ser data_kbuff k=k k_size=nz vb=vb u=u v=v ub=ub 
       call ytp_v(is,ie,js,je,isd,ied,jsd,jed, vb, u, v, ub, hord_mt, gridstruct%dy, gridstruct%rdy, &
-                 npx, npy, flagstruct%grid_type, nested, flagstruct%lim_fac)
+                 npx, npy, flagstruct%grid_type, nested, flagstruct%lim_fac, regional)
       !$ser savepoint YTP_V-Out
       !$ser data_kbuff k=k k_size=nz ub=ub
-
       do j=js,je+1
          do i=is,ie+1
             ke(i,j) = vb(i,j)*ub(i,j)
          enddo
       enddo
-
       !$ser savepoint UbKE-In
       !$ser data_kbuff k=k k_size=nz ub=ub uc=uc vc=vc ut=ut
       !$ser verbatim if (k == nz) then 
       !$ser data dt5=dt5 dt4=dt4
       !$ser verbatim endif
+      
       if (flagstruct%grid_type < 3) then
 
-         if (nested) then
+         if (nested .or. regional) then
 
             do j=js,je+1
-
+ 
                   do i=is2,ie1
                      ub(i,j) = dt5*(uc(i,j-1)+uc(i,j)-(vc(i-1,j)+vc(i,j))*cosa(i,j))*rsina(i,j)
                   enddo
@@ -1280,7 +1274,7 @@ module sw_core_mod
                enddo
             endif
          endif
-
+         
       else
          do j=js,je+1
             do i=is,ie+1
@@ -1294,10 +1288,9 @@ module sw_core_mod
       !$ser savepoint XTP_U-In 
       !$ser data_kbuff k=k k_size=nz vb=vb u=u v=v ub=ub 
       call xtp_u(is,ie,js,je, isd,ied,jsd,jed, ub, u, v, vb, hord_mt, gridstruct%dx, gridstruct%rdx, &
-                 npx, npy, flagstruct%grid_type, nested, flagstruct%lim_fac)
+                 npx, npy, flagstruct%grid_type, nested, flagstruct%lim_fac, regional)
       !$ser savepoint XTP_U-Out
       !$ser data_kbuff k=k k_size=nz vb=vb
-
       do j=js,je+1
          do i=is,ie+1
             ke(i,j) = 0.5*(ke(i,j) + ub(i,j)*vb(i,j))
@@ -1307,7 +1300,7 @@ module sw_core_mod
 !-----------------------------------------
 ! Fix KE at the 4 corners of the face:
 !-----------------------------------------
-    if (.not. nested) then
+    if (.not. (nested .or. regional)) then
       dt6 = dt / 6.
       if ( sw_corner ) then
            ke(1,1) = dt6*( (ut(1,1) + ut(1,0)) * u(1,1) +  &
@@ -1333,7 +1326,6 @@ module sw_core_mod
                            (ut(1,j-1) - vt(1,  j)) * u(0,j  )  )
       endif
     end if
-
 ! Compute vorticity:
        do j=jsd,jed+1
           do i=isd,ied
@@ -1352,7 +1344,6 @@ module sw_core_mod
              wk(i,j) = rarea(i,j)*(vt(i,j)-vt(i,j+1)-ut(i,j)+ut(i+1,j))
           enddo
        enddo
-
      if ( .not. hydrostatic ) then
         if( flagstruct%do_f3d ) then
 #ifdef ROT3
@@ -1388,20 +1379,18 @@ module sw_core_mod
         enddo
      enddo
 #endif
-
+     !$ser savepoint DivergenceDamping-In 
+     !$ser data_kbuff k=k k_size=nz u=u va=va ptc=ptc vort=vort v=v ua=ua  divg_d=divg_d  vc=vc uc=uc delpc=delpc ke=ke wk=wk z_rat=z_rat nord_col=nord_dup d2_bg=d2_bg_dup
+     !$ser verbatim if (k == nz) then 
+     !$ser data  dt=dt
+     !$ser verbatim endif
 !-----------------------------
 ! Compute divergence damping
 !-----------------------------
 !  damp = dddmp * da_min_c
 
-   !$ser savepoint DivergenceDamping-In 
-   !$ser data_kbuff k=k k_size=nz u=u va=va ptc=ptc vort=vort v=v ua=ua  divg_d=divg_d  vc=vc uc=uc delpc=delpc ke=ke wk=wk z_rat=z_rat nord_col=nord_dup d2_bg=d2_bg_dup
-   !$ser verbatim if (k == nz) then 
-   !$ser data  dt=dt
-   !$ser verbatim endif
    if ( nord==0 ) then
 !         area ~ dxb*dyb*sin(alpha)
-
       !$ser savepoint FillCorners-In
       !$ser data_kbuff k=k k_size=nz divg_d=divg_d nord_col=nord_dup
       !$ser savepoint FillCorners-Out
@@ -1418,7 +1407,7 @@ module sw_core_mod
       !$ser data_kbuff k=k k_size=nz nord_col=nord_dup delpc=delpc wk=wk vort=vort
       !$ser savepoint A2B_Ord4-Out 
       !$ser data_kbuff k=k k_size=nz wk=wk vort=vort 
-      if (nested) then
+      if (nested .or. regional) then
 
          do j=js,je+1
             do i=is-1,ie+1
@@ -1465,9 +1454,9 @@ module sw_core_mod
                   vort(1,  j) = v(1,  j)*dxc(1,  j)*sin_sg(1,j,1)
                end if
             end if
-            if ( (ie+1)==npx ) then
+            if ( (ie+1)==npx ) then 
                if (uc(npx,j) > 0) then
-                  vort(npx,j) = v(npx,j)*dxc(npx,j)* &
+                  vort(npx,j) = v(npx,j)*dxc(npx,j)* & 
                        sin_sg(npx-1,j,3)
                else
                   vort(npx,j) = v(npx,j)*dxc(npx,j)* &
@@ -1514,7 +1503,7 @@ module sw_core_mod
 
         fill_c = (nt/=0) .and. (flagstruct%grid_type<3) .and.               &
                  ( sw_corner .or. se_corner .or. ne_corner .or. nw_corner ) &
-                  .and. .not. nested
+                  .and. .not. (nested .or. regional)
         !$ser verbatim if (n == 1) then 
         !$ser savepoint FillCorners-In
         !$ser verbatim dir=1
@@ -1533,7 +1522,6 @@ module sw_core_mod
               vc(i,j) = (divg_d(i+1,j)-divg_d(i,j))*divg_u(i,j)
            enddo
         enddo
-
         !$ser verbatim if (n == 1) then 
         !$ser savepoint FillCorners-In
         !$ser verbatim dir=2
@@ -1587,7 +1575,6 @@ module sw_core_mod
      !$ser verbatim if (k == nz) then 
      !$ser data  dt=dt 
      !$ser verbatim endif
-
      if ( dddmp<1.E-5) then
           vort(:,:) = 0.
      else
@@ -1604,7 +1591,6 @@ module sw_core_mod
           call smag_corner(abs(dt), u, v, ua, va, vort, bd, npx, npy, gridstruct, ng)
       endif
      endif
-
      !$ser savepoint A2B_Ord4-Out 
      !$ser data_kbuff k=k k_size=nz wk=wk vort=vort
      if (gridstruct%stretched_grid ) then
@@ -1625,7 +1611,6 @@ module sw_core_mod
    endif
    !$ser savepoint DivergenceDamping-Out 
    !$ser data_kbuff k=k k_size=nz vort=vort ke=ke delpc=delpc
-
    if ( d_con > 1.e-5 ) then
       do j=js,je+1
          do i=is,ie
@@ -1663,7 +1648,7 @@ module sw_core_mod
    endif
 
     call fv_tp_2d(vort, crx_adv, cry_adv, npx, npy, hord_vt, fx, fy, &
-                  xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac)
+                  xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac,regional)
     do j=js,je+1
        do i=is,ie
           u(i,j) = vt(i,j) + ke(i,j) - ke(i+1,j) + fy(i,j)
@@ -1678,13 +1663,13 @@ module sw_core_mod
 !--------------------------------------------------------
 ! damping applied to relative vorticity (wk):
    if ( damp_v>1.E-5 ) then
-        damp4 = (damp_v*gridstruct%da_min_c)**(nord_v+1)
-        !$ser verbatim damp4_dup(1,1)=damp4
-        !$ser savepoint Del6VtFlux-In
-        !$ser data_kbuff k=k k_size=nz fx2=ut fy2=vt wq=wk wd2=vort nord_w=nord_v_dup damp4=damp4_dup
-        call del6_vt_flux(nord_v, npx, npy, damp4, wk, vort, ut, vt, gridstruct, bd)
-        !$ser savepoint Del6VtFlux-Out
-        !$ser data_kbuff k=k k_size=nz fx2=ut fy2=vt wq=wk wd2=vort 
+      damp4 = (damp_v*gridstruct%da_min_c)**(nord_v+1)
+      !$ser verbatim damp4_dup(1,1)=damp4
+      !$ser savepoint Del6VtFlux-In
+      !$ser data_kbuff k=k k_size=nz fx2=ut fy2=vt wq=wk wd2=vort nord_w=nord_v_dup damp4=damp4_dup
+      call del6_vt_flux(nord_v, npx, npy, damp4, wk, vort, ut, vt, gridstruct, bd)
+      !$ser savepoint Del6VtFlux-Out
+      !$ser data_kbuff k=k k_size=nz fx2=ut fy2=vt wq=wk wd2=vort 
    endif
 
    if ( d_con > 1.e-5 .or. flagstruct%do_skeb ) then
@@ -1722,7 +1707,7 @@ module sw_core_mod
              diss_est(i,j) = diss_est(i,j)-rsin2(i,j)*( &
                   (ub(i,j)**2 + ub(i,j+1)**2 + vb(i,j)**2 + vb(i+1,j)**2)  &
                               + 2.*(gy(i,j)+gy(i,j+1)+gx(i,j)+gx(i+1,j))   &
-                              - cosa_s(i,j)*(u2*dv2 + v2*du2 + du2*dv2))
+                              - cosa_s(i,j)*(u2*dv2 + v2*du2 + du2*dv2)) 
            endif
          enddo
       enddo
@@ -1768,7 +1753,7 @@ module sw_core_mod
    real, intent(out):: fx2(bd%isd:bd%ied+1,bd%jsd:bd%jed), fy2(bd%isd:bd%ied,bd%jsd:bd%jed+1)
    integer i,j, nt, n, i1, i2, j1, j2
 
-   logical :: nested
+   logical :: nested, regional
 
 #ifdef USE_SG
   real, pointer, dimension(:,:,:) :: sin_sg
@@ -1779,18 +1764,18 @@ module sw_core_mod
 
 #ifdef USE_SG
    sin_sg   => gridstruct%sin_sg
-   rdxc     => gridstruct%rdxc
-   rdyc     => gridstruct%rdyc
-   dx       => gridstruct%dx
-   dy       => gridstruct%dy
+   rdxc     => gridstruct%rdxc  
+   rdyc     => gridstruct%rdyc  
+   dx       => gridstruct%dx    
+   dy       => gridstruct%dy    
 #endif
    nested = gridstruct%nested
-
+   regional = gridstruct%regional
    is  = bd%is
    ie  = bd%ie
    js  = bd%js
    je  = bd%je
-
+   
    i1 = is-1-nord;    i2 = ie+1+nord
    j1 = js-1-nord;    j2 = je+1+nord
 
@@ -1800,7 +1785,7 @@ module sw_core_mod
       enddo
    enddo
 
-   if( nord>0 ) call copy_corners(d2, npx, npy, 1, nested, bd, gridstruct%sw_corner,    &
+   if( nord>0 .and. (.not. (regional))) call copy_corners(d2, npx, npy, 1, nested, bd, gridstruct%sw_corner,    &
                    gridstruct%se_corner, gridstruct%nw_corner, gridstruct%ne_corner)
    do j=js-nord,je+nord
       do i=is-nord,ie+nord+1
@@ -1812,7 +1797,7 @@ module sw_core_mod
       enddo
    enddo
 
-   if( nord>0 ) call copy_corners(d2, npx, npy, 2, nested, bd, gridstruct%sw_corner,   &
+   if( nord>0 .and. (.not. (regional))) call copy_corners(d2, npx, npy, 2, nested, bd, gridstruct%sw_corner,   &
                    gridstruct%se_corner, gridstruct%nw_corner, gridstruct%ne_corner)
    do j=js-nord,je+nord+1
       do i=is-nord,ie+nord
@@ -1833,7 +1818,7 @@ module sw_core_mod
          enddo
       enddo
 
-      call copy_corners(d2, npx, npy, 1, nested, bd, gridstruct%sw_corner,    &
+      if (.not. (regional)) call copy_corners(d2, npx, npy, 1, nested, bd, gridstruct%sw_corner,    &
          gridstruct%se_corner, gridstruct%nw_corner, gridstruct%ne_corner)
 
       do j=js-nt,je+nt
@@ -1846,7 +1831,7 @@ module sw_core_mod
          enddo
       enddo
 
-      call copy_corners(d2, npx, npy, 2, nested, bd, &
+      if (.not. (regional))call copy_corners(d2, npx, npy, 2, nested, bd, &
       gridstruct%sw_corner, gridstruct%se_corner, gridstruct%nw_corner, gridstruct%ne_corner)
 
       do j=js-nt,je+nt+1
@@ -1884,7 +1869,7 @@ module sw_core_mod
 
       integer :: is,  ie,  js,  je
       integer :: npx, npy
-      logical :: nested
+      logical :: nested, regional
 
       is  = bd%is
       ie  = bd%ie
@@ -1894,19 +1879,20 @@ module sw_core_mod
       npx = flagstruct%npx
       npy = flagstruct%npy
       nested = gridstruct%nested
+      regional = gridstruct%regional
 
-      sin_sg     => gridstruct%sin_sg
-      cos_sg     => gridstruct%cos_sg
-      dxc        => gridstruct%dxc
-      dyc        => gridstruct%dyc
+      sin_sg     => gridstruct%sin_sg 
+      cos_sg     => gridstruct%cos_sg 
+      dxc        => gridstruct%dxc    
+      dyc        => gridstruct%dyc    
 
- if (nested) then
+ if (nested .or. regional) then
     is2 = is;        ie1 = ie+1
  else
     is2 = max(2,is); ie1 = min(npx-1,ie+1)
  end if
 
-    if (flagstruct%grid_type > 3) then
+    if (flagstruct%grid_type==4) then
         do j=js-1,je+2
            do i=is-2,ie+2
               uf(i,j) = u(i,j)*dyc(i,j)
@@ -1996,7 +1982,7 @@ module sw_core_mod
 
       integer :: isd, ied, jsd, jed
       integer :: npx, npy
-      logical :: nested
+      logical :: nested, regional
 
       isd = bd%isd
       ied = bd%ied
@@ -2006,20 +1992,21 @@ module sw_core_mod
       npx = flagstruct%npx
       npy = flagstruct%npy
       nested = gridstruct%nested
+      regional = gridstruct%regional
 
       rarea_c    => gridstruct%rarea_c
-      sin_sg     => gridstruct%sin_sg
-      cos_sg     => gridstruct%cos_sg
-      cosa_u     => gridstruct%cosa_u
-      cosa_v     => gridstruct%cosa_v
-      sina_u     => gridstruct%sina_u
-      sina_v     => gridstruct%sina_v
-      dxc        => gridstruct%dxc
-      dyc        => gridstruct%dyc
+      sin_sg     => gridstruct%sin_sg 
+      cos_sg     => gridstruct%cos_sg 
+      cosa_u     => gridstruct%cosa_u 
+      cosa_v     => gridstruct%cosa_v 
+      sina_u     => gridstruct%sina_u 
+      sina_v     => gridstruct%sina_v 
+      dxc        => gridstruct%dxc    
+      dyc        => gridstruct%dyc    
 
  divg_d = 1.e25
 
-    if (flagstruct%grid_type > 3) then
+    if (flagstruct%grid_type==4) then
         do j=jsd,jed
            do i=isd,ied
               uf(i,j) = u(i,j)*dyc(i,j)
@@ -2057,6 +2044,26 @@ module sw_core_mod
           enddo
        enddo
 
+!!$       !Edges
+!!$
+!!$       !West, East
+!!$       do j=jsd+1,jed
+!!$          divg_d(isd  ,j) = (vf(isd,j-1) - vf(isd,j) + uf(isd,j) - uf(isd+1,j))*rarea_c(isd,j)
+!!$          divg_d(ied+1,j) = (vf(ied+1,j-1) - vf(ied+1,j) + uf(ied-1,j) - uf(ied,j))*rarea_c(ied,j)
+!!$       end do
+!!$
+!!$       !North, South
+!!$       do i=isd+1,ied
+!!$          divg_d(i,jsd  ) = (vf(i,jsd) - vf(i,jsd+1) + uf(i-1,jsd) - uf(i,jsd))*rarea_c(i,jsd)
+!!$          divg_d(i,jed+1) = (vf(i,jed-1) - vf(i,jed) + uf(i-1,jed+1) - uf(i,jed+1))*rarea_c(i,jed)
+!!$       end do
+!!$
+!!$       !Corners (just use next corner value)
+!!$       divg_d(isd,jsd)   = divg_d(isd+1,jsd+1)
+!!$       divg_d(isd,jed+1) = divg_d(isd+1,jed)
+!!$       divg_d(ied+1,jsd)   = divg_d(ied,jsd+1)
+!!$       divg_d(ied+1,jed+1) = divg_d(ied,jed)
+
     endif
 
 
@@ -2086,7 +2093,7 @@ end subroutine divergence_corner_nest
 
  integer :: is,  ie,  js,  je
  integer :: isd, ied, jsd, jed
-
+      
  is  = bd%is
  ie  = bd%ie
  js  = bd%js
@@ -2153,7 +2160,7 @@ end subroutine divergence_corner_nest
  end subroutine smag_corner
 
 
- subroutine xtp_u(is,ie,js,je,isd,ied,jsd,jed,c, u, v, flux, iord, dx, rdx, npx, npy, grid_type, nested, lim_fac)
+ subroutine xtp_u(is,ie,js,je,isd,ied,jsd,jed,c, u, v, flux, iord, dx, rdx, npx, npy, grid_type, nested, lim_fac, regional)
 
  integer, intent(in):: is,ie,js,je, isd,ied,jsd,jed
  real, INTENT(IN)::   u(isd:ied,jsd:jed+1)
@@ -2163,7 +2170,7 @@ end subroutine divergence_corner_nest
  real, INTENT(IN) ::   dx(isd:ied,  jsd:jed+1)
  real, INTENT(IN) ::  rdx(isd:ied,  jsd:jed+1)
  integer, INTENT(IN) :: iord, npx, npy, grid_type
- logical, INTENT(IN) :: nested
+ logical, INTENT(IN) :: nested,regional
  real, INTENT(IN) ::  lim_fac
 ! Local
  real, dimension(is-1:ie+1):: bl, br, b0
@@ -2179,7 +2186,7 @@ end subroutine divergence_corner_nest
  integer is3, ie3
  integer is2, ie2
 
- if ( nested .or. grid_type>3 ) then
+ if ( nested .or. regional .or. grid_type>3 ) then
     is3 = is-1        ; ie3 = ie+1
  else
     is3 = max(3,is-1) ; ie3 = min(npx-3,ie+1)
@@ -2187,7 +2194,7 @@ end subroutine divergence_corner_nest
 
 
  if ( iord < 8 ) then
-! Diffusivity: ord2 < ord5 < ord3 < ord4 < ord6
+! Diffusivity: ord2 < ord5 < ord3 < ord4 < ord6 
 
      do j=js,je+1
 
@@ -2199,7 +2206,7 @@ end subroutine divergence_corner_nest
            br(i) = al(i+1) - u(i,j)
         enddo
 
-      if ( (.not.nested) .and. grid_type < 3) then
+      if ( (.not. (nested .or. regional)) .and. grid_type < 3) then
         if ( is==1 ) then
              xt = c3*u(1,j) + c2*u(2,j) + c1*u(3,j)
              br(1) = xt - u(1,j)
@@ -2346,19 +2353,6 @@ end subroutine divergence_corner_nest
            do i=is-1, ie+1
               smt5(i) = 3.*abs(b0(i)) < abs(bl(i)-br(i))
            enddo
-!WMP
-! fix edge issues
-   if ( (.not.nested) .and. grid_type < 3) then
-     if( is==1 ) then
-       smt5(0) = bl(0)*br(0) < 0.
-       smt5(1) = bl(1)*br(1) < 0.
-     endif
-     if( (ie+1)==npx ) then
-        smt5(npx-1) = bl(npx-1)*br(npx-1) < 0.
-        smt5(npx  ) = bl(npx  )*br(npx  ) < 0.
-     endif
-   endif
-!WMP
         endif
 
 !DEC$ VECTOR ALWAYS
@@ -2445,7 +2439,7 @@ end subroutine divergence_corner_nest
 ! fix the edges
 !--------------
 !!! TO DO: separate versions for nested and for cubed-sphere
-           if ( is==1 .and. .not. nested) then
+           if ( is==1 .and. .not. (nested .or. regional)) then
               br(2) = al(3) - u(2,j)
               xt = s15*u(1,j) + s11*u(2,j) - s14*dm(2)
               bl(2) = xt - u(2,j)
@@ -2468,7 +2462,7 @@ end subroutine divergence_corner_nest
               call pert_ppm(1, u(2,j), bl(2), br(2), -1)
            endif
 
-           if ( (ie+1)==npx  .and. .not. nested) then
+           if ( (ie+1)==npx  .and. .not. (nested .or. regional)) then
               bl(npx-2) = al(npx-2) - u(npx-2,j)
               xt = s15*u(npx-1,j) + s11*u(npx-2,j) + s14*dm(npx-2)
               br(npx-2) = xt - u(npx-2,j)
@@ -2506,7 +2500,7 @@ end subroutine divergence_corner_nest
                  br(i) = min(max(0., pmp, lac), max(al(i+1)-u(i,j), min(0.,pmp, lac)))
               enddo
         endif
-
+       
         do i=is,ie+1
            if( c(i,j)>0. ) then
                cfl = c(i,j)*rdx(i-1,j)
@@ -2523,7 +2517,7 @@ end subroutine divergence_corner_nest
  end subroutine xtp_u
 
 
- subroutine ytp_v(is,ie,js,je,isd,ied,jsd,jed, c, u, v, flux, jord, dy, rdy, npx, npy, grid_type, nested, lim_fac)
+ subroutine ytp_v(is,ie,js,je,isd,ied,jsd,jed, c, u, v, flux, jord, dy, rdy, npx, npy, grid_type, nested, lim_fac, regional)
  integer, intent(in):: is,ie,js,je, isd,ied,jsd,jed
  integer, intent(IN):: jord
  real, INTENT(IN)  ::   u(isd:ied,jsd:jed+1)
@@ -2533,7 +2527,7 @@ end subroutine divergence_corner_nest
  real, INTENT(IN) ::   dy(isd:ied+1,jsd:jed)
  real, INTENT(IN) ::  rdy(isd:ied+1,jsd:jed)
  integer, INTENT(IN) :: npx, npy, grid_type
- logical, INTENT(IN) :: nested
+ logical, INTENT(IN) :: nested,regional
  real, INTENT(IN) ::  lim_fac
 ! Local:
  logical, dimension(is:ie+1,js-1:je+1):: smt5, smt6
@@ -2548,14 +2542,14 @@ end subroutine divergence_corner_nest
  real x0, x1, x0R, x0L
  integer i, j, is1, ie1, js3, je3
 
- if ( nested .or. grid_type>3 ) then
+ if ( nested .or. regional .or. grid_type>3 ) then
     js3 = js-1;        je3 = je+1
  else
     js3 = max(3,js-1); je3 = min(npy-3,je+1)
  end if
 
  if ( jord<8 ) then
-! Diffusivity: ord2 < ord5 < ord3 < ord4 < ord6
+! Diffusivity: ord2 < ord5 < ord3 < ord4 < ord6 
 
    do j=js3,je3+1
       do i=is,ie+1
@@ -2569,7 +2563,7 @@ end subroutine divergence_corner_nest
       enddo
    enddo
 
-   if ( (.not.nested) .and. grid_type < 3) then
+   if ( (.not. (nested .or. regional)) .and. grid_type < 3) then
      if( js==1 ) then
        do i=is,ie+1
           bl(i,0) = c1*v(i,-2) + c2*v(i,-1) + c3*v(i,0) - v(i,0)
@@ -2768,23 +2762,6 @@ end subroutine divergence_corner_nest
               smt6(i,j) = 3.*abs(b0(i,j)) < abs(bl(i,j)-br(i,j))
            enddo
         enddo
-!WMP
-! fix edge issues
-   if ( (.not.nested) .and. grid_type < 3) then
-     if( js==1 ) then
-       do i=is,ie+1
-          smt6(i,0) = bl(i,0)*br(i,0) < 0.
-          smt6(i,1) = bl(i,1)*br(i,1) < 0.
-       enddo
-     endif
-     if( (je+1)==npy ) then
-       do i=is,ie+1
-          smt6(i,npy-1) = bl(i,npy-1)*br(i,npy-1) < 0.
-          smt6(i,npy  ) = bl(i,npy  )*br(i,npy  ) < 0.
-       enddo
-     endif
-   endif
-!WMP
         do j=js,je+1
 !DEC$ VECTOR ALWAYS
         do i=is,ie+1
@@ -2827,7 +2804,7 @@ end subroutine divergence_corner_nest
             al(i,j) = 0.5*(v(i,j-1)+v(i,j)) + r3*(dm(i,j-1)-dm(i,j))
          enddo
       enddo
-
+      
       if ( jord==8 ) then
         do j=js3,je3
            do i=is,ie+1
@@ -2839,7 +2816,7 @@ end subroutine divergence_corner_nest
       elseif ( jord==9 ) then
         do j=js3,je3
            do i=is,ie+1
-              pmp_1 = -2.*dq(i,j)
+              pmp_1 = -2.*dq(i,j) 
               lac_1 = pmp_1 + 1.5*dq(i,j+1)
             bl(i,j) = min(max(0., pmp_1, lac_1), max(al(i,j)-v(i,j), min(0., pmp_1, lac_1)))
               pmp_2 = 2.*dq(i,j-1)
@@ -2859,7 +2836,7 @@ end subroutine divergence_corner_nest
                  br(i,j) = 0.
               endif
             elseif( abs(3.*(bl(i,j)+br(i,j))) > abs(bl(i,j)-br(i,j)) ) then
-                  pmp_1 = -2.*dq(i,j)
+                  pmp_1 = -2.*dq(i,j) 
                   lac_1 = pmp_1 + 1.5*dq(i,j+1)
                 bl(i,j) = min(max(0., pmp_1, lac_1), max(bl(i,j), min(0., pmp_1, lac_1)))
                   pmp_2 = 2.*dq(i,j-1)
@@ -2877,11 +2854,11 @@ end subroutine divergence_corner_nest
            enddo
         enddo
       endif
-
+      
 !--------------
 ! fix the edges
 !--------------
-      if( js==1 .and. .not. nested) then
+      if( js==1 .and. .not. (nested .or. regional)) then
          do i=is,ie+1
             br(i,2) = al(i,3) - v(i,2)
             xt = s15*v(i,1) + s11*v(i,2) - s14*dm(i,2)
@@ -2921,7 +2898,7 @@ end subroutine divergence_corner_nest
          j=2
          call pert_ppm(ie-is+2, v(is,j), bl(is,j), br(is,j), -1)
       endif
-      if( (je+1)==npy  .and. .not. nested) then
+      if( (je+1)==npy  .and. .not. (nested .or. regional)) then
          do i=is,ie+1
             bl(i,npy-2) = al(i,npy-2) - v(i,npy-2)
             xt = s15*v(i,npy-1) + s11*v(i,npy-2) + s14*dm(i,npy-2)
@@ -2967,18 +2944,18 @@ end subroutine divergence_corner_nest
             al(i,j) = 0.5*(v(i,j-1)+v(i,j)) + r3*(dm(i,j-1)-dm(i,j))
          enddo
       enddo
-
+      
       do j=js-1,je+1
          do i=is,ie+1
             pmp = 2.*dq(i,j-1)
             lac = pmp - 1.5*dq(i,j-2)
             br(i,j) = min(max(0.,pmp,lac), max(al(i,j+1)-v(i,j), min(0.,pmp,lac)))
-            pmp = -2.*dq(i,j)
+            pmp = -2.*dq(i,j) 
             lac = pmp + 1.5*dq(i,j+1)
             bl(i,j) = min(max(0.,pmp,lac), max(al(i,j)-v(i,j), min(0.,pmp,lac)))
          enddo
       enddo
-
+      
    endif
 
    do j=js,je+1
@@ -3004,7 +2981,7 @@ end subroutine ytp_v
 !   is needed after c_sw is completed if these variables are needed
 !    in the halo
  subroutine d2a2c_vect(u, v, ua, va, uc, vc, ut, vt, dord4, gridstruct, &
-                       bd, npx, npy, nested, grid_type)
+                       bd, npx, npy, nested, grid_type, regional )
   type(fv_grid_bounds_type), intent(IN) :: bd
   logical, intent(in):: dord4
   real, intent(in) ::  u(bd%isd:bd%ied,bd%jsd:bd%jed+1)
@@ -3012,10 +2989,10 @@ end subroutine ytp_v
   real, intent(out), dimension(bd%isd:bd%ied+1,bd%jsd:bd%jed  ):: uc
   real, intent(out), dimension(bd%isd:bd%ied  ,bd%jsd:bd%jed+1):: vc
   real, intent(out), dimension(bd%isd:bd%ied  ,bd%jsd:bd%jed  ):: ua, va, ut, vt
-  integer, intent(IN) :: npx, npy, grid_type
-  logical, intent(IN) :: nested
+  integer, intent(IN) :: npx, npy, grid_type 
+  logical, intent(IN) :: nested,regional
   type(fv_grid_type), intent(IN), target :: gridstruct
-! Local
+! Local 
   real, dimension(bd%isd:bd%ied,bd%jsd:bd%jed):: utmp, vtmp
   integer npt, i, j, ifirst, ilast, id
   integer :: is,  ie,  js,  je
@@ -3035,15 +3012,15 @@ end subroutine ytp_v
       jsd = bd%jsd
       jed = bd%jed
 
-      sin_sg    => gridstruct%sin_sg
-      cosa_u    => gridstruct%cosa_u
-      cosa_v    => gridstruct%cosa_v
-      cosa_s    => gridstruct%cosa_s
-      rsin_u    => gridstruct%rsin_u
-      rsin_v    => gridstruct%rsin_v
-      rsin2     => gridstruct%rsin2
-      dxa       => gridstruct%dxa
-      dya       => gridstruct%dya
+      sin_sg    => gridstruct%sin_sg  
+      cosa_u    => gridstruct%cosa_u  
+      cosa_v    => gridstruct%cosa_v  
+      cosa_s    => gridstruct%cosa_s  
+      rsin_u    => gridstruct%rsin_u  
+      rsin_v    => gridstruct%rsin_v  
+      rsin2     => gridstruct%rsin2   
+      dxa       => gridstruct%dxa     
+      dya       => gridstruct%dya     
 
   if ( dord4 ) then
        id = 1
@@ -3051,17 +3028,22 @@ end subroutine ytp_v
        id = 0
   endif
 
-  if (grid_type < 3 .and. .not. nested) then
+  if (grid_type < 3 .and. .not. (nested .or. regional)) then
      npt = 4
+#ifdef GT4PY_DEV
+     if (npt > (je - js) .or. npt > (ie - is)) then
+        npt = 0
+     endif
+#endif
   else
      npt = -2
   endif
 
 ! Initialize the non-existing corner regions
   utmp(:,:) = big_number
-  vtmp(:,:) = big_number
+  vtmp(:,:) = big_number 
 
- if ( nested) then  
+ if ( nested .or. regional) then  
 
      do j=jsd+1,jed-1
         do i=isd,ied
@@ -3080,7 +3062,7 @@ end subroutine ytp_v
            vtmp(i,j) = a2*(v(i-1,j)+v(i+2,j)) + a1*(v(i,j)+v(i+1,j))
         enddo
         i = isd
-        vtmp(i,j) = 0.5*(v(i,j)+v(i+1,j))
+        vtmp(i,j) = 0.5*(v(i,j)+v(i+1,j)) 
         i = ied
         vtmp(i,j) = 0.5*(v(i,j)+v(i+1,j))
      enddo
@@ -3184,7 +3166,7 @@ end subroutine ytp_v
          enddo
      endif
 
-  if (grid_type < 3 .and. .not. nested) then
+  if (grid_type < 3 .and. .not. (nested .or. regional)) then
      ifirst = max(3,    is-1)
      ilast  = min(npx-2,ie+2)
   else
@@ -3205,24 +3187,24 @@ end subroutine ytp_v
 ! Xdir:
      if( gridstruct%sw_corner ) then
          ua(-1,0) = -va(0,2)
-         ua( 0,0) = -va(0,1)
+         ua( 0,0) = -va(0,1) 
      endif
      if( gridstruct%se_corner ) then
          ua(npx,  0) = va(npx,1)
-         ua(npx+1,0) = va(npx,2)
+         ua(npx+1,0) = va(npx,2) 
      endif
      if( gridstruct%ne_corner ) then
          ua(npx,  npy) = -va(npx,npy-1)
-         ua(npx+1,npy) = -va(npx,npy-2)
+         ua(npx+1,npy) = -va(npx,npy-2) 
      endif
      if( gridstruct%nw_corner ) then
          ua(-1,npy) = va(0,npy-2)
-         ua( 0,npy) = va(0,npy-1)
+         ua( 0,npy) = va(0,npy-1) 
      endif
 
-     if( is==1 .and. .not. nested  ) then
+     if( is==1 .and. .not. (nested .or. regional)  ) then
         do j=js-1,je+1
-           uc(0,j) = c1*utmp(-2,j) + c2*utmp(-1,j) + c3*utmp(0,j)
+           uc(0,j) = c1*utmp(-2,j) + c2*utmp(-1,j) + c3*utmp(0,j) 
            ut(1,j) = edge_interpolate4(ua(-1:2,j), dxa(-1:2,j))
            !Want to use the UPSTREAM value
            if (ut(1,j) > 0.) then
@@ -3236,16 +3218,16 @@ end subroutine ytp_v
         enddo
      endif
 
-     if( (ie+1)==npx  .and. .not. nested ) then
+     if( (ie+1)==npx  .and. .not. (nested .or. regional) ) then
         do j=js-1,je+1
-           uc(npx-1,j) = c1*utmp(npx-3,j)+c2*utmp(npx-2,j)+c3*utmp(npx-1,j)
+           uc(npx-1,j) = c1*utmp(npx-3,j)+c2*utmp(npx-2,j)+c3*utmp(npx-1,j) 
            ut(npx,  j) = edge_interpolate4(ua(npx-2:npx+1,j), dxa(npx-2:npx+1,j))
            if (ut(npx,j) > 0.) then
                uc(npx,j) = ut(npx,j)*sin_sg(npx-1,j,3)
            else
                uc(npx,j) = ut(npx,j)*sin_sg(npx,j,1)
            end if
-           uc(npx+1,j) = c3*utmp(npx,j) + c2*utmp(npx+1,j) + c1*utmp(npx+2,j)
+           uc(npx+1,j) = c3*utmp(npx,j) + c2*utmp(npx+1,j) + c1*utmp(npx+2,j) 
            ut(npx-1,j) = (uc(npx-1,j)-v(npx-1,j)*cosa_u(npx-1,j))*rsin_u(npx-1,j)
            ut(npx+1,j) = (uc(npx+1,j)-v(npx+1,j)*cosa_u(npx+1,j))*rsin_u(npx+1,j)
         enddo
@@ -3296,7 +3278,7 @@ end subroutine ytp_v
  if (grid_type < 3) then
 
      do j=js-1,je+2
-      if ( j==1 .and. .not. nested  ) then
+      if ( j==1 .and. .not. (nested .or. regional)  ) then
         do i=is-1,ie+1
            vt(i,j) = edge_interpolate4(va(i,-1:2), dya(i,-1:2))
            if (vt(i,j) > 0.) then
@@ -3305,17 +3287,17 @@ end subroutine ytp_v
               vc(i,j) = vt(i,j)*sin_sg(i,j,2)
            end if
         enddo
-      elseif ( j==0 .or. j==(npy-1) .and. .not. nested  ) then
+      elseif ( j==0 .or. j==(npy-1) .and. .not. (nested .or. regional)  ) then
         do i=is-1,ie+1
            vc(i,j) = c1*vtmp(i,j-2) + c2*vtmp(i,j-1) + c3*vtmp(i,j)
            vt(i,j) = (vc(i,j) - u(i,j)*cosa_v(i,j))*rsin_v(i,j)
         enddo
-      elseif ( j==2 .or. j==(npy+1)  .and. .not. nested ) then
+      elseif ( j==2 .or. j==(npy+1)  .and. .not. (nested.or. regional) ) then
         do i=is-1,ie+1
            vc(i,j) = c1*vtmp(i,j+1) + c2*vtmp(i,j) + c3*vtmp(i,j-1)
            vt(i,j) = (vc(i,j) - u(i,j)*cosa_v(i,j))*rsin_v(i,j)
         enddo
-      elseif ( j==npy .and. .not. nested  ) then
+      elseif ( j==npy .and. .not. (nested .or. regional)  ) then
         do i=is-1,ie+1
            vt(i,j) = edge_interpolate4(va(i,j-2:j+1), dya(i,j-2:j+1))
            if (vt(i,j) > 0.) then
@@ -3344,7 +3326,7 @@ end subroutine ytp_v
 
  end subroutine d2a2c_vect
 
-
+ 
  real function edge_interpolate4(ua, dxa)
 
    real, intent(in) :: ua(4)

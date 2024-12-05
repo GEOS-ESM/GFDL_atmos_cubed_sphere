@@ -28,20 +28,22 @@ module sw_core_mod
 
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
-  fs_create_savepoint, &
-  fs_write_field, &
+  fs_add_savepoint_metainfo, &
   fs_read_field, &
-  fs_add_savepoint_metainfo
+  fs_write_field, &
+  fs_create_savepoint
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
-  ppser_savepoint, &
-  ppser_serializer, &
-  ppser_serializer_ref, &
   ppser_intlength, &
   ppser_reallength, &
   ppser_realtype, &
+  ppser_savepoint, &
+  ppser_serializer, &
+  ppser_serializer_ref, &
   ppser_zrperturb, &
   ppser_get_mode
+USE savepoint_helpers
+USE utils_ppser_buffered
 USE utils_ppser_kbuff
 #endif
 
@@ -210,9 +212,7 @@ call get_k(k)
       iep1 = ie+1; jep1 = je+1
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #177
 call fs_create_savepoint('D2A2C_Vect-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #178
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'u', u, k=k, k_size=nz, mode=ppser_get_mode())
@@ -222,7 +222,6 @@ call fs_create_savepoint('D2A2C_Vect-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'utc', ut, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vtc', vt, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #180
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dord4', dord4)
@@ -236,9 +235,7 @@ endif
       call d2a2c_vect(u, v, ua, va, uc, vc, ut, vt, dord4, gridstruct, bd, &
                       npx, npy, nested, flagstruct%grid_type)
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #184
 call fs_create_savepoint('D2A2C_Vect-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #185
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ua', ua, k=k, k_size=nz, mode=ppser_get_mode())
@@ -252,9 +249,7 @@ call fs_create_savepoint('D2A2C_Vect-Out', ppser_savepoint)
             call divergence_corner_nest(u, v, ua, va, divg_d, gridstruct, flagstruct, bd)
          else
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #191
 call fs_create_savepoint('DivergenceCorner-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #192
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'u', u, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'v', v, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ua', ua, k=k, k_size=nz, mode=ppser_get_mode())
@@ -263,9 +258,7 @@ call fs_create_savepoint('DivergenceCorner-In', ppser_savepoint)
 #endif
             call divergence_corner(u, v, ua, va, divg_d, gridstruct, flagstruct, bd)
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #194
 call fs_create_savepoint('DivergenceCorner-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #195
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'divg_d', divg_d, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
          endif
@@ -349,7 +342,6 @@ call fs_create_savepoint('DivergenceCorner-Out', ppser_savepoint)
 dir=2
 if (flagstruct%grid_type < 3 .and. .not. nested) then
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #276
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dir', dir)
@@ -503,9 +495,7 @@ endif
 !------------------------------
 ! To consider using true co-variant winds at face edges?
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #418
 call fs_create_savepoint('Circulation_Cgrid-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #419
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vort_c', vort, k=k, k_size=nz, mode=ppser_get_mode())
@@ -534,9 +524,7 @@ call fs_create_savepoint('Circulation_Cgrid-In', ppser_savepoint)
       if ( ne_corner ) vort(npx,npy) = vort(npx,npy) - fy(npx,npy)
       if ( nw_corner ) vort(1,  npy) = vort(1,  npy) + fy(0,  npy)
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #443
 call fs_create_savepoint('Circulation_Cgrid-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #444
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vort_c', vort, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
 !----------------------------
@@ -557,9 +545,7 @@ call fs_create_savepoint('Circulation_Cgrid-Out', ppser_savepoint)
 ! (For the same reason we only divide by sin instead of sin**2 in the interior)
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #462
 call fs_create_savepoint('VorticityTransport_Cgrid-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #463
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vort_c', vort, k=k, k_size=nz, mode=ppser_get_mode())
@@ -569,7 +555,6 @@ call fs_create_savepoint('VorticityTransport_Cgrid-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fxv', fx, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fyv', fy, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #465
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dt2', dt2)
@@ -655,9 +640,7 @@ endif
          enddo
       enddo
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #541
 call fs_create_savepoint('VorticityTransport_Cgrid-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #542
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
@@ -847,9 +830,7 @@ call get_nz(nz)
       else
 #endif
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #714
 call fs_create_savepoint('FxAdv-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #715
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ut', ut, k=k, k_size=nz, mode=ppser_get_mode())
@@ -859,7 +840,6 @@ call fs_create_savepoint('FxAdv-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cry_adv', cry_adv, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'crx_adv', crx_adv, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #717
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dt', dt)
@@ -1137,9 +1117,7 @@ endif
       enddo
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #985
 call fs_create_savepoint('FxAdv-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #986
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ut', ut, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vt', vt, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'yfx_adv', yfx_adv, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1151,9 +1129,7 @@ call fs_create_savepoint('FxAdv-Out', ppser_savepoint)
 #endif
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #988
 call fs_create_savepoint('FvTp2d-2-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #989
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', delp, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'crx', crx_adv, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cry', cry_adv, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1166,7 +1142,6 @@ call fs_create_savepoint('FvTp2d-2-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'damp_c', damp_v_dup, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_column', nord_v_dup, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #991
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'hord', hord_dp)
@@ -1180,9 +1155,7 @@ endif
       call fv_tp_2d(delp, crx_adv, cry_adv, npx, npy, hord_dp, fx, fy,  &
                     xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, nord=nord_v, damp_c=damp_v)
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #995
 call fs_create_savepoint('FvTp2d-2-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #996
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', delp, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy', fy, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1190,17 +1163,15 @@ call fs_create_savepoint('FvTp2d-2-Out', ppser_savepoint)
 
 ! <<< Save the mass fluxes to the "Flux Capacitor" for tracer transport >>>
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #999
 call fs_create_savepoint('FluxCapacitor-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1000
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cx', cx, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'crx_adv', crx_adv, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xflux', xflux, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cy', cy, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cry_adv', cry_adv, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'yflux', yflux, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy', fy, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cx_R8', cx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xflux_R8', xflux, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cy_R8', cy, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'yflux_R8', yflux, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
         do j=jsd,jed
             do i=is,ie+1
@@ -1221,13 +1192,11 @@ call fs_create_savepoint('FluxCapacitor-In', ppser_savepoint)
            enddo
         enddo
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1019
 call fs_create_savepoint('FluxCapacitor-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1020
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cx', cx, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xflux', xflux, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cy', cy, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'yflux', yflux, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cx_R8', cx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xflux_R8', xflux, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cy_R8', cy, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'yflux_R8', yflux, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
 
 #ifndef SW_DYNAMICS
@@ -1244,9 +1213,7 @@ call fs_create_savepoint('FluxCapacitor-Out', ppser_savepoint)
                  damp4 = (damp_w*gridstruct%da_min_c)**(nord_w+1)
 #ifdef SERIALIZE
 damp4_dup(1,1)=damp4
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1035
 call fs_create_savepoint('Del6VtFlux-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1036
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx2', fx2, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy2', fy2, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'wq', w, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1256,9 +1223,7 @@ call fs_create_savepoint('Del6VtFlux-In', ppser_savepoint)
 #endif
                  call del6_vt_flux(nord_w, npx, npy, damp4, w, wk, fx2, fy2, gridstruct, bd)
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1038
 call fs_create_savepoint('Del6VtFlux-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1039
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx2', fx2, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy2', fy2, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'wq', w, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1266,9 +1231,7 @@ call fs_create_savepoint('Del6VtFlux-Out', ppser_savepoint)
 #endif
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1041
 call fs_create_savepoint('HeatDiss-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1042
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'heat_source', heat_source, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'diss_est', diss_est, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx2', fx2, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1276,7 +1239,6 @@ call fs_create_savepoint('HeatDiss-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dw', dw, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'w', w, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1044
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dd8', dd8)
@@ -1299,9 +1261,7 @@ endif
                    enddo
                  enddo
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1057
 call fs_create_savepoint('HeatDiss-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1058
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'heat_source', heat_source, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'diss_est', diss_est, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dw', dw, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1310,9 +1270,7 @@ call fs_create_savepoint('HeatDiss-Out', ppser_savepoint)
             call fv_tp_2d(w, crx_adv,cry_adv, npx, npy, hord_vt, gx, gy, xfx_adv, yfx_adv, &
                           gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy)
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1062
 call fs_create_savepoint('Wdivergence-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1063
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'delp', delp, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'w', w, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'gx', gx, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1324,9 +1282,7 @@ call fs_create_savepoint('Wdivergence-In', ppser_savepoint)
                enddo
             enddo
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1069
 call fs_create_savepoint('Wdivergence-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1070
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'w', w, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
          endif
@@ -1342,9 +1298,7 @@ call fs_create_savepoint('Wdivergence-Out', ppser_savepoint)
 #endif
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1083
 call fs_create_savepoint('FvTp2d-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1084
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', pt, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'crx', crx_adv, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cry', cry_adv, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1354,13 +1308,12 @@ call fs_create_savepoint('FvTp2d-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'yfx', yfx_adv, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ra_x', ra_x, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ra_y', ra_y, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'mfx', fx, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'mfy', fy, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'mass', delp, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'damp_c', damp_v_dup, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_column', nord_v_dup, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'mfx_R4', fx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'mfy_R4', fy, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1086
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'hord', hord_tm)
@@ -1375,9 +1328,7 @@ endif
                       xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
                       mfx=fx, mfy=fy, mass=delp, nord=nord_v, damp_c=damp_v)
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1091
 call fs_create_savepoint('FvTp2d-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1092
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', pt, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx', gx, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy', gy, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1461,15 +1412,12 @@ call fs_create_savepoint('FvTp2d-Out', ppser_savepoint)
       end if
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1171
 call fs_create_savepoint('VbKE-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1172
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vt', vt, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vb', vb, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1174
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dt5', dt5)
@@ -1529,16 +1477,12 @@ endif
          enddo
       endif
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1221
 call fs_create_savepoint('VbKE-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1222
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vb', vb, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
       
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1224
 call fs_create_savepoint('YTP_V-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1225
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vb', vb, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'u', u, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'v', v, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1547,9 +1491,7 @@ call fs_create_savepoint('YTP_V-In', ppser_savepoint)
       call ytp_v(is,ie,js,je,isd,ied,jsd,jed, vb, u, v, ub, hord_mt, gridstruct%dy, gridstruct%rdy, &
                  npx, npy, flagstruct%grid_type, nested, flagstruct%lim_fac)
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1228
 call fs_create_savepoint('YTP_V-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1229
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ub', ub, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
 
@@ -1560,15 +1502,12 @@ call fs_create_savepoint('YTP_V-Out', ppser_savepoint)
       enddo
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1237
 call fs_create_savepoint('UbKE-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1238
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ub', ub, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ut', ut, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1240
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dt5', dt5)
@@ -1630,16 +1569,12 @@ endif
          enddo
       endif
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1289
 call fs_create_savepoint('UbKE-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1290
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ub', ub, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1292
 call fs_create_savepoint('XTP_U-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1293
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vb', vb, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'u', u, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'v', v, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1648,9 +1583,7 @@ call fs_create_savepoint('XTP_U-In', ppser_savepoint)
       call xtp_u(is,ie,js,je, isd,ied,jsd,jed, ub, u, v, vb, hord_mt, gridstruct%dx, gridstruct%rdx, &
                  npx, npy, flagstruct%grid_type, nested, flagstruct%lim_fac)
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1296
 call fs_create_savepoint('XTP_U-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1297
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vb', vb, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
 
@@ -1751,9 +1684,7 @@ call fs_create_savepoint('XTP_U-Out', ppser_savepoint)
 !  damp = dddmp * da_min_c
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1395
 call fs_create_savepoint('DivergenceDamping-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1396
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'u', u, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'va', va, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ptc', ptc, k=k, k_size=nz, mode=ppser_get_mode())
@@ -1770,7 +1701,6 @@ call fs_create_savepoint('DivergenceDamping-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_col', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'd2_bg', d2_bg_dup, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1398
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dt', dt)
@@ -1785,45 +1715,29 @@ endif
 !         area ~ dxb*dyb*sin(alpha)
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1403
 call fs_create_savepoint('FillCorners-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1404
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'divg_d', divg_d, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_col', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1405
 call fs_create_savepoint('FillCorners-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1406
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'divg_d', divg_d, k=k, k_size=nz, mode=ppser_get_mode())
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1407
 call fs_create_savepoint('FillCorners-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1408
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'divg_d', divg_d, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_col', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1409
 call fs_create_savepoint('FillCorners-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1410
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'divg_d', divg_d, k=k, k_size=nz, mode=ppser_get_mode())
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1411
 call fs_create_savepoint('FillCornersVector-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1412
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_col', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1413
 call fs_create_savepoint('FillCornersVector-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1414
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1415
 call fs_create_savepoint('A2B_Ord4-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1416
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_col', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'delpc', delpc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'wk', wk, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vort', vort, k=k, k_size=nz, mode=ppser_get_mode())
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1417
 call fs_create_savepoint('A2B_Ord4-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1418
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'wk', wk, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vort', vort, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
@@ -1926,14 +1840,11 @@ call fs_create_savepoint('A2B_Ord4-Out', ppser_savepoint)
                   .and. .not. nested
 #ifdef SERIALIZE
 if (n == 1) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1517
 call fs_create_savepoint('FillCorners-In', ppser_savepoint)
 dir=1
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1519
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'divg_d', divg_d, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_col', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1521
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dir', dir)
@@ -1948,9 +1859,7 @@ endif
         if ( fill_c ) call fill_corners(divg_d, npx, npy, FILL=XDir, BGRID=.true.)
 #ifdef SERIALIZE
 if (n == 1) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1526
 call fs_create_savepoint('FillCorners-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1527
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'divg_d', divg_d, k=k, k_size=nz, mode=ppser_get_mode())
 endif
 #endif
@@ -1962,14 +1871,11 @@ endif
 
 #ifdef SERIALIZE
 if (n == 1) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1536
 call fs_create_savepoint('FillCorners-In', ppser_savepoint)
 dir=2
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1538
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'divg_d', divg_d, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_col', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1540
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dir', dir)
@@ -1984,9 +1890,7 @@ endif
         if ( fill_c ) call fill_corners(divg_d, npx, npy, FILL=YDir, BGRID=.true.)
 #ifdef SERIALIZE
 if (n == 1) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1545
 call fs_create_savepoint('FillCorners-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1546
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'divg_d', divg_d, k=k, k_size=nz, mode=ppser_get_mode())
 endif
 #endif
@@ -1997,9 +1901,7 @@ endif
         enddo
 #ifdef SERIALIZE
 if (n == 1) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1554
 call fs_create_savepoint('FillCornersVector-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1555
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_col', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
@@ -2008,9 +1910,7 @@ endif
         if ( fill_c ) call fill_corners(vc, uc, npx, npy, VECTOR=.true., DGRID=.true.)
 #ifdef SERIALIZE
 if (n == 1) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1559
 call fs_create_savepoint('FillCornersVector-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1560
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
 endif
@@ -2037,15 +1937,12 @@ endif
 
      enddo ! n-loop
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1583
 call fs_create_savepoint('A2B_Ord4-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1584
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_col', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'delpc', delpc, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'wk', wk, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vort', vort, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1586
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'dt', dt)
@@ -2075,9 +1972,7 @@ endif
      endif
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1606
 call fs_create_savepoint('A2B_Ord4-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1607
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'wk', wk, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vort', vort, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
@@ -2098,9 +1993,7 @@ call fs_create_savepoint('A2B_Ord4-Out', ppser_savepoint)
 
    endif
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1624
 call fs_create_savepoint('DivergenceDamping-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1625
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vort', vort, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ke', ke, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'delpc', delpc, k=k, k_size=nz, mode=ppser_get_mode())
@@ -2161,9 +2054,7 @@ call fs_create_savepoint('DivergenceDamping-Out', ppser_savepoint)
         damp4 = (damp_v*gridstruct%da_min_c)**(nord_v+1)
 #ifdef SERIALIZE
 damp4_dup(1,1)=damp4
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1681
 call fs_create_savepoint('Del6VtFlux-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1682
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx2', ut, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy2', vt, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'wq', wk, k=k, k_size=nz, mode=ppser_get_mode())
@@ -2173,9 +2064,7 @@ call fs_create_savepoint('Del6VtFlux-In', ppser_savepoint)
 #endif
         call del6_vt_flux(nord_v, npx, npy, damp4, wk, vort, ut, vt, gridstruct, bd)
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1684
 call fs_create_savepoint('Del6VtFlux-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/sw_core.F90.SER lineno: #1685
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx2', ut, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy2', vt, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'wq', wk, k=k, k_size=nz, mode=ppser_get_mode())
@@ -4097,4 +3986,3 @@ end subroutine ytp_v
  end subroutine fill_4corners
 
  end module sw_core_mod
-
