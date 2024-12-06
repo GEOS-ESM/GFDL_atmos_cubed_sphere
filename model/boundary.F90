@@ -60,7 +60,11 @@ module boundary_mod
 ! </table>
 
   use fv_mp_mod,         only: ng, isc,jsc,iec,jec, isd,jsd,ied,jed, is,js,ie,je, is_master
+#ifdef OVERLOAD_R4
+  use constantsR4_mod,   only: grav
+#else
   use constants_mod,     only: grav
+#endif
 
   use mpp_domains_mod,    only: mpp_get_compute_domain, mpp_get_data_domain, mpp_get_global_domain
   use mpp_domains_mod,    only: CENTER, CORNER, NORTH, EAST

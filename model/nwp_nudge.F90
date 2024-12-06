@@ -10,7 +10,11 @@ module nwp_nudge_mod
  use fv_mapz_mod,       only: mappm
  use fv_mp_mod,         only: is,js,ie,je, isd,jsd,ied,jed, gid, masterproc, domain, mp_reduce_sum
  use fv_timing_mod,     only: timing_on, timing_off
+#ifdef OVERLOAD_R4
+ use constantsR4_mod,   only: pi, grav, rdgas, cp_air, kappa, radius
+#else
  use constants_mod,     only: pi, grav, rdgas, cp_air, kappa, radius
+#endif
  use time_manager_mod,  only: time_type,  get_time, get_date
  use mpp_mod,           only: mpp_error, FATAL, stdlog
  use fms_mod,           only: write_version_number, open_namelist_file, &

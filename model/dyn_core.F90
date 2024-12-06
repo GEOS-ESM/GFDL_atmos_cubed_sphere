@@ -103,7 +103,11 @@ module dyn_core_mod
 !   </tr>
 ! </table>
 
+#ifdef OVERLOAD_R4
+  use constantsR4_mod,    only: rdgas, radius, cp_air, pi
+#else
   use constants_mod,      only: rdgas, radius, cp_air, pi
+#endif
   use mpp_mod,            only: mpp_pe 
   use mpp_domains_mod,    only: CGRID_NE, DGRID_NE, AGRID, mpp_get_boundary, mpp_update_domains,  &
                                 domain2d

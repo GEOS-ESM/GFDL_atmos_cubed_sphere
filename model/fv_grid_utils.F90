@@ -75,7 +75,11 @@
 
  
 #include <fms_platform.h>
+#ifdef OVERLOAD_R4
+ use constantsR4_mod, only: omega, pi=>pi_8, cnst_radius=>radius
+#else
  use constants_mod,   only: omega, pi=>pi_8, cnst_radius=>radius
+#endif
  use mpp_mod,         only: FATAL, mpp_error, WARNING
  use external_sst_mod, only: i_sst, j_sst, sst_ncep, sst_anom
  use mpp_domains_mod, only: mpp_update_domains, DGRID_NE, mpp_global_sum

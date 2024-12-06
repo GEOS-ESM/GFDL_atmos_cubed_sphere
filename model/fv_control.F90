@@ -114,7 +114,11 @@ module fv_control_mod
 !   </tr>
 ! </table>
 
+#ifdef OVERLOAD_R4
+   use constantsR4_mod,     only: pi=>pi_8, kappa, radius, grav, rdgas
+#else
    use constants_mod,       only: pi=>pi_8, kappa, radius, grav, rdgas
+#endif
    use field_manager_mod,   only: MODEL_ATMOS
    use fms_mod,             only: write_version_number, open_namelist_file, &
                                   check_nml_error, close_file, file_exist

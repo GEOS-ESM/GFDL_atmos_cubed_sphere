@@ -121,8 +121,13 @@ module fv_treat_da_inc_mod
 #ifdef MAPL_MODE
   use MAPL
 #else
+#ifdef OVERLOAD_R4
+  use constantsR4_mod,   only: pi=>pi_8, omega, grav, kappa, &
+                               rdgas, rvgas, cp_air
+#else
   use constants_mod,     only: pi=>pi_8, omega, grav, kappa, &
                                rdgas, rvgas, cp_air
+#endif
 #endif
 
   use fv_arrays_mod,     only: fv_atmos_type, &

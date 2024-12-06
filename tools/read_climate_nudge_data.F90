@@ -9,7 +9,11 @@ use mpp_io_mod,    only: mpp_open, MPP_NETCDF, MPP_RDONLY,MPP_MULTI, MPP_SINGLE
 use mpp_io_mod,    only: axistype, fieldtype, mpp_get_time_axis, mpp_get_atts
 use mpp_io_mod,    only: mpp_get_fields, mpp_get_info, mpp_get_axes, mpp_get_times
 use mpp_io_mod,    only: mpp_get_axis_data, mpp_read, mpp_close, mpp_get_default_calendar
+#ifdef OVERLOAD_R4
+use constantsR4_mod, only: PI, GRAV, RDGAS, RVGAS
+#else
 use constants_mod, only: PI, GRAV, RDGAS, RVGAS
+#endif
 use fv_arrays_mod,  only: REAL4, REAL8, FVPRC
 
 implicit none

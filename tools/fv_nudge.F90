@@ -102,7 +102,11 @@ module fv_nwp_nudge_mod
 
  use external_sst_mod,  only: i_sst, j_sst, sst_ncep, sst_anom, forecast_mode
  use diag_manager_mod,  only: register_diag_field, send_data
+#ifdef OVERLOAD_R4
+ use constantsR4_mod,   only: pi=>pi_8, grav, rdgas, cp_air, kappa, cnst_radius =>radius
+#else
  use constants_mod,     only: pi=>pi_8, grav, rdgas, cp_air, kappa, cnst_radius =>radius
+#endif
  use fms_mod,           only: write_version_number, open_namelist_file, &
                               check_nml_error, file_exist, close_file
 !use fms_io_mod,        only: field_size

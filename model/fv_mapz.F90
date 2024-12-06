@@ -81,7 +81,11 @@ module fv_mapz_mod
 !   </tr>
 ! </table>
 
+#ifdef OVERLOAD_R4
+  use constantsR4_mod,   only: radius, pi=>pi_8, rvgas, rdgas, grav, hlv, hlf, hls, cp_air, cp_vapor
+#else
   use constants_mod,     only: radius, pi=>pi_8, rvgas, rdgas, grav, hlv, hlf, hls, cp_air, cp_vapor
+#endif
   use tracer_manager_mod,only: get_tracer_index
   use field_manager_mod, only: MODEL_ATMOS
   use fv_grid_utils_mod, only: ptop_min

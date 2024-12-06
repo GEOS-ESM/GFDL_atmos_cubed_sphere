@@ -16,7 +16,11 @@ module external_ic_mod
    use tracer_manager_mod, only: get_tracer_names, get_number_tracers, get_tracer_index
    use field_manager_mod,  only: MODEL_ATMOS
 
+#ifdef OVERLOAD_R4
+   use constantsR4_mod,   only: pi=>pi_8, omega, grav, kappa, rdgas, rvgas, cp_air
+#else
    use constants_mod,     only: pi=>pi_8, omega, grav, kappa, rdgas, rvgas, cp_air
+#endif
 #ifdef MAPL_MODE
    use MAPL
 #endif

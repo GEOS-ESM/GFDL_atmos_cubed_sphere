@@ -114,8 +114,11 @@ module fv_grid_tools_mod
 !   </tr>
 ! </table>
 
-
+#ifdef OVERLOAD_R4
+  use constantsR4_mod, only: grav, omega, pi=>pi_8, cnst_radius=>radius
+#else
   use constants_mod, only: grav, omega, pi=>pi_8, cnst_radius=>radius
+#endif
   use fv_arrays_mod, only: fv_atmos_type, fv_grid_type, fv_grid_bounds_type, R_GRID
   use fv_grid_utils_mod, only: gnomonic_grids, gnomonic_grids_local, great_circle_dist,  &
                            mid_pt_sphere, spherical_angle,     &

@@ -43,7 +43,11 @@ module fv_eta_mod
 !   </tr>
 ! </table>
 
+#ifdef OVERLOAD_R4
+ use constantsR4_mod,  only: kappa, grav, cp_air, rdgas
+#else
  use constants_mod,  only: kappa, grav, cp_air, rdgas
+#endif
  use fv_mp_mod,      only: is_master
  use mpp_mod,        only: FATAL, mpp_error
  implicit none

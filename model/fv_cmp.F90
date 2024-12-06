@@ -47,7 +47,11 @@ module fv_cmp_mod
 !   </tr>
 ! </table>
     
+#ifdef OVERLOAD_R4
+    use constantsR4_mod, only: rvgas, rdgas, grav, hlv, hlf, cp_air
+#else
     use constants_mod, only: rvgas, rdgas, grav, hlv, hlf, cp_air
+#endif
     use fv_mp_mod, only: is_master
     use fv_arrays_mod, only: r_grid
     

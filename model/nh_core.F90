@@ -46,7 +46,11 @@ module nh_core_mod
 !   </tr>
 ! </table>
 
+#ifdef OVERLOAD_R4
+   use constantsR4_mod,   only: rdgas, cp_air, grav
+#else
    use constants_mod,     only: rdgas, cp_air, grav
+#endif
    use tp_core_mod,       only: fv_tp_2d
    use nh_utils_mod,      only: update_dz_c, update_dz_d, nest_halo_nh
    use nh_utils_mod,      only: sim_solver, sim1_solver, sim3_solver
