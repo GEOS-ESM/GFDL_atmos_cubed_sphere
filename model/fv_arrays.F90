@@ -1496,21 +1496,21 @@ contains
     !--------------------------
     ! Non-hydrostatic dynamics:
     !--------------------------
-    if ( Atm%flagstruct%hydrostatic ) then
-       !Note length-one initialization if hydrostatic = .true.
-       allocate (    Atm%w(isd:isd, jsd:jsd  ,1) )
-       allocate ( Atm%delz(isd:isd, jsd:jsd  ,1) )
-       allocate (  Atm%ze0(is:is, js:js  ,1) )
+    ! Note: GCC 14 found that the call to c_sw in has a loop over
+    !       the third dimension of Atm%w from 1 to npz. But if
+    !       hydrostatic, this below allocated as (1,1,1). GCC 14
+    !       debugging flags triggered on this when k=2. So, as a
+    !       mitigation, we just allocate all these arrays like
+    !       it was non-hydrostatic. This is a bit wasteful, but
+    !       it is a simple fix.
+    allocate (    Atm%w(isd:ied, jsd:jed  ,npz  ) )
+    allocate ( Atm%delz(isd:ied, jsd:jed  ,npz) )
+    if( Atm%flagstruct%hybrid_z ) then
+       allocate (  Atm%ze0(is:ie, js:je ,npz+1) )
     else
-       allocate (    Atm%w(isd:ied, jsd:jed  ,npz  ) )
-       allocate ( Atm%delz(isd:ied, jsd:jed  ,npz) )
-       if( Atm%flagstruct%hybrid_z ) then
-          allocate (  Atm%ze0(is:ie, js:je ,npz+1) )
-       else
-          allocate (  Atm%ze0(is:is, js:js  ,1) )
-       endif
-       !         allocate ( mono(isd:ied, jsd:jed, npz))
+       allocate (  Atm%ze0(is:is, js:js  ,1) )
     endif
+    !         allocate ( mono(isd:ied, jsd:jed, npz))
 
 #ifdef USE_COND
       allocate ( Atm%q_con(isd:ied,jsd:jed,1:npz) )
