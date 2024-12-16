@@ -475,14 +475,20 @@ contains
     endif
 
       if ( flagstruct%fv_debug ) then
-         call prt_mxm('PS_b',      ps, is, ie, js, je, ng,   1, 0.01, gridstruct%area_64, domain)
-         call prt_mxm('T_dyn_b',   pt, is, ie, js, je, ng, npz, 1.,   gridstruct%area_64, domain)
-         if ( .not. hydrostatic) call prt_mxm('delz_b', delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-         if ( .not. hydrostatic) call prt_mxm('W_b',    w,    is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-         call prt_mxm('delp_b ', delp, is, ie, js, je, ng, npz, 0.01, gridstruct%area_64, domain)
-         call prt_mxm('pk_b',    pk, is, ie, js, je, 0, npz+1, 1.,gridstruct%area_64, domain)
-         call prt_mxm('pkz_b',   pkz,is, ie, js, je, 0, npz,   1.,gridstruct%area_64, domain)
-      endif
+         if(is_master()) write(6,*) ''
+         if(is_master()) write(6,*) '------------------------------------'
+         call prt_mxm('PS_bg', ps, is, ie, js, je, ng,   1, 0.01, gridstruct%area_64, domain)
+         call prt_mxm('T_dyn_bg', pt, is, ie, js, je, ng, npz, 1.,   gridstruct%area_64, domain)
+         call prt_mxm('U_bg', u, is, ie, js, je+1, ng, npz, 1., gridstruct%area_64, domain)
+         call prt_mxm('V_bg', v, is, ie+1, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if ( .not. hydrostatic) call prt_mxm('W_bg',    w,    is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if ( .not. hydrostatic) call prt_mxm('delz_bg', delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         call prt_mxm('delp_bg ', delp, is, ie, js, je, ng, npz, 0.01, gridstruct%area_64, domain)
+!        call prt_mxm('pk_bg',    pk, is, ie, js, je, 0, npz+1, 1.,gridstruct%area_64, domain)
+!        call prt_mxm('pkz_bg',   pkz,is, ie, js, je, 0, npz,   1.,gridstruct%area_64, domain)
+         if(is_master()) write(6,*) '------------------------------------'
+         if(is_master()) write(6,*) ''
+       endif
 
 !---------------------
 ! Compute Total Energy
@@ -519,12 +525,21 @@ contains
              call Rayleigh_Friction(abs(bdt), npx, npy, npz, ks, pfull, flagstruct%tau, u, v, w, pt,  &
                   ua, va, delz, cp_air, rdgas, ptop, hydrostatic, .true., flagstruct%rf_cutoff, gridstruct, domain, bd)
         endif
+        if ( flagstruct%fv_debug ) then
+           if(is_master()) write(6,*) ''
+           if(is_master()) write(6,*) '------------------------------------'
+           call prt_mxm('T_dyn_rf', pt, is, ie, js, je, ng, npz, 1.,   gridstruct%area_64, domain)
+           call prt_mxm('U_rf', u, is, ie, js, je+1, ng, npz, 1., gridstruct%area_64, domain)
+           call prt_mxm('V_rf', v, is, ie+1, js, je, ng, npz, 1., gridstruct%area_64, domain)
+           if ( .not. hydrostatic) call prt_mxm('W_rf',    w,    is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+           if(is_master()) write(6,*) '------------------------------------'
+           if(is_master()) write(6,*) ''
+        endif
       endif
       dudt_rf = ( u(is:ie,js:je,:) - dudt_rf)/bdt
       dvdt_rf = ( v(is:ie,js:je,:) - dvdt_rf)/bdt
       dtdt_rf = (pt(is:ie,js:je,:) - dtdt_rf)/bdt
       if (.not. hydrostatic) dwdt_rf = ( w(is:ie,js:je,:) - dwdt_rf)/bdt
-
 #endif
 
 #ifndef SW_DYNAMICS
@@ -589,14 +604,14 @@ contains
   endif
 
 !DryMassRoundoffControl
-      allocate(psx(isd:ied,jsd:jed),dpx(is:ie,js:je,npz))
-      psx(:,:) = 0.0
-      do j=js,je
-         do i=is,ie
-            psx(i,j) = pe(i,npz+1,j)
-            dpx(i,j,:) = 0.0
-         enddo
-      enddo
+  allocate(psx(isd:ied,jsd:jed),dpx(is:ie,js:je,npz))
+  psx(:,:) = 0.0
+  do j=js,je
+     do i=is,ie
+        psx(i,j) = pe(i,npz+1,j)
+        dpx(i,j,:) = 0.0
+     enddo
+  enddo
                                                   call timing_on('FV_DYN_LOOP')
   do n_map=1, k_split   ! first level of time-split
                                            call timing_on('COMM_TOTAL')
@@ -651,7 +666,6 @@ contains
                     domain, n_map==1, i_pack, last_step, diss_est,time_total)
                                            call timing_off('DYN_CORE')
 
-
 !MassFluxRoundoffControl
 #ifdef SINGLE_FV
       mfxL=mfxR8
@@ -659,13 +673,28 @@ contains
        cxL= cxR8
        cyL= cyR8 
 #endif
-      
 !     if ( flagstruct%range_warn ) then
 !        call range_check('CX_dyn', cxL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
 !                          -0.5, 0.5, bad_range)
 !        call range_check('CY_dyn', cyL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
 !                          -0.5, 0.5, bad_range)
 !     endif
+
+      if ( flagstruct%fv_debug ) then
+         if(is_master()) write(6,*) ''
+         if(is_master()) write(6,*) '------------------------------------'
+         call prt_mxm('PS_ad', ps, is, ie, js, je, ng,   1, 0.01, gridstruct%area_64, domain)
+         call prt_mxm('T_dyn_ad', pt, is, ie, js, je, ng, npz, 1.,   gridstruct%area_64, domain)
+         call prt_mxm('U_ad', u, is, ie, js, je+1, ng, npz, 1., gridstruct%area_64, domain)
+         call prt_mxm('V_ad', v, is, ie+1, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if ( .not. hydrostatic) call prt_mxm('W_ad',    w,    is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if ( .not. hydrostatic) call prt_mxm('delz_ad', delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         call prt_mxm('delp_ad ', delp, is, ie, js, je, ng, npz, 0.01, gridstruct%area_64, domain)
+!        call prt_mxm('pk_ad',    pk, is, ie, js, je, 0, npz+1, 1.,gridstruct%area_64, domain)
+!        call prt_mxm('pkz_ad',   pkz,is, ie, js, je, 0, npz,   1.,gridstruct%area_64, domain)
+         if(is_master()) write(6,*) '------------------------------------'
+         if(is_master()) write(6,*) ''
+      endif
 
 !DryMassRoundoffControl
       if(last_step) then
@@ -794,6 +823,23 @@ contains
           cx =  cx +  cxL
           cy =  cy +  cyL
 
+      if ( flagstruct%fv_debug ) then
+         if(is_master()) write(6,*) ''
+         if(is_master()) write(6,*) '------------------------------------'
+         call prt_mxm('PS_rm', ps, is, ie, js, je, ng,   1, 0.01, gridstruct%area_64, domain)
+         call prt_mxm('T_dyn_rm', pt, is, ie, js, je, ng, npz, 1.,   gridstruct%area_64, domain)
+         call prt_mxm('U_rm', u, is, ie, js, je+1, ng, npz, 1., gridstruct%area_64, domain)
+         call prt_mxm('V_rm', v, is, ie+1, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if ( .not. hydrostatic) call prt_mxm('W_rm',    w,    is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if ( .not. hydrostatic) call prt_mxm('delz_rm', delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         call prt_mxm('delp_rm ', delp, is, ie, js, je, ng, npz, 0.01, gridstruct%area_64, domain)
+!        call prt_mxm('pk_rm',    pk, is, ie, js, je, 0, npz+1, 1.,gridstruct%area_64, domain)
+!        call prt_mxm('pkz_rm',   pkz,is, ie, js, je, 0, npz,   1.,gridstruct%area_64, domain)
+         if(is_master()) write(6,*) '------------------------------------'
+         if(is_master()) write(6,*) ''
+      endif
+
+
          if( last_step )  then
 !            if( .not. hydrostatic ) then
 !!$OMP parallel do default(none) shared(is,ie,js,je,npz,omga,delp,delz,w)
@@ -854,12 +900,16 @@ contains
                                 q(isd,jsd,1,graupel), check_negative=flagstruct%check_negative)
      endif
      if ( flagstruct%fv_debug ) then
-       call prt_mxm('SPHUM_dyn',   q(isd,jsd,1,sphum  ), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
-       call prt_mxm('liq_wat_dyn', q(isd,jsd,1,liq_wat), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
-       call prt_mxm('rainwat_dyn', q(isd,jsd,1,rainwat), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
-       call prt_mxm('ice_wat_dyn', q(isd,jsd,1,ice_wat), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
-       call prt_mxm('snowwat_dyn', q(isd,jsd,1,snowwat), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
-       call prt_mxm('graupel_dyn', q(isd,jsd,1,graupel), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
+         if(is_master()) write(6,*) ''
+         if(is_master()) write(6,*) '------------------------------------'
+         call prt_mxm('SPHUM_dyn',   q(isd,jsd,1,sphum  ), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
+         call prt_mxm('liq_wat_dyn', q(isd,jsd,1,liq_wat), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
+         call prt_mxm('rainwat_dyn', q(isd,jsd,1,rainwat), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
+         call prt_mxm('ice_wat_dyn', q(isd,jsd,1,ice_wat), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
+         call prt_mxm('snowwat_dyn', q(isd,jsd,1,snowwat), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
+         call prt_mxm('graupel_dyn', q(isd,jsd,1,graupel), is, ie, js, je, ng, npz, 1.,gridstruct%area_64, domain)
+         if(is_master()) write(6,*) '------------------------------------'
+         if(is_master()) write(6,*) ''
      endif
   endif
 
@@ -917,6 +967,22 @@ contains
     endif   !  consv_am
   endif
 
+      if ( flagstruct%fv_debug ) then
+         if(is_master()) write(6,*) ''
+         if(is_master()) write(6,*) '------------------------------------'
+         call prt_mxm('PS_fv', ps, is, ie, js, je, ng,   1, 0.01, gridstruct%area_64, domain)
+         call prt_mxm('T_dyn_fv', pt, is, ie, js, je, ng, npz, 1.,   gridstruct%area_64, domain)
+         call prt_mxm('U_fv', u, is, ie, js, je+1, ng, npz, 1., gridstruct%area_64, domain)
+         call prt_mxm('V_fv', v, is, ie+1, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if ( .not. hydrostatic) call prt_mxm('W_fv',    w,    is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if ( .not. hydrostatic) call prt_mxm('delz_fv', delz, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         call prt_mxm('delp_fv ', delp, is, ie, js, je, ng, npz, 0.01, gridstruct%area_64, domain)
+!        call prt_mxm('pk_fv',    pk, is, ie, js, je, 0, npz+1, 1.,gridstruct%area_64, domain)
+!        call prt_mxm('pkz_fv',   pkz,is, ie, js, je, 0, npz,   1.,gridstruct%area_64, domain)
+         if(is_master()) write(6,*) '------------------------------------'
+         if(is_master()) write(6,*) ''
+      endif
+
 911  call cubed_to_latlon(u, v, ua, va, gridstruct, &
           npx, npy, npz, 1, gridstruct%grid_type, domain, gridstruct%nested, flagstruct%c2l_ord, bd)
 
@@ -924,10 +990,14 @@ contains
   deallocate(cappa)
 
   if ( flagstruct%fv_debug ) then
-     call prt_mxm('UA', ua, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-     call prt_mxm('VA', va, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-     call prt_mxm('TA', pt, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
-     if (.not. hydrostatic) call prt_mxm('W ', w,  is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if(is_master()) write(6,*) ''
+         if(is_master()) write(6,*) '------------------------------------'
+         call prt_mxm('UA', ua, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         call prt_mxm('VA', va, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         call prt_mxm('TA', pt, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if (.not. hydrostatic) call prt_mxm('W ', w,  is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)
+         if(is_master()) write(6,*) '------------------------------------'
+         if(is_master()) write(6,*) ''
   endif
 
   if ( flagstruct%range_warn ) then
