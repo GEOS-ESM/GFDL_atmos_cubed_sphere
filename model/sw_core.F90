@@ -29,9 +29,9 @@ module sw_core_mod
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
   fs_add_savepoint_metainfo, &
-  fs_read_field, &
+  fs_create_savepoint, &
   fs_write_field, &
-  fs_create_savepoint
+  fs_read_field
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
   ppser_intlength, &
@@ -1168,10 +1168,10 @@ call fs_create_savepoint('FluxCapacitor-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cry_adv', cry_adv, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy', fy, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cx_R8', cx, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xflux_R8', xflux, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cy_R8', cy, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'yflux_R8', yflux, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cx', cx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xflux', xflux, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cy', cy, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'yflux', yflux, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
         do j=jsd,jed
             do i=is,ie+1
@@ -1193,10 +1193,10 @@ call fs_create_savepoint('FluxCapacitor-In', ppser_savepoint)
         enddo
 #ifdef SERIALIZE
 call fs_create_savepoint('FluxCapacitor-Out', ppser_savepoint)
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cx_R8', cx, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xflux_R8', xflux, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cy_R8', cy, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'yflux_R8', yflux, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cx', cx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xflux', xflux, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'cy', cy, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'yflux', yflux, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
 
 #ifndef SW_DYNAMICS
@@ -1311,8 +1311,8 @@ call fs_create_savepoint('FvTp2d-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'mass', delp, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'damp_c', damp_v_dup, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_column', nord_v_dup, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'mfx_R4', fx, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'mfy_R4', fy, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'mfx', fx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'mfy', fy, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
 SELECT CASE ( ppser_get_mode() )
   CASE(0)

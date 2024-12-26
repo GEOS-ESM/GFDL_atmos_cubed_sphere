@@ -998,7 +998,7 @@ module sw_core_mod
 ! <<< Save the mass fluxes to the "Flux Capacitor" for tracer transport >>>
        !$ser savepoint FluxCapacitor-In
        !$ser data_kbuff k=k k_size=nz crx_adv=crx_adv fx=fx cry_adv=cry_adv fy=fy
-       !$ser data_kbuff k=k k_size=nz cx_R8=cx xflux_R8=xflux cy_R8=cy yflux_R8=yflux
+       !$ser data_kbuff k=k k_size=nz cx=cx xflux=xflux cy=cy yflux=yflux
         do j=jsd,jed
             do i=is,ie+1
               cx(i,j) = cx(i,j) + crx_adv(i,j)
@@ -1018,7 +1018,7 @@ module sw_core_mod
            enddo
         enddo
         !$ser savepoint FluxCapacitor-Out
-        !$ser data_kbuff k=k k_size=nz cx_R8=cx xflux_R8=xflux cy_R8=cy yflux_R8=yflux
+        !$ser data_kbuff k=k k_size=nz cx=cx xflux=xflux cy=cy yflux=yflux
 
 #ifndef SW_DYNAMICS
         do j=js,je
@@ -1083,7 +1083,7 @@ module sw_core_mod
 
         !$ser savepoint FvTp2d-In
         !$ser data_kbuff k=k k_size=nz q=pt crx=crx_adv cry=cry_adv fx=gx fy=gy xfx=xfx_adv yfx=yfx_adv ra_x=ra_x ra_y=ra_y mass=delp damp_c=damp_v_dup nord_column=nord_v_dup
-        !$ser data_kbuff k=k k_size=nz mfx_R4=fx mfy_R4=fy
+        !$ser data_kbuff k=k k_size=nz mfx=fx mfy=fy
         !$ser verbatim if (k == nz) then 
         !$ser data hord=hord_tm
         !$ser verbatim endif

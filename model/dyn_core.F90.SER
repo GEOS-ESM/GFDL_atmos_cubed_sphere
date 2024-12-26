@@ -687,7 +687,7 @@ contains
     !$ser savepoint D_SW-In
     !$ser verbatim ! Copy back to 32-bit
     !$ser data delpcd=vt delpd=delp ptcd=ptc ptd=pt ud=u vd=v wd=w ucd=uc vcd=vc uad=ua vad=va divgdd=divgd
-    !$ser data mfxd_R8=mfx mfyd_R8=mfy cxd_R8=cx cyd_R8=cy
+    !$ser data mfxd_R8=mfx mfyd_R8=mfy cxd_R8=cx cyd_R8=cy dpx=dpx
     !$ser data crxd=crx cryd=cry xfxd=xfx yfxd=yfx q_cond=q_con zhd=zh heat_sourced=heat_source diss_estd=diss_est zvir=zvir nq=nq dt=dt nord_v=nord_v damp_vt=damp_vt
 
                                                      call timing_on('d_sw')
@@ -835,7 +835,7 @@ contains
     !$ser flush_savepoint D_SW_COLUMN_NORD-Out
     !$ser savepoint D_SW-Out
     !$ser data delpcd=vt delpd=delp ptcd=ptc ptd=pt ud=u vd=v wd=w ucd=uc vcd=vc uad=ua vad=va divgdd=divgd
-    !$ser data mfxd_R8=mfx mfyd_R8=mfy cxd_R8=cx cyd_R8=cy
+    !$ser data mfxd_R8=mfx mfyd_R8=mfy cxd_R8=cx cyd_R8=cy dpx=dpx
     !$ser data crxd=crx cryd=cry xfxd=xfx yfxd=yfx q_cond=q_con heat_sourced=heat_source diss_estd=diss_est nord_vd=nord_v damp_vtd=damp_vt
     !$ser verbatim call finalize_kbuff()
     if ( (.not. hydrostatic) .and.  flagstruct%fv_debug ) &

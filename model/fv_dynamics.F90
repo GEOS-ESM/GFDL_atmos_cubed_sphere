@@ -28,9 +28,9 @@ module fv_dynamics_mod
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
   fs_add_savepoint_metainfo, &
-  fs_read_field, &
+  fs_create_savepoint, &
   fs_write_field, &
-  fs_create_savepoint
+  fs_read_field
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
   ppser_intlength, &
@@ -312,12 +312,6 @@ contains
 ! R8 Courant number arrays
       real(kind=8) ::  cxR8(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
       real(kind=8) ::  cyR8(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
-#ifdef SERIALIZE
-real :: mfxR8_ser(bd%is:bd%ie+1, bd%js:bd%je, npz)
-real :: mfyR8_ser(bd%is:bd%ie , bd%js:bd%je+1, npz)
-real :: cxR8_ser(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
-real :: cyR8_ser(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
-#endif
 #endif
 ! Local Mass flux arrays: the "Flux Capacitor"
       real         ::  mfxL(bd%is:bd%ie+1, bd%js:bd%je,   npz)
@@ -668,11 +662,6 @@ real :: ph1v(npz), ph2v(npz)
 #ifdef SERIALIZE
 n_map_step=n_map
 call fs_create_savepoint('DynCore-In', ppser_savepoint)
-! No use before this point, we init to zero
-mfxR8_ser = 0
-mfyR8_ser = 0
-cxR8_ser = 0
-cyR8_ser = 0
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'nq', nq)
@@ -749,20 +738,20 @@ SELECT CASE ( ppser_get_mode() )
 END SELECT
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'mfxd_R8', mfxR8)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'mfyd_R8', mfyR8)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'cxd_R8', cxR8)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'cyd_R8', cyR8)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'mfxd', mfxR8)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'mfyd', mfyR8)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cxd', cxR8)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cyd', cyR8)
   CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfxd_R8', mfxR8)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfyd_R8', mfyR8)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cxd_R8', cxR8)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cyd_R8', cyR8)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfxd', mfxR8)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfyd', mfyR8)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cxd', cxR8)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cyd', cyR8)
   CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfxd_R8', mfxR8, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfyd_R8', mfyR8, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cxd_R8', cxR8, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cyd_R8', cyR8, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfxd', mfxR8, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfyd', mfyR8, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cxd', cxR8, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cyd', cyR8, ppser_zrperturb)
 END SELECT
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
@@ -846,32 +835,6 @@ END SELECT
                                            call timing_off('DYN_CORE')
 #ifdef SERIALIZE
 call fs_create_savepoint('DynCore-Out', ppser_savepoint)
-! Copy back to ensure 32-bit save for Serialbox
-#endif
-#ifdef SINGLE_FV
-#ifdef SERIALIZE
-mfxR8_ser = mfxR8
-mfyR8_ser = mfyR8
-cxR8_ser = cxR8
-cyR8_ser = cyR8
-#endif
-#else
-#ifdef SERIALIZE
-mfxR8_ser = mfxL
-mfyR8_ser = mfyL
-cxR8_ser = cxL
-cyR8_ser = cyL
-#endif
-#endif
-
-!MassFluxRoundoffControl
-#ifdef SINGLE_FV
-      mfxL=mfxR8
-      mfyL=mfyR8
-       cxL= cxR8
-       cyL= cyR8 
-#endif
-#ifdef SERIALIZE
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'cappa', cappa)
@@ -933,37 +896,20 @@ SELECT CASE ( ppser_get_mode() )
 END SELECT
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'mfxd_R8', mfxR8)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'mfyd_R8', mfyR8)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'cxd_R8', cxR8)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'cyd_R8', cyR8)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'mfxd', mfxR8)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'mfyd', mfyR8)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cxd', cxR8)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cyd', cyR8)
   CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfxd_R8', mfxR8)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfyd_R8', mfyR8)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cxd_R8', cxR8)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cyd_R8', cyR8)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfxd', mfxR8)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfyd', mfyR8)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cxd', cxR8)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cyd', cyR8)
   CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfxd_R8', mfxR8, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfyd_R8', mfyR8, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cxd_R8', cxR8, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cyd_R8', cyR8, ppser_zrperturb)
-END SELECT
-SELECT CASE ( ppser_get_mode() )
-  CASE(0)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'mfxL', mfxL)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'mfyL', mfyL)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'cxL', cxL)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'cyL', cyL)
-  CASE(1)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfxL', mfxL)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfyL', mfyL)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cxL', cxL)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cyL', cyL)
-  CASE(2)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfxL', mfxL, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfyL', mfyL, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cxL', cxL, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cyL', cyL, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfxd', mfxR8, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mfyd', mfyR8, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cxd', cxR8, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cyd', cyR8, ppser_zrperturb)
 END SELECT
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
@@ -982,6 +928,14 @@ SELECT CASE ( ppser_get_mode() )
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'q_con', q_con, ppser_zrperturb)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'diss_estd', diss_est, ppser_zrperturb)
 END SELECT
+#endif
+
+!MassFluxRoundoffControl
+#ifdef SINGLE_FV
+      mfxL=mfxR8
+      mfyL=mfyR8
+       cxL= cxR8
+       cyL= cyR8 
 #endif
       
 !DryMassRoundoffControl
@@ -1063,14 +1017,17 @@ SELECT CASE ( ppser_get_mode() )
     call fs_write_field(ppser_serializer, ppser_savepoint, 'nq', nq)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'q_split', q_split)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'mdt', mdt)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'nwat', nwat)
   CASE(1)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nq', nq)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'q_split', q_split)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mdt', mdt)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nwat', nwat)
   CASE(2)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nq', nq, ppser_zrperturb)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'q_split', q_split, ppser_zrperturb)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'mdt', mdt, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nwat', nwat, ppser_zrperturb)
 END SELECT
 #endif
          call tracer_2d_1L(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
@@ -1449,6 +1406,14 @@ SELECT CASE ( ppser_get_mode() )
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qsnow', q(:,:,:,snowwat), ppser_zrperturb)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qgraupel', q(:,:,:,graupel), ppser_zrperturb)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qcld', q(:,:,:,cld_amt), ppser_zrperturb)
+END SELECT
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cld_amt', cld_amt)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cld_amt', cld_amt)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cld_amt', cld_amt, ppser_zrperturb)
 END SELECT
 #endif
      if (cld_amt > 0) then
