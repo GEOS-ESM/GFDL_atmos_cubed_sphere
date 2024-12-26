@@ -138,6 +138,8 @@ contains
    real q_j(bd%is:bd%ie,bd%jsd:bd%jed)
    real   fx2(bd%is:bd%ie+1,bd%jsd:bd%jed)
    real   fy2(bd%isd:bd%ied,bd%js:bd%je+1)
+   real   fx_tmp(bd%is:bd%ie+1 ,bd%js:bd%je) 
+   real   fy_tmp(bd%is:bd%ie,   bd%js:bd%je+1 )
    real   fyy(bd%isd:bd%ied,bd%js:bd%je+1)
    real   fx1(bd%is:bd%ie+1)
    real   damp
@@ -145,7 +147,7 @@ contains
 
    integer:: is, ie, js, je, isd, ied, jsd, jed
    !$ser verbatim integer :: k,nz, dir
-   !$ser verbatim real, dimension(1,1) :: damp_c_dup, nord_dup
+   !$ser verbatim real, dimension(1,1) :: damp_c_dup, nord_dup, damp_dup
    !$ser verbatim if (present(damp_c)) then
    !$ser verbatim damp_c_dup(1,1)=damp_c
    !$ser verbatim nord_dup(1,1)=nord
@@ -199,13 +201,13 @@ contains
       enddo
    enddo
    !$ser savepoint XPPM-In
-   !$ser data_kbuff k=k k_size=nz qx=q_i cx=crx
+   !$ser data_kbuff k=k k_size=nz qx=q_i crx=crx
    !$ser verbatim if (k == nz) then 
    !$ser data iord=ord_ou jfirst=js jlast=je
    !$ser verbatim endif
    call xppm(fx, q_i, crx(is,js), ord_ou, is,ie,isd,ied, js,je,jsd,jed, npx,npy, gridstruct%dxa, gridstruct%nested, gridstruct%grid_type, lim_fac)
    !$ser savepoint XPPM-Out
-   !$ser data_kbuff k=k k_size=nz xflux=fx
+   !$ser data_kbuff k=k k_size=nz fx=fx
 
    !$ser savepoint CopyCorners-In
    !$ser verbatim dir=1
@@ -219,7 +221,7 @@ contains
    !$ser data_kbuff k=k k_size=nz q=q
 
    !$ser savepoint XPPM-2-In
-   !$ser data_kbuff k=k k_size=nz q=q cx=crx
+   !$ser data_kbuff k=k k_size=nz q=q crx=crx
    !$ser verbatim if (k == nz) then 
    !$ser data iord=ord_in jfirst=jsd jlast=jed
    !$ser verbatim endif
@@ -264,12 +266,14 @@ contains
       if ( present(nord) .and. present(damp_c) .and. present(mass) ) then
          !$ser savepoint DelnFlux-In
          !$ser data_kbuff k=k k_size=nz q=q fx=fx fy=fy mass=mass damp_c=damp_c_dup nord_column=nord_dup
+         damp = 0
          if ( damp_c > 1.e-4 ) then
            damp = (damp_c * gridstruct%da_min)**(nord+1)
-           call deln_flux(nord, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass )
+           call deln_flux(nord, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass, fx_tmp, fy_tmp )
          endif
+         !$ser verbatim damp_dup(1,1)=damp
          !$ser savepoint DelnFlux-Out
-         !$ser data_kbuff k=k k_size=nz fx=fx fy=fy
+         !$ser data_kbuff k=k k_size=nz fx=fx fy=fy damp_calc=damp_dup fx_tmp=fx_tmp fy_tmp=fy_tmp
       endif
    else
 !---------------------------------
@@ -286,13 +290,13 @@ contains
          enddo
       enddo
       if ( present(nord) .and. present(damp_c) ) then
-         !$ser savepoint DelnFlux-2-In
+         !$ser savepoint DelnFlux_2-In
          !$ser data_kbuff k=k k_size=nz q=q fx=fx fy=fy damp_c=damp_c_dup nord_column=nord_dup
          if ( damp_c > 1.E-4 ) then
                 damp = (damp_c * gridstruct%da_min)**(nord+1)
                 call deln_flux(nord, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd)
            endif
-         !$ser savepoint DelnFlux-2-Out
+         !$ser savepoint DelnFlux_2-Out
          !$ser data_kbuff k=k k_size=nz fx=fx fy=fy
       endif
    endif
@@ -1317,7 +1321,7 @@ endif
  end subroutine pert_ppm
 
 
- subroutine deln_flux(nord,is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass )
+ subroutine deln_flux(nord,is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass, fx_tmp, fy_tmp )
 !> Del-n damping for the cell-mean values (A grid)
 !------------------
 !> nord = 0:   del-2
@@ -1334,6 +1338,7 @@ endif
    real, optional, intent(in):: mass(bd%isd:bd%ied, bd%jsd:bd%jed)  ! q ghosted on input
 ! diffusive fluxes:
    real, intent(inout):: fx(bd%is:bd%ie+1,bd%js:bd%je), fy(bd%is:bd%ie,bd%js:bd%je+1)
+   real, optional, intent(inout):: fx_tmp(bd%is:bd%ie+1,bd%js:bd%je), fy_tmp(bd%is:bd%ie,bd%js:bd%je+1)
 ! local:
    real fx2(bd%isd:bd%ied+1,bd%jsd:bd%jed), fy2(bd%isd:bd%ied,bd%jsd:bd%jed+1)
    real d2(bd%isd:bd%ied,bd%jsd:bd%jed)
@@ -1438,6 +1443,19 @@ endif
 !---------------------------------------------
 ! Add the diffusive fluxes to the flux arrays:
 !---------------------------------------------
+
+   if ( present(fx_tmp) ) then
+      do j=js,je
+         do i=is,ie+1
+            fx_tmp(i,j) = fx2(i,j)
+         enddo
+      enddo
+      do j=js,je+1
+         do i=is,ie
+            fy_tmp(i,j) = fy2(i,j)
+         enddo
+      enddo
+   endif
 
    if ( present(mass) ) then
 ! Apply mass weighting to diffusive fluxes:

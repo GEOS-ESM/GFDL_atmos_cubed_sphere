@@ -26,18 +26,22 @@ module tp_core_mod
 
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
+  fs_add_savepoint_metainfo, &
   fs_create_savepoint, &
-  fs_add_savepoint_metainfo
+  fs_write_field, &
+  fs_read_field
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
-  ppser_savepoint, &
-  ppser_serializer, &
-  ppser_serializer_ref, &
   ppser_intlength, &
   ppser_reallength, &
   ppser_realtype, &
+  ppser_savepoint, &
+  ppser_serializer, &
+  ppser_serializer_ref, &
   ppser_zrperturb, &
   ppser_get_mode
+USE savepoint_helpers
+USE utils_ppser_buffered
 USE utils_ppser_kbuff
 #endif
 
@@ -134,9 +138,17 @@ contains
    integer, intent(in):: npx, npy
    integer, intent(in)::hord
 
+#ifdef SERIALIZE
+   real::  crx(bd%is:bd%ie+1,bd%jsd:bd%jed)  
+#else
    real, intent(in)::  crx(bd%is:bd%ie+1,bd%jsd:bd%jed)  
+#endif
    real, intent(in)::  xfx(bd%is:bd%ie+1,bd%jsd:bd%jed)  
+#ifdef SERIALIZE
+   real::  cry(bd%isd:bd%ied,bd%js:bd%je+1 )  
+#else
    real, intent(in)::  cry(bd%isd:bd%ied,bd%js:bd%je+1 )  
+#endif
    real, intent(in)::  yfx(bd%isd:bd%ied,bd%js:bd%je+1 )  
    real, intent(in):: ra_x(bd%is:bd%ie,bd%jsd:bd%jed)
    real, intent(in):: ra_y(bd%isd:bd%ied,bd%js:bd%je)
@@ -163,6 +175,8 @@ contains
    real q_j(bd%is:bd%ie,bd%jsd:bd%jed)
    real   fx2(bd%is:bd%ie+1,bd%jsd:bd%jed)
    real   fy2(bd%isd:bd%ied,bd%js:bd%je+1)
+   real   fx_tmp(bd%is:bd%ie+1 ,bd%js:bd%je) 
+   real   fy_tmp(bd%is:bd%ie,   bd%js:bd%je+1 )
    real   fyy(bd%isd:bd%ied,bd%js:bd%je+1)
    real   fx1(bd%is:bd%ie+1)
    real   damp
@@ -171,7 +185,7 @@ contains
    integer:: is, ie, js, je, isd, ied, jsd, jed
 #ifdef SERIALIZE
 integer :: k,nz, dir
-real, dimension(1,1) :: damp_c_dup, nord_dup
+real, dimension(1,1) :: damp_c_dup, nord_dup, damp_dup
 if (present(damp_c)) then
 damp_c_dup(1,1)=damp_c
 nord_dup(1,1)=nord
@@ -195,25 +209,54 @@ call get_nz(nz)
    endif
    ord_ou = hord
 
-   !$-ser savepoint CopyCorners-In
-   !$-ser verbatim dir=2
-   !$-ser data_kbuff k=k k_size=nz q=q
-   !$-ser verbatim if (k == nz) then 
-   !$-ser data dir=dir
-   !$-ser verbatim endif
+#ifdef SERIALIZE
+call fs_create_savepoint('CopyCorners-In', ppser_savepoint)
+dir=2
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', q, k=k, k_size=nz, mode=ppser_get_mode())
+if (k == nz) then
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dir', dir)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dir', dir)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dir', dir, ppser_zrperturb)
+END SELECT
+endif
+#endif
    if (.not. gridstruct%nested) call copy_corners(q, npx, npy, 2, gridstruct%nested, bd, &
                          gridstruct%sw_corner, gridstruct%se_corner, gridstruct%nw_corner, gridstruct%ne_corner)
-   !$-ser savepoint CopyCorners-Out
-   !$-ser data_kbuff k=k k_size=nz q=q
+#ifdef SERIALIZE
+call fs_create_savepoint('CopyCorners-Out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', q, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
 
-   !$-ser savepoint YPPM-In
-   !$-ser data_kbuff k=k k_size=nz q=q c=cry
-   !$-ser verbatim if (k == nz) then 
-   !$-ser data jord=ord_in ifirst=isd ilast=ied
-   !$-ser verbatim endif           
+#ifdef SERIALIZE
+call fs_create_savepoint('YPPM-In', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', q, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'c', cry, k=k, k_size=nz, mode=ppser_get_mode())
+if (k == nz) then
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'jord', ord_in)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ifirst', isd)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ilast', ied)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jord', ord_in)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ifirst', isd)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ilast', ied)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jord', ord_in, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ifirst', isd, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ilast', ied, ppser_zrperturb)
+END SELECT
+endif
+#endif
    call yppm(fy2, q, cry, ord_in, isd,ied,isd,ied, js,je,jsd,jed, npx,npy, gridstruct%dya, gridstruct%nested, gridstruct%grid_type, lim_fac)
-   !$-ser savepoint YPPM-Out
-   !$-ser data_kbuff k=k k_size=nz flux=fy2
+#ifdef SERIALIZE
+call fs_create_savepoint('YPPM-Out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'flux', fy2, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
 
    do j=js,je+1
       do i=isd,ied
@@ -225,35 +268,81 @@ call get_nz(nz)
          q_i(i,j) = (q(i,j)*gridstruct%area(i,j) + fyy(i,j)-fyy(i,j+1))/ra_y(i,j)
       enddo
    enddo
-   !$-ser savepoint XPPM-In
-   !$-ser data_kbuff k=k k_size=nz qx=q_i cx=crx
-   !$-ser verbatim if (k == nz) then 
-   !$-ser data iord=ord_ou jfirst=js jlast=je
-   !$-ser verbatim endif
+#ifdef SERIALIZE
+call fs_create_savepoint('XPPM-In', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'qx', q_i, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'crx', crx, k=k, k_size=nz, mode=ppser_get_mode())
+if (k == nz) then
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'iord', ord_ou)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'jfirst', js)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'jlast', je)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'iord', ord_ou)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jfirst', js)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jlast', je)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'iord', ord_ou, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jfirst', js, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jlast', je, ppser_zrperturb)
+END SELECT
+endif
+#endif
    call xppm(fx, q_i, crx(is,js), ord_ou, is,ie,isd,ied, js,je,jsd,jed, npx,npy, gridstruct%dxa, gridstruct%nested, gridstruct%grid_type, lim_fac)
-   !$-ser savepoint XPPM-Out
-   !$-ser data_kbuff k=k k_size=nz xflux=fx
+#ifdef SERIALIZE
+call fs_create_savepoint('XPPM-Out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
 
-   !$-ser savepoint CopyCorners-In
-   !$-ser verbatim dir=1
-   !$-ser data_kbuff k=k k_size=nz q=q
-   !$-ser verbatim if (k == nz) then 
-   !$-ser data dir=dir
-   !$-ser verbatim endif
+#ifdef SERIALIZE
+call fs_create_savepoint('CopyCorners-In', ppser_savepoint)
+dir=1
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', q, k=k, k_size=nz, mode=ppser_get_mode())
+if (k == nz) then
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dir', dir)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dir', dir)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dir', dir, ppser_zrperturb)
+END SELECT
+endif
+#endif
    if (.not. gridstruct%nested) call copy_corners(q, npx, npy, 1, gridstruct%nested, bd, &
                        gridstruct%sw_corner, gridstruct%se_corner, gridstruct%nw_corner, gridstruct%ne_corner)
-   !$-ser savepoint CopyCorners-Out
-   !$-ser data_kbuff k=k k_size=nz q=q
+#ifdef SERIALIZE
+call fs_create_savepoint('CopyCorners-Out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', q, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
 
-   !$-ser savepoint XPPM-2-In
-   !$-ser data_kbuff k=k k_size=nz q=q cx=crx
-   !$-ser verbatim if (k == nz) then 
-   !$-ser data iord=ord_in jfirst=jsd jlast=jed
-   !$-ser verbatim endif
+#ifdef SERIALIZE
+call fs_create_savepoint('XPPM-2-In', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', q, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'crx', crx, k=k, k_size=nz, mode=ppser_get_mode())
+if (k == nz) then
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'iord', ord_in)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'jfirst', jsd)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'jlast', jed)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'iord', ord_in)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jfirst', jsd)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jlast', jed)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'iord', ord_in, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jfirst', jsd, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jlast', jed, ppser_zrperturb)
+END SELECT
+endif
+#endif
    call xppm(fx2, q, crx, ord_in, is,ie,isd,ied, jsd,jed,jsd,jed, npx,npy, gridstruct%dxa, gridstruct%nested, gridstruct%grid_type, lim_fac)
-   !$-ser savepoint XPPM-2-Out
-   !$-ser data_kbuff k=k k_size=nz xflux_2=fx2
-
+#ifdef SERIALIZE
+call fs_create_savepoint('XPPM-2-Out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xflux_2', fx2, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
    do j=jsd,jed
       do i=is,ie+1
          fx1(i) =  xfx(i,j) * fx2(i,j)
@@ -263,14 +352,32 @@ call get_nz(nz)
       enddo
    enddo
 
-  !$-ser savepoint YPPM-2-In
-  !$-ser data_kbuff k=k k_size=nz q_2=q_j c=cry
-  !$-ser verbatim if (k == nz) then 
-  !$-ser data jord=ord_ou ifirst=is ilast=ie
-  !$-ser verbatim endif
+#ifdef SERIALIZE
+call fs_create_savepoint('YPPM-2-In', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q_2', q_j, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'c', cry, k=k, k_size=nz, mode=ppser_get_mode())
+if (k == nz) then
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'jord', ord_ou)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ifirst', is)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'ilast', ie)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jord', ord_ou)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ifirst', is)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ilast', ie)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'jord', ord_ou, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ifirst', is, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ilast', ie, ppser_zrperturb)
+END SELECT
+endif
+#endif
   call yppm(fy, q_j, cry, ord_ou, is,ie,isd,ied, js,je,jsd,jed, npx, npy, gridstruct%dya, gridstruct%nested, gridstruct%grid_type, lim_fac)
-  !$-ser savepoint YPPM-2-Out
-  !$-ser data_kbuff k=k k_size=nz flux_2=fy
+#ifdef SERIALIZE
+call fs_create_savepoint('YPPM-2-Out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'flux_2', fy, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
 !----------------
 ! Flux averaging:
 !----------------
@@ -291,9 +398,7 @@ call get_nz(nz)
       enddo
       if ( present(nord) .and. present(damp_c) .and. present(mass) ) then
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #266
 call fs_create_savepoint('DelnFlux-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #267
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', q, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy', fy, k=k, k_size=nz, mode=ppser_get_mode())
@@ -301,16 +406,19 @@ call fs_create_savepoint('DelnFlux-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'damp_c', damp_c_dup, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_column', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
+         damp = 0
          if ( damp_c > 1.e-4 ) then
            damp = (damp_c * gridstruct%da_min)**(nord+1)
-           call deln_flux(nord, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass )
+           call deln_flux(nord, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass, fx_tmp, fy_tmp )
          endif
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #272
+damp_dup(1,1)=damp
 call fs_create_savepoint('DelnFlux-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #273
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy', fy, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'damp_calc', damp_dup, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx_tmp', fx_tmp, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy_tmp', fy_tmp, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
       endif
    else
@@ -329,9 +437,7 @@ call fs_create_savepoint('DelnFlux-Out', ppser_savepoint)
       enddo
       if ( present(nord) .and. present(damp_c) ) then
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #290
-call fs_create_savepoint('DelnFlux-2-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #291
+call fs_create_savepoint('DelnFlux_2-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', q, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy', fy, k=k, k_size=nz, mode=ppser_get_mode())
@@ -343,9 +449,7 @@ call fs_create_savepoint('DelnFlux-2-In', ppser_savepoint)
                 call deln_flux(nord, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd)
            endif
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #296
-call fs_create_savepoint('DelnFlux-2-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/tp_core.F90.SER lineno: #297
+call fs_create_savepoint('DelnFlux_2-Out', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy', fy, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
@@ -359,7 +463,11 @@ call fs_create_savepoint('DelnFlux-2-Out', ppser_savepoint)
  subroutine copy_corners(q, npx, npy, dir, nested, bd, &
                          sw_corner, se_corner, nw_corner, ne_corner)
  type(fv_grid_bounds_type), intent(IN) :: bd
+#ifdef SERIALIZE
+ integer:: npx, npy, dir
+#else
  integer, intent(in):: npx, npy, dir
+#endif
  real, intent(inout):: q(bd%isd:bd%ied,bd%jsd:bd%jed)
  logical, intent(IN) :: nested, sw_corner, se_corner, nw_corner, ne_corner
  integer  i,j
@@ -434,7 +542,11 @@ call fs_create_savepoint('DelnFlux-2-Out', ppser_savepoint)
  end subroutine copy_corners
 
  subroutine xppm(flux, q, c, iord, is,ie,isd,ied, jfirst,jlast,jsd,jed, npx, npy, dxa, nested, grid_type, lim_fac)
+#ifdef SERIALIZE
+ integer :: is, ie, isd, ied, jsd, jed
+#else
  integer, INTENT(IN) :: is, ie, isd, ied, jsd, jed
+#endif
  integer, INTENT(IN) :: jfirst, jlast  !< compute domain
  integer, INTENT(IN) :: iord
  integer, INTENT(IN) :: npx, npy
@@ -827,7 +939,11 @@ call fs_create_savepoint('DelnFlux-2-Out', ppser_savepoint)
 
  subroutine yppm(flux, q, c, jord, ifirst,ilast, isd,ied, js,je,jsd,jed, npx, npy, dya, nested, grid_type, lim_fac)
  integer, INTENT(IN) :: ifirst,ilast    !< Compute domain
+#ifdef SERIALIZE
+ integer :: isd,ied, js,je,jsd,jed
+#else
  integer, INTENT(IN) :: isd,ied, js,je,jsd,jed
+#endif
  integer, INTENT(IN) :: jord
  integer, INTENT(IN) :: npx, npy
 #ifdef SERIALIZE
@@ -1384,7 +1500,7 @@ endif
  end subroutine pert_ppm
 
 
- subroutine deln_flux(nord,is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass )
+ subroutine deln_flux(nord,is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass, fx_tmp, fy_tmp )
 !> Del-n damping for the cell-mean values (A grid)
 !------------------
 !> nord = 0:   del-2
@@ -1394,7 +1510,11 @@ endif
 !------------------
    type(fv_grid_bounds_type), intent(IN) :: bd
    integer, intent(in):: nord            !< del-n
+#ifdef SERIALIZE
+   integer:: is,ie,js,je, npx, npy
+#else
    integer, intent(in):: is,ie,js,je, npx, npy
+#endif
    real, intent(in):: damp
 #ifdef SERIALIZE
    real:: q(bd%is-ng:bd%ie+ng, bd%js-ng:bd%je+ng)  ! q ghosted on input
@@ -1409,6 +1529,7 @@ endif
 #endif
 ! diffusive fluxes:
    real, intent(inout):: fx(bd%is:bd%ie+1,bd%js:bd%je), fy(bd%is:bd%ie,bd%js:bd%je+1)
+   real, optional, intent(inout):: fx_tmp(bd%is:bd%ie+1,bd%js:bd%je), fy_tmp(bd%is:bd%ie,bd%js:bd%je+1)
 ! local:
    real fx2(bd%isd:bd%ied+1,bd%jsd:bd%jed), fy2(bd%isd:bd%ied,bd%jsd:bd%jed+1)
    real d2(bd%isd:bd%ied,bd%jsd:bd%jed)
@@ -1514,6 +1635,19 @@ endif
 ! Add the diffusive fluxes to the flux arrays:
 !---------------------------------------------
 
+   if ( present(fx_tmp) ) then
+      do j=js,je
+         do i=is,ie+1
+            fx_tmp(i,j) = fx2(i,j)
+         enddo
+      enddo
+      do j=js,je+1
+         do i=is,ie
+            fy_tmp(i,j) = fy2(i,j)
+         enddo
+      enddo
+   endif
+
    if ( present(mass) ) then
 ! Apply mass weighting to diffusive fluxes:
         damp2 = 0.5*damp
@@ -1544,4 +1678,3 @@ endif
 
 
 end module tp_core_mod
-
