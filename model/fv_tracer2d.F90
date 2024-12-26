@@ -1,3 +1,4 @@
+#define ACC_PREFIX !$acc
 !***********************************************************************
 !*                   GNU Lesser General Public License                 
 !*
@@ -62,6 +63,33 @@
 ! </table>
 
 module fv_tracer2d_mod
+
+#ifdef SERIALIZE
+USE m_serialize, ONLY: &
+  fs_add_savepoint_metainfo, &
+  fs_create_savepoint, &
+  fs_disable_serialization, &
+  fs_enable_serialization, &
+  fs_write_field, &
+  fs_read_field
+USE utils_ppser, ONLY:  &
+  ppser_get_mode, &
+  ppser_intlength, &
+  ppser_reallength, &
+  ppser_realtype, &
+  ppser_savepoint, &
+  ppser_serializer, &
+  ppser_serializer_ref, &
+  ppser_zrperturb, &
+  ppser_get_mode
+USE savepoint_helpers
+USE utils_ppser_buffered
+USE utils_ppser_kbuff
+#endif
+
+#ifdef SERIALIZE
+USE m_serialize, ONLY: fs_is_serialization_on
+#endif
    use tp_core_mod,       only: fv_tp_2d, copy_corners
    use fv_mp_mod,         only: mp_reduce_max
    use fv_mp_mod,         only: ng, mp_gather, is_master
@@ -135,7 +163,9 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
-
+#ifdef SERIALIZE
+logical :: ser_on
+#endif
       is  = bd%is
       ie  = bd%ie
       js  = bd%js
@@ -152,8 +182,28 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       dxa    => gridstruct%dxa 
       dya    => gridstruct%dya 
       dx     => gridstruct%dx  
-      dy     => gridstruct%dy  
+      dy     => gridstruct%dy
+#ifdef SERIALIZE
+ser_on=fs_is_serialization_on()
+#endif
 
+#ifdef SERIALIZE
+call fs_create_savepoint('TracerCMax-In', ppser_savepoint)
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cx_R4', cx)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cy_R4', cy)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cmax', cmax)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cx_R4', cx)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cy_R4', cy)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cmax', cmax)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cx_R4', cx, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cy_R4', cy, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cmax', cmax, ppser_zrperturb)
+END SELECT
+#endif
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &
 !$OMP                                  sin_sg,cy,yfx,dya,dx,cmax)
   do k=1,npz
@@ -191,8 +241,19 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
           enddo
      endif
   enddo  ! k-loop
-
+  
   call mp_reduce_max(cmax,npz)
+#ifdef SERIALIZE
+call fs_create_savepoint('TracerCMax-Out', ppser_savepoint)
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cmax', cmax)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cmax', cmax)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cmax', cmax, ppser_zrperturb)
+END SELECT
+#endif
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
 !$OMP                                  cy,yfx,mfx,mfy,cmax,mfx2,mfy2,cx2,cy2)   &
@@ -212,7 +273,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
               xfx(i,j,k) = xfx(i,j,k) * frac
            enddo
         enddo
-        do j=js,je
+      do j=js,je
            do i=is,ie+1
               mfx2(i,j,k) = mfx(i,j,k) * frac
            enddo
@@ -236,7 +297,9 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
   call complete_group_halo_update(q_pack, domain)
                         call timing_off('COMM_TRACER')
                               call timing_off('COMM_TOTAL')
-
+#ifdef SERIALIZE
+call fs_disable_serialization()
+#endif
 ! Begin k-independent tracer transport; can not be OpenMPed because the mpp_update call.
   do k=1,npz
 
@@ -324,7 +387,11 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      endif
 
   enddo    ! k-loop
-
+#ifdef SERIALIZE
+if (ser_on) then
+call fs_enable_serialization()
+endif
+#endif
 end subroutine tracer_2d_1L
 
 !>@brief The subroutine 'tracer_2d' is the standard routine for sub-cycled tracer advection.

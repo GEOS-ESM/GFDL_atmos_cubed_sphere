@@ -28,20 +28,22 @@ module fv_mapz_mod
 
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
+  fs_add_savepoint_metainfo, &
   fs_create_savepoint, &
-  fs_write_field, &
   fs_read_field, &
-  fs_add_savepoint_metainfo
+  fs_write_field
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
-  ppser_savepoint, &
-  ppser_serializer, &
-  ppser_serializer_ref, &
   ppser_intlength, &
   ppser_reallength, &
   ppser_realtype, &
+  ppser_savepoint, &
+  ppser_serializer, &
+  ppser_serializer_ref, &
   ppser_zrperturb, &
   ppser_get_mode
+USE savepoint_helpers
+USE utils_ppser_buffered
 USE utils_ppser_kbuff
 #endif
 
@@ -413,9 +415,7 @@ sgs_tke = get_tracer_index (MODEL_ATMOS, 'sgs_tke')
 ! Transform "density pt" to "density temp"
 #ifdef SERIALIZE
 if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #380
 call fs_create_savepoint('MoistCVPlusPt_2d-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #381
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'qvapor_js', q(:,j,:,sphum))
@@ -490,9 +490,7 @@ endif
                enddo
 #ifdef SERIALIZE
 if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #398
 call fs_create_savepoint('MoistCVPlusPt_2d-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #399
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'gz1d', gz)
@@ -641,10 +639,8 @@ endif
       else
 #ifdef SERIALIZE
 if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #529
 call fs_create_savepoint('MapScalar_2d-In', ppser_savepoint)
 mode=1
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #531
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'peln', peln)
@@ -675,9 +671,7 @@ endif
                          is, ie, j, isd, ied, jsd, jed, 1, abs(kord_tm), te_min)
 #ifdef SERIALIZE
 if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #537
 call fs_create_savepoint('MapScalar_2d-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #538
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'pt', pt)
@@ -710,9 +704,7 @@ endif
       if( nq > 5 ) then
 #ifdef SERIALIZE
 if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #561
 call fs_create_savepoint('MapN_Tracer_2d-In', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #562
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'j_2d', js2d)
@@ -745,9 +737,7 @@ endif
                             is, ie, isd, ied, jsd, jed, 0., fill)
 #ifdef SERIALIZE
 if(j == js2d) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #567
 call fs_create_savepoint('MapN_Tracer_2d-Out', ppser_savepoint)
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/fv_mapz.F90.SER lineno: #568
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'qtracers', q(:,:,:,1:nq))
@@ -4337,4 +4327,3 @@ endif        ! end last_step check
 
 
 end module fv_mapz_mod
-

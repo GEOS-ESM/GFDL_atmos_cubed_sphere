@@ -31,14 +31,16 @@ USE m_serialize, ONLY: &
   fs_disable_serialization, &
   fs_enable_serialization
 USE utils_ppser, ONLY:  &
-  ppser_savepoint, &
-  ppser_serializer, &
-  ppser_serializer_ref, &
   ppser_intlength, &
   ppser_reallength, &
   ppser_realtype, &
+  ppser_savepoint, &
+  ppser_serializer, &
+  ppser_serializer_ref, &
   ppser_zrperturb, &
   ppser_get_mode
+USE savepoint_helpers
+USE utils_ppser_buffered
 USE utils_ppser_kbuff
 #endif
 
@@ -286,7 +288,6 @@ ser_on=fs_is_serialization_on()
   enddo
 
 #ifdef SERIALIZE
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/nh_utils.F90.SER lineno: #266
 call fs_disable_serialization()
 #endif
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,km,area,xfx_adv,yfx_adv, &
@@ -338,7 +339,6 @@ call fs_disable_serialization()
 
 #ifdef SERIALIZE
 if (ser_on) then
-! file: /home/mad/work/fp/geos/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/model/nh_utils.F90.SER lineno: #315
 call fs_enable_serialization()
 endif
 #endif
@@ -2222,4 +2222,3 @@ endif
 end subroutine nest_halo_nh
 
 end module nh_utils_mod
-
