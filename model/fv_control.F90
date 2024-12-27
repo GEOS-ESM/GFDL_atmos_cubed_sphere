@@ -280,6 +280,8 @@ module fv_control_mod
    logical , pointer :: mountain  
    integer , pointer :: remap_option  
    integer , pointer :: gmao_remap
+   logical , pointer :: gmao_top_bc
+   logical , pointer :: gmao_bot_bc
    logical , pointer :: z_tracer 
 
    logical , pointer :: old_divg_damp 
@@ -671,7 +673,7 @@ module fv_control_mod
                          range_warn, dwind_2d, inline_q, z_tracer, adiabatic, do_vort_damp, no_dycore,   &
                          tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, fv_sg_adj, breed_vortex_inline,  &
                          na_init, nudge_dz, hybrid_z, Make_NH, n_zs_filter, nord_zs_filter, full_zs_filter, reset_eta,         &
-                         pnats, dnats, a2b_ord, remap_option, gmao_remap, p_ref, d2_bg_k1, d2_bg_k2,  &
+                         pnats, dnats, a2b_ord, remap_option, gmao_remap, gmao_top_bc, gmao_bot_bc, p_ref, d2_bg_k1, d2_bg_k2,  &
                          c2l_ord, dx_const, dy_const, umax, deglat,      &
                          deglon_start, deglon_stop, deglat_start, deglat_stop, &
                          phys_hydrostatic, use_hydro_pressure, make_hybrid_z, old_divg_damp, add_noise, &
@@ -1277,6 +1279,8 @@ module fv_control_mod
      mountain                      => Atm%flagstruct%mountain
      remap_option                  => Atm%flagstruct%remap_option
      gmao_remap                    => Atm%flagstruct%gmao_remap
+     gmao_top_bc                   => Atm%flagstruct%gmao_top_bc
+     gmao_bot_bc                   => Atm%flagstruct%gmao_bot_bc
      z_tracer                      => Atm%flagstruct%z_tracer
      old_divg_damp                 => Atm%flagstruct%old_divg_damp
      fv_land                       => Atm%flagstruct%fv_land

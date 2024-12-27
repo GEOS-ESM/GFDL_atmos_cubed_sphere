@@ -880,6 +880,10 @@ module fv_arrays_mod
                                 !<     1: GMAO linear
                                 !<     2: GMAO quadratic
                                 !<     3: GMAO cubic
+ 
+   logical :: gmao_top_bc = .false.  !< Optional upper BC in remapping of T or TE from GMAO (true or false)
+
+   logical :: gmao_bot_bc = .false.  !< Optional lower BC in remapping of T or TE from GMAO (true or false)
 
    logical :: z_tracer = .false.   !< Whether to transport sub-cycled tracers layer-by-layer,
                                    !< each with its own computed sub-cycling time step (if q_split = 0).
