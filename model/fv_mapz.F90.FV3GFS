@@ -1434,8 +1434,8 @@ endif        ! end last_step check
    enddo
 
 ! Compute vertical subgrid distribution
-   if ( kord >7 ) then
-        call scalar_profile( qs, q4, dp1, km, i1, i2, iv, kord, q_min)
+   if ( kord >  7 ) then
+        call scalar_profile( qs, q4, dp1, km, i1, i2, iv, kord, q_min )
    else
         call ppm_profile( q4, dp1, km, i1, i2, iv, kord )
    endif
@@ -1532,7 +1532,7 @@ endif        ! end last_step check
           !$ser data qs_column_2=qs q4_1_2=q4(1,:,:) q4_2_2=q4(2,:,:) q4_3_2=q4(3,:,:) q4_4_2=q4(4,:,:) dp1_2d_2=dp1 i1=i1 i2=i2 km=km iv=iv kord=kord
         !$ser verbatim endif
       !$ser verbatim endif
-      call  cs_profile( qs, q4, dp1, km, i1, i2, iv, kord )
+        call  cs_profile( qs, q4, dp1, km, i1, i2, iv, kord )
       !$ser verbatim if (j == jbeg + 3) then
         !$ser verbatim if (mod(i2-i1+1, 2)==1) then
           !$ser savepoint CS_Profile_2d-Out
@@ -1547,7 +1547,7 @@ endif        ! end last_step check
         !$ser savepoint PPM_Profile_2d-In
         !$ser data q4_1=q4(1,:,:) q4_2=q4(2,:,:) q4_3=q4(3,:,:) q4_4=q4(4,:,:) dp1_2d=dp1 i1=i1 i2=i2 km=km iv=iv kord=kord
       !$ser verbatim endif
-      call ppm_profile( q4, dp1, km, i1, i2, iv, kord )
+        call ppm_profile( q4, dp1, km, i1, i2, iv, kord )
       !$ser verbatim if(j == jbeg + 3 .and. mod(i2-i1+1, 2)==1) then
         !$ser savepoint PPM_Profile_2d-Out
         !$ser data q4_1=q4(1,:,:) q4_2=q4(2,:,:) q4_3=q4(3,:,:) q4_4=q4(4,:,:)
@@ -1937,7 +1937,7 @@ endif        ! end last_step check
  real  gam(i1:i2,km)
  real    q(i1:i2,km+1)
  real   d4(i1:i2)
- real   bet, a_bot, grat 
+ real   bet, a_bot, grat
  real   pmp_1, lac_1, pmp_2, lac_2, x0, x1
  integer i, k, im
 
@@ -1955,7 +1955,7 @@ endif        ! end last_step check
          enddo
       enddo
       do i=i1,i2
-            grat = delp(i,km-1) / delp(i,km) 
+            grat = delp(i,km-1) / delp(i,km)
          q(i,km) = (3.*(a4(1,i,km-1)+a4(1,i,km)) - grat*qs(i) - q(i,km-1)) /  &
                    (2. + grat + grat - gam(i,km))
          q(i,km+1) = qs(i)
@@ -1981,7 +1981,7 @@ endif        ! end last_step check
         gam(i,k) = d4(i) / bet
      enddo
   enddo
- 
+
   do i=i1,i2
          a_bot = 1. + d4(i)*(d4(i)+1.5)
      q(i,km+1) = (2.*d4(i)*(d4(i)+1.)*a4(1,i,km)+a4(1,i,km-1)-a_bot*q(i,km))  &
@@ -2007,12 +2007,13 @@ endif        ! end last_step check
   return
  endif
 !----- Perfectly linear scheme --------------------------------
+
 !------------------
 ! Apply constraints
 !------------------
   im = i2 - i1 + 1
 
-! Apply *large-scale* constraints 
+! Apply *large-scale* constraints
   do i=i1,i2
      q(i,2) = min( q(i,2), max(a4(1,i,1), a4(1,i,2)) )
      q(i,2) = max( q(i,2), min(a4(1,i,1), a4(1,i,2)) )
@@ -2088,7 +2089,7 @@ endif        ! end last_step check
      do i=i1,i2
         a4(2,i,1) = max(0., a4(2,i,1))
      enddo
-  elseif ( iv==-1 ) then 
+  elseif ( iv==-1 ) then
       do i=i1,i2
          if ( a4(2,i,1)*a4(1,i,1) <= 0. ) a4(2,i,1) = 0.
       enddo
@@ -2320,7 +2321,7 @@ endif        ! end last_step check
      do i=i1,i2
         a4(3,i,km) = max(0., a4(3,i,km))
      enddo
-  elseif ( iv .eq. -1 ) then 
+  elseif ( iv .eq. -1 ) then
       do i=i1,i2
          if ( a4(3,i,km)*a4(1,i,km) <= 0. )  a4(3,i,km) = 0.
       enddo
@@ -2353,7 +2354,7 @@ endif        ! end last_step check
  real  gam(i1:i2,km)
  real    q(i1:i2,km+1)
  real   d4(i1:i2)
- real   bet, a_bot, grat 
+ real   bet, a_bot, grat
  real   pmp_1, lac_1, pmp_2, lac_2, x0, x1
  integer i, k, im
 
@@ -2371,7 +2372,7 @@ endif        ! end last_step check
          enddo
       enddo
       do i=i1,i2
-            grat = delp(i,km-1) / delp(i,km) 
+            grat = delp(i,km-1) / delp(i,km)
          q(i,km) = (3.*(a4(1,i,km-1)+a4(1,i,km)) - grat*qs(i) - q(i,km-1)) /  &
                    (2. + grat + grat - gam(i,km))
          q(i,km+1) = qs(i)
@@ -2397,7 +2398,7 @@ endif        ! end last_step check
         gam(i,k) = d4(i) / bet
      enddo
   enddo
- 
+
   do i=i1,i2
          a_bot = 1. + d4(i)*(d4(i)+1.5)
      q(i,km+1) = (2.*d4(i)*(d4(i)+1.)*a4(1,i,km)+a4(1,i,km-1)-a_bot*q(i,km))  &
@@ -2428,7 +2429,7 @@ endif        ! end last_step check
 !------------------
   im = i2 - i1 + 1
 
-! Apply *large-scale* constraints 
+! Apply *large-scale* constraints
   do i=i1,i2
      q(i,2) = min( q(i,2), max(a4(1,i,1), a4(1,i,2)) )
      q(i,2) = max( q(i,2), min(a4(1,i,1), a4(1,i,2)) )
@@ -2504,7 +2505,7 @@ endif        ! end last_step check
      do i=i1,i2
         a4(2,i,1) = max(0., a4(2,i,1))
      enddo
-  elseif ( iv==-1 ) then 
+  elseif ( iv==-1 ) then
       do i=i1,i2
          if ( a4(2,i,1)*a4(1,i,1) <= 0. ) a4(2,i,1) = 0.
       enddo
@@ -2722,7 +2723,7 @@ endif        ! end last_step check
      do i=i1,i2
         a4(3,i,km) = max(0., a4(3,i,km))
      enddo
-  elseif ( iv .eq. -1 ) then 
+  elseif ( iv .eq. -1 ) then
       do i=i1,i2
          if ( a4(3,i,km)*a4(1,i,km) <= 0. )  a4(3,i,km) = 0.
       enddo
