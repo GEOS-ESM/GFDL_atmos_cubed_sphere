@@ -1003,14 +1003,14 @@ contains
 
   if ( flagstruct%range_warn ) then
        call range_check('UA_dyn', ua, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         -280., 280., bad_range)
+                         -200., 200., bad_range)
        call range_check('VA_dyn', ua, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         -280., 280., bad_range)
+                         -200., 200., bad_range)
        call range_check('TA_dyn', pt, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         100., 375., bad_range)
+                         150., 333., bad_range)
        if ( .not. hydrostatic ) then
             call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                             -100., 100., bad_range)
+                             -70., 70., bad_range)
             call range_check('DZ_dyn', delz, is, ie, js, je, ng, npz, gridstruct%agrid, &
                              -1.e6, -1.e-6, bad_range)
        endif
