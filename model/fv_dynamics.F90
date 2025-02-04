@@ -378,14 +378,14 @@ contains
        snowwat = -1
        graupel = -1
        cld_amt = -1
-      case(3)
+      case(3:4)
        sphum = 1
        liq_wat = 2
        ice_wat = 3
        rainwat = -1
        snowwat = -1
        graupel = -1
-       cld_amt = -1
+       cld_amt = 4
       case(6:7)
        sphum = 1
        liq_wat = 2
@@ -660,6 +660,13 @@ contains
        cyL= cyR8 
 #endif
       
+!     if ( flagstruct%range_warn ) then
+!        call range_check('CX_dyn', cxL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
+!                          -0.5, 0.5, bad_range)
+!        call range_check('CY_dyn', cyL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
+!                          -0.5, 0.5, bad_range)
+!     endif
+
 !DryMassRoundoffControl
       if(last_step) then
          if (hydrostatic) then
@@ -788,16 +795,16 @@ contains
           cy =  cy +  cyL
 
          if( last_step )  then
-            if( .not. hydrostatic ) then
-!$OMP parallel do default(none) shared(is,ie,js,je,npz,omga,delp,delz,w)
-               do k=1,npz
-                  do j=js,je
-                     do i=is,ie
-                        omga(i,j,k) = delp(i,j,k)/delz(i,j,k)*w(i,j,k)
-                     enddo
-                  enddo
-               enddo
-            endif
+!            if( .not. hydrostatic ) then
+!!$OMP parallel do default(none) shared(is,ie,js,je,npz,omga,delp,delz,w)
+!               do k=1,npz
+!                  do j=js,je
+!                     do i=is,ie
+!                        omga(i,j,k) = delp(i,j,k)/delz(i,j,k)*w(i,j,k)
+!                     enddo
+!                  enddo
+!               enddo
+!            endif
 !--------------------------
 ! Filter omega for physics:
 !--------------------------
@@ -929,11 +936,15 @@ contains
        call range_check('VA_dyn', ua, is, ie, js, je, ng, npz, gridstruct%agrid,   &
                          -280., 280., bad_range)
        call range_check('TA_dyn', pt, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         100., 335., bad_range)
-      !if ( .not. hydrostatic ) then
-      !     call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-      !                  -100., 100., bad_range)
-      !endif
+                         100., 375., bad_range)
+       if ( .not. hydrostatic ) then
+            call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
+                             -100., 100., bad_range)
+            call range_check('DZ_dyn', delz, is, ie, js, je, ng, npz, gridstruct%agrid, &
+                             -1.e6, -1.e-6, bad_range)
+       endif
+       call range_check('DP_dyn ', delp, is, ie, js, je, ng, npz, gridstruct%agrid,  &
+                        1.e-6, 1.e6, bad_range)
   endif
 
   end subroutine fv_dynamics

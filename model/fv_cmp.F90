@@ -45,49 +45,69 @@ module fv_cmp_mod
 !     <td>fv_mp_mod</td>
 !     <td>is_master</td>
 !   </tr>
-!   <tr>
-!     <td>gfdl_lin_cloud_microphys_mod</td>
-!     <td>ql_gen, qi_gen, qi0_max, ql_mlt, ql0_max, qi_lim, qs_mlt,
-!         tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_imlt, tau_l2r,
-!         preciprad, dw_ocean, dw_land</td>
-!   </tr>
 ! </table>
     
     use constants_mod, only: rvgas, rdgas, grav, hlv, hlf, cp_air
     use fv_mp_mod, only: is_master
     use fv_arrays_mod, only: r_grid
-    use gfdl_lin_cloud_microphys_mod, only: ql_gen, qi_gen, qi0_crt, qi0_max, ql_mlt, ql0_max, qi_lim, qs_mlt
-    use gfdl_lin_cloud_microphys_mod, only: icloud_f, sat_adj0, t_sub, cld_min, dt_fr
-    use gfdl_lin_cloud_microphys_mod, only: tau_r2g, tau_smlt, tau_i2s, tau_v2l, tau_l2v, tau_i2v, tau_imlt, tau_l2r, tau_frz
-    use gfdl_lin_cloud_microphys_mod, only: preciprad, dw_ocean, dw_land, do_qa, do_bigg, do_evap, do_subl
     
     implicit none
     
     private
     
     public fv_sat_adj, qs_init
-    
+   
+    real :: qi_lim = 1. !< cloud ice limiter to prevent large ice build up by deposition
+    real :: qs_mlt = 1.0e-6 !< max cloud water due to snow melt
+    real :: qi_gen = 9.82679e-5 !< max cloud ice generation at -40 C
+
+    ! cloud condensate upper bounds: "safety valves" for ql & qi
+    real :: ql0_max = 2.0e-3 !< max cloud water value (auto converted to rain)
+    real :: qi0_max = 1.0e-4 !< max cloud ice value (by other sources) [WMP: never used]
+
+    ! critical autoconverion parameters
+    real :: qi0_crt = 5.0e-4 !< cloud ice to snow autoconversion threshold
+                             !! qi0_crt is highly dependent on horizontal resolution
+                             !! this sensitivity is handled with onemsig later in the code
+
+    real :: cld_min = 0.05 !< minimum cloud fraction
+    real :: sat_adj0 = 0.90 !< adjustment factor (0: no, 1: full) during fast_sat_adj
+    integer :: icloud_f = 3 !< cloud scheme
+
+    real :: t_sub = 273.16 - 89.16 !< min temp for sublimation of cloud ice
+    real, parameter :: dt_fr = 8. !< epsilon on homogeneous freezing of cloud water at t_wfr + dt_fr
+    ! minimum temperature water can exist (moore & molinero nov. 2011, nature)
+    ! dt_fr can be considered as the error bar
+
+    real :: tau_r2g  =   900. !< rain freezing during fast_sat
+    real :: tau_l2r  =   900. !< cloud water to rain auto - conversion
+    real :: tau_l2v  =   300. !< cloud water to water vapor (evaporation)
+    real :: tau_i2v  =   300. !< cloud ice to water vapor (sublimation)
+    real :: tau_frz  =   600. !< timescale for liquid-ice freezing 
+    real :: tau_imlt =   600. !< cloud ice melting
+    real :: tau_smlt =   600. !< snow melting
+    real :: tau_i2s  =   600. !< cloud ice to snow auto - conversion
+
+    logical :: do_bigg = .false. !< do bigg mechanism freezing of supercooled liquid on aerosol nuclei
+    logical :: do_evap = .true. !< do evaporation
+    logical :: do_subl = .true. !< do sublimation
+    logical :: do_qa = .false. !< do inline cloud fraction (WMP: in FV3 dynamics)
+    logical :: preciprad = .true. !< consider precipitates in cloud fraciton calculation
+
+    real :: dw_land = 0.05 !< base value for subgrid deviation / variability over land
+    real :: dw_ocean = 0.10 !< base value for ocean
+ 
     ! real, parameter :: cp_air = cp_air ! 1004.6, heat capacity of dry air at constant pressure, come from constants_mod
     real, parameter :: cp_vap = 4.0 * rvgas !< 1846.0, heat capacity of water vapor at constant pressure
     real, parameter :: cv_air = cp_air - rdgas !< 717.55, heat capacity of dry air at constant volume
     real, parameter :: cv_vap = 3.0 * rvgas !< 1384.5, heat capacity of water vapor at constant volume
     real, parameter :: pi = 3.1415926535897931 !< gfs: ratio of circle circumference to diameter
     
-    ! http: / / www.engineeringtoolbox.com / ice - thermal - properties - d_576.html
-    ! c_ice = 2050.0 at 0 deg c
-    ! c_ice = 1972.0 at - 15 deg c
-    ! c_ice = 1818.0 at - 40 deg c
-    ! http: / / www.engineeringtoolbox.com / water - thermal - properties - d_162.html
-    ! c_liq = 4205.0 at 4 deg c
-    ! c_liq = 4185.5 at 15 deg c
-    ! c_liq = 4178.0 at 30 deg c
-    
     ! real, parameter :: c_ice = 2106.0 ! ifs: heat capacity of ice at 0 deg c
     ! real, parameter :: c_liq = 4218.0 ! ifs: heat capacity of liquid at 0 deg c
     real, parameter :: c_ice = 1972.0 !< gfdl: heat capacity of ice at - 15 deg c
     real, parameter :: c_liq = 4185.5 !< gfdl: heat capacity of liquid at 15 deg c
    
-
     real, parameter :: qpmin = 1.e-8 ! min value for suspended rain/snow/liquid/ice condensate
     real, parameter :: qvmin = 1.e-20 !< min value for water vapor (treated as zero)
     real, parameter :: qcmin = 1.e-12 !< min value for cloud condensates
@@ -156,7 +176,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real :: tc, qsi, dqsdt, dq, dq0, pidep, qi_crt, tmp, dtmp
     real :: tin, rqi, q_plus, q_minus, dqh
     real :: sdt, dt_bigg
-    real :: fac_smlt, fac_r2g, fac_i2s, fac_imlt, fac_l2r, fac_v2l, fac_l2v, fac_i2v, fac_frz
+    real :: fac_smlt, fac_r2g, fac_i2s, fac_imlt, fac_l2r, fac_l2v, fac_i2v, fac_frz
     real :: factor, qim, tice0, c_air, c_vap, dw
     real :: a1, newqi, newql
 
@@ -172,7 +192,6 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     ! -----------------------------------------------------------------------
     
     fac_i2s = sat_adj0 * (1. - exp (- mdt / tau_i2s))
-    fac_v2l = sat_adj0 * (1. - exp (- sdt / tau_v2l))
     fac_r2g = sat_adj0 * (1. - exp (- mdt / tau_r2g))
     fac_l2r = sat_adj0 * (1. - exp (- mdt / tau_l2r))
     
@@ -286,11 +305,6 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
             if (qi (i, j) > qcmin .and. pt1 (i) > tice) then
                 sink (i) = min (qi (i, j), fac_imlt * (pt1 (i) - tice) / icp2 (i))
                 qi (i, j) = qi (i, j) - sink (i)
-                ! sjl, may 17, 2017
-                ! tmp = min (sink (i), dim (ql_mlt, ql (i, j))) ! max ql amount
-                ! ql (i, j) = ql (i, j) + tmp
-                ! qr (i, j) = qr (i, j) + sink (i) - tmp
-                ! sjl, may 17, 2017
                 ql (i, j) = ql (i, j) + sink (i)
                 q_liq (i) = q_liq (i) + sink (i)
                 q_sol (i) = q_sol (i) - sink (i)

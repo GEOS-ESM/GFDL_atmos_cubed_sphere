@@ -51,7 +51,7 @@ module fv_diagnostics_mod
 !   </tr>
 !   <tr>
 !     <td>fms_io_mod</td>
-!     <td>set_domain, nullify_domain, write_version_number</td>
+!     <td>set_domain, nullify_domain</td>
 !   </tr>
 !   <tr>
 !     <td>fv_arrays_mod</td>
@@ -91,10 +91,6 @@ module fv_diagnostics_mod
 !     <td>timing_on, timing_off</td>
 !   </tr>
 !   <tr>
-!     <td>gfdl_lin_cloud_microphys_mod</td>
-!     <td>wqs1, qsmith_init</td>
-!   </tr>
-!   <tr>
 !     <td>mpp_mod</td>
 !     <td>mpp_error, FATAL, stdlog, mpp_pe, mpp_root_pe, mpp_sum, mpp_max, NOTE</td>
 !   </tr>
@@ -119,7 +115,7 @@ module fv_diagnostics_mod
  use constants_mod,      only: grav, rdgas, rvgas, pi=>pi_8, radius, kappa, WTMAIR, WTMCO2, &
                                omega, hlv, cp_air, cp_vapor
  use fms_mod,            only: write_version_number
- use fms_io_mod,         only: set_domain, nullify_domain, write_version_number
+ use fms_io_mod,         only: set_domain, nullify_domain
  use time_manager_mod,   only: time_type, get_date, get_time
  use mpp_domains_mod,    only: domain2d, mpp_update_domains, DGRID_NE
  use diag_manager_mod,   only: diag_axis_init, register_diag_field, &
@@ -141,7 +137,6 @@ module fv_diagnostics_mod
  use sat_vapor_pres_mod, only: compute_qs, lookup_es
 
  use fv_arrays_mod, only: max_step 
- use gfdl_lin_cloud_microphys_mod, only: wqs1, qsmith_init
 
  use ieee_arithmetic
 
@@ -149,7 +144,6 @@ module fv_diagnostics_mod
  private
 
 
- real, parameter:: infinite = huge(1.d0)
  real, parameter:: missing_value = -1.e10
  real, parameter:: missing_value2 = -1.e3 !< for variables with many missing values
  real, parameter:: missing_value3 = 1.e10 !< for variables where we look for smallest values
@@ -1010,9 +1004,6 @@ contains
 
     module_is_initialized=.true.
     istep = 0
-#ifndef GFS_PHYS
-    if(idiag%id_theta_e >0 ) call qsmith_init
-#endif
  end subroutine fv_diag_init
 
 
@@ -3143,6 +3134,11 @@ contains
       integer i,j,k
 
       if ( present(bad_range) ) bad_range = .false. 
+      if (any(.not.ieee_is_finite(q))) then
+         qmax = huge(1.0)
+         qmin = -qmax
+      else
+
       qmin = q(is,js,1)
       qmax = qmin
 
@@ -3157,6 +3153,7 @@ contains
           enddo
       enddo
       enddo
+      endif
 
       call mp_reduce_min(qmin)
       call mp_reduce_max(qmax)
@@ -3175,8 +3172,8 @@ contains
          do k=1,km
             do j=js,je
                do i=is,ie
-                  if( q(i,j,k)<q_low .or. q(i,j,k)>q_hi .or. ieee_is_nan(q(i,j,k)) .or. q(i,j,k)>infinite ) then
-                      write(6,106) qname, i, j, k, q(i,j,k), pos(i,j,1)*rad2deg, pos(i,j,2)*rad2deg
+                  if( q(i,j,k)<q_low .or. q(i,j,k)>q_hi .or. .not.ieee_is_finite(q(i,j,k))) then
+                     write(6,106) qname, i, j, k, q(i,j,k), pos(i,j,1)*rad2deg, pos(i,j,2)*rad2deg
                   endif
                enddo
             enddo

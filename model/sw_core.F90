@@ -1413,14 +1413,6 @@ module sw_core_mod
         if (ne_corner) divg_d(npx,npy) = divg_d(npx,npy) + uc(npx,npy)
         if (nw_corner) divg_d(1,  npy) = divg_d(1,  npy) + uc(1,  npy)
 
-     if ( .not. gridstruct%stretched_grid ) then
-        do j=js-nt,je+1+nt
-           do i=is-nt,ie+1+nt
-              divg_d(i,j) = divg_d(i,j)*gridstruct%rarea_c(i,j)
-           enddo
-        enddo
-     endif
-
      enddo ! n-loop
 
      if ( dddmp<1.E-5) then
@@ -1440,13 +1432,7 @@ module sw_core_mod
       endif
      endif
 
-     if (gridstruct%stretched_grid ) then
-! Stretched grid with variable damping ~ area
-         dd8 = gridstruct%da_min * d4_bg**n2
-     else
-         dd8 = ( gridstruct%da_min_c*d4_bg )**n2
-     endif
-
+     dd8 = gridstruct%da_min * d4_bg**n2
      do j=js,je+1
         do i=is,ie+1
            damp2 =  gridstruct%da_min_c*max(d2_bg, min(0.20, dddmp*vort(i,j)))  ! del-2

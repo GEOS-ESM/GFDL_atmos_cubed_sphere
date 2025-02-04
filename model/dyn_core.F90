@@ -255,6 +255,8 @@ contains
 ! new array for stochastic kinetic energy backscatter (SKEB)
     real diss_e(bd%is:bd%ie,bd%js:bd%je)
     real damp_vt(npz+1)
+    real dddmp(npz+1)
+    real d_ext(npz+1)
     integer nord_v(npz+1)
 !-------------------------------------
     integer :: hord_m, hord_v, hord_t, hord_p
@@ -671,7 +673,7 @@ contains
 !$OMP                                  is,ie,js,je,isd,ied,jsd,jed,omga,delp,gridstruct,npx,npy,  &
 !$OMP                                  ng,zh,vt,ptc,pt,u,v,w,uc,vc,ua,va,divgd,mfx,mfy,cx,cy,     &
 !$OMP                                  crx,cry,xfx,yfx,q_con,zvir,sphum,nq,q,dt,bd,rdt,iep1,jep1, &
-!$OMP                                  heat_source,diss_est,dpx)                                      &
+!$OMP                                  heat_source,diss_est,dpx,dddmp,d_ext)                      &
 !$OMP                          private(nord_k, nord_w, nord_t, damp_w, damp_t, d2_divg, kfac, &
 !$OMP                          d_con_k,kgb, hord_m, hord_v, hord_t, hord_p, wk, heat_s,diss_e, z_rat)
     do k=1,npz
@@ -702,6 +704,18 @@ contains
        damp_w = damp_vt(k)
        damp_t = damp_vt(k)
        d_con_k = flagstruct%d_con
+
+! Additional diffusion only in RI Z-Filter levels
+       if ( npz==1 .or. flagstruct%n_zfilter<=0 ) then
+          dddmp(k) = flagstruct%dddmp
+          d_ext(k) = flagstruct%d_ext 
+       elseif ( k<=flagstruct%n_zfilter ) then
+          dddmp(k) = flagstruct%dddmp
+          d_ext(k) = flagstruct%d_ext
+       else
+          dddmp(k) = 0.0
+          d_ext(k) = 0.0
+       endif
 
        if ( npz==1 .or. flagstruct%n_sponge<0 ) then
            d2_divg = flagstruct%d2_bg
@@ -734,7 +748,7 @@ contains
               endif
        endif
 
-       if( hydrostatic .and. (.not.flagstruct%use_old_omega) .and. last_step ) then
+       if( (.not.flagstruct%use_old_omega) .and. last_step ) then
 ! Average horizontal "convergence" to cell center
             do j=js,je
                do i=is,ie
@@ -744,7 +758,7 @@ contains
        endif
 
 !--- external mode divergence damping ---
-       if ( flagstruct%d_ext > 0. )  &
+       if ( d_ext(k) > 0. )  &
             call a2b_ord2(delp(isd,jsd,k), wk, gridstruct, npx, npy, is,    &
                           ie, js, je, ng, .false.)
 
@@ -768,10 +782,10 @@ contains
 #endif
                   kgb, heat_s, diss_e, dpx(is,js,k), zvir, sphum, nq,  q,  k,  npz, flagstruct%inline_q,  dt,  &
                   flagstruct%hord_tr, hord_m, hord_v, hord_t, hord_p,    &
-                  nord_k, nord_v(k), nord_w, nord_t, flagstruct%dddmp, d2_divg, flagstruct%d4_bg,  &
+                  nord_k, nord_v(k), nord_w, nord_t, dddmp(k), d2_divg, flagstruct%d4_bg,  &
                   damp_vt(k), damp_w, damp_t, d_con_k, hydrostatic, gridstruct, flagstruct, bd)
 
-       if( hydrostatic .and. (.not.flagstruct%use_old_omega) .and. last_step ) then
+       if( (.not.flagstruct%use_old_omega) .and. last_step ) then
 ! Average horizontal "convergence" to cell center
             do j=js,je
                do i=is,ie
@@ -780,7 +794,7 @@ contains
             enddo
        endif
 
-       if ( flagstruct%d_ext > 0. ) then
+       if ( d_ext(k) > 0. ) then
             do j=js,jep1
                do i=is,iep1
                   ptc(i,j,k) = wk(i,j)    ! delp at cell corners
@@ -815,21 +829,24 @@ contains
                                                              call timing_off('COMM_TOTAL')
 
     if ( flagstruct%d_ext > 0. ) then
-          d2_divg = flagstruct%d_ext * gridstruct%da_min_c
-!$OMP parallel do default(none) shared(is,iep1,js,jep1,npz,wk,ptc,divg2,vt,d2_divg)
+!$OMP parallel do default(none) shared(is,iep1,js,jep1,npz,wk,ptc,divg2,vt,gridstruct,d_ext)
           do j=js,jep1
               do i=is,iep1
                     wk(i,j) = ptc(i,j,1)
-                 divg2(i,j) = wk(i,j)*vt(i,j,1)
+                 divg2(i,j) = wk(i,j)*vt(i,j,1)*d_ext(1)*gridstruct%da_min_c
               enddo
               do k=2,npz
                  do i=is,iep1
                        wk(i,j) =    wk(i,j) + ptc(i,j,k)
-                    divg2(i,j) = divg2(i,j) + ptc(i,j,k)*vt(i,j,k)
+                    divg2(i,j) = divg2(i,j) + ptc(i,j,k)*vt(i,j,k)*d_ext(k)*gridstruct%da_min_c
                  enddo
               enddo
               do i=is,iep1
-                 divg2(i,j) = d2_divg*divg2(i,j)/wk(i,j)
+                 if (wk(i,j) /= 0.0) then 
+                    divg2(i,j) = divg2(i,j)/wk(i,j)
+                 else
+                    divg2(i,j) = 0.0
+                 endif
               enddo
           enddo
     else
@@ -1081,7 +1098,7 @@ contains
       endif
 
 #ifndef SW_DYNAMICS
-    if ( hydrostatic .and. last_step ) then
+    if ( last_step ) then
       if ( flagstruct%use_old_omega ) then
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,omga,pe,pem,rdt)
          do k=1,npz
