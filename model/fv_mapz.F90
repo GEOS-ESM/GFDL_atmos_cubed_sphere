@@ -97,7 +97,6 @@ module fv_mapz_mod
   implicit none
   real, parameter:: consv_min= 0.001         !< below which no correction applies
   real, parameter:: no_min= -1.e25
-  real, parameter:: te_min= -1.e25
   real, parameter:: t_min= 184.              !< below which applies stricter constraint
   real, parameter:: r2=1./2., r0=0.0
   real, parameter:: r3 = 1./3., r23 = 2./3., r12 = 1./12.
@@ -532,7 +531,7 @@ contains
          call map_scalar(km,  pn1,  te,       &
                          km,  pn2,  q2,       &
                          dpn1, dpn2,          &
-                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), no_min, &
+                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), &
                          optional_top=gmao_top_bc, optional_bot=gmao_bot_bc)
          te(is:ie,j,:) = q2
       endif
@@ -548,7 +547,7 @@ contains
          call map_scalar(km,  pn1,  pt,       &
                          km,  pn2,  q2,       &
                          dpn1, dpn2,          &
-                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), t_min, &
+                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), q_min=t_min, &
                          optional_top=gmao_top_bc, optional_bot=gmao_bot_bc)
          pt(is:ie,j,:) = q2
       endif
@@ -561,7 +560,7 @@ contains
    call map_scalar(km,  pe1,   q(isd,jsd,1,iq),     &
                    km,  pe2,   q2,     &
                    dpe1, dpe2,         &
-                   is, ie, j, isd, ied, jsd, jed, 0, kord_tr(iq), 0.)
+                   is, ie, j, isd, ied, jsd, jed, 0, kord_tr(iq), q_min=0.)
    if (fill) call fillz(ie-is+1, km, 1, q2, dpe2)
    q(is:ie,j,:,iq) = q2
    enddo
@@ -579,7 +578,7 @@ contains
         call map_scalar(km,   pe1, delz,    &
                         km,   pe2,   q2,    &
                         dpe1, dpe2,         &
-                        is, ie, j, isd,  ied,  jsd,  jed,  1, kord(ikord_wz), no_min)
+                        is, ie, j, isd,  ied,  jsd,  jed,  1, kord(ikord_wz))
         do k=1,km
            do i=is,ie
               delz(i,j,k) = -q2(i,k)*dpe2(i,k)
@@ -590,7 +589,7 @@ contains
         call map_scalar(km,   pe1,  w,      &
                         km,   pe2,  w2,     &
                         dpe1, dpe2,         &
-                        is, ie, j, isd, ied, jsd, jed, -2, kord(ikord_wz), no_min, q_bot=ws(is,j))
+                        is, ie, j, isd, ied, jsd, jed, -2, kord(ikord_wz), q_bot=ws(is,j))
          !Fix excessive w - momentum conserving --- sjl
          if ( w_limiter ) then
             do k=1, km-1
@@ -668,20 +667,20 @@ contains
       call map_scalar(km, pe1,   u,         &
                       km, pe2,  u2,         &
                       dpe1, dpe2,           &
-                      is, ie, j, isd, ied, jsd, jed+1, -1, kord(ikord_mt), no_min)
+                      is, ie, j, isd, ied, jsd, jed+1, -1, kord(ikord_mt))
       u(is:ie,j,:) = u2
       if (present(mfy)) then
          call map_scalar(km, pe1, mfy,      &
                          km, pe2,  u2,      &
                          dpe1, dpe2,        &
-                         is, ie, j, is, ie, js, je+1, -1, kord(ikord_mt), no_min)
+                         is, ie, j, is, ie, js, je+1, -1, kord(ikord_mt))
          mfy(is:ie,j,:) = u2
       endif
       if (present(cy)) then
          call map_scalar(km, pe1, cy,       &
                          km, pe2, u2,       &
                          dpe1, dpe2,        &
-                         is, ie, j, isd, ied, js, je+1, -1, kord(ikord_mt), no_min)
+                         is, ie, j, isd, ied, js, je+1, -1, kord(ikord_mt))
          cy(is:ie,j,:) = u2
       endif
 
@@ -715,20 +714,20 @@ contains
       call map_scalar(km, pe0,  v,               &
                       km, pe3, v2,               &
                       dpe0, dpe3, is, ie+1,      &
-                      j, isd, ied+1, jsd, jed, -1, kord(ikord_mt), no_min)
+                      j, isd, ied+1, jsd, jed, -1, kord(ikord_mt))
       v(is:ie+1,j,:) = v2
       if (present(mfx)) then
          call map_scalar(km, pe0, mfx,           &
                          km, pe3,  v2,           &
                          dpe0, dpe3, is, ie+1,   &
-                         j, is, ie+1, js, je, -1, kord(ikord_mt), no_min)
+                         j, is, ie+1, js, je, -1, kord(ikord_mt))
          mfx(is:ie+1,j,:) = v2
       endif
       if (present(cx)) then
          call map_scalar(km, pe0, cx,            &
                          km, pe3, v2,            &
                          dpe0, dpe3, is, ie+1,   &
-                         j, is, ie+1, jsd, jed, -1, kord(ikord_mt), no_min)
+                         j, is, ie+1, jsd, jed, -1, kord(ikord_mt))
          cx(is:ie+1,j,:) = v2
       endif
     endif ! (j < je+1)
@@ -1491,8 +1490,8 @@ endif        ! end last_step check
  real, intent(in) ::    q1(ibeg:iend,jbeg:jend,1:km) !< Field input
 ! INPUT/OUTPUT PARAMETERS:
  real, intent(inout)::  q2(i1:i2,1:kn) !< Field output
- real, intent(in):: q_min              !< minimum for scheme
 ! Optional aruguments:
+ real, optional, intent(in):: q_min              !< minimum for scheme
  real, optional, intent(in):: q_bot(i1:i2)       !< bottom BC
  logical, optional, intent(in):: optional_bot    !< optional GMAO bottom BC
  logical, optional, intent(in):: optional_top    !< optional GMAO top BC
@@ -1524,8 +1523,11 @@ endif        ! end last_step check
       enddo
    enddo
    if ( kord >  7 ) then
-     call     cs_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord, qs=q_bot )
-    !call scalar_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord, q_min, qs=q_bot)
+     if (present(q_min)) then
+       call scalar_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord,  q_min, qs=q_bot)
+     else
+       call scalar_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord, no_min, qs=q_bot)
+     endif
    else
      call ppm_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord)
    endif
