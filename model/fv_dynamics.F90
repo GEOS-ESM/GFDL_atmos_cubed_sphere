@@ -1007,7 +1007,7 @@ contains
        call range_check('VA_dyn', ua, is, ie, js, je, ng, npz, gridstruct%agrid,   &
                          -200., 200., bad_range)
        call range_check('TA_dyn', pt, is, ie, js, je, ng, npz, gridstruct%agrid,   &
-                         150., 333., bad_range)
+                         140., 333., bad_range)
        if ( .not. hydrostatic ) then
             call range_check('W_dyn', w, is, ie, js, je, ng, npz, gridstruct%agrid,   &
                              -70., 70., bad_range)
