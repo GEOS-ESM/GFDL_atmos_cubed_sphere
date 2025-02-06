@@ -97,7 +97,6 @@ module fv_mapz_mod
   implicit none
   real, parameter:: consv_min= 0.001         !< below which no correction applies
   real, parameter:: no_min= -1.e25
-  real, parameter:: te_min= -1.e25
   real, parameter:: t_min= 184.              !< below which applies stricter constraint
   real, parameter:: r2=1./2., r0=0.0
   real, parameter:: r3 = 1./3., r23 = 2./3., r12 = 1./12.
@@ -135,7 +134,7 @@ contains
                       ng, ua, va, omga, te, ws, fill, out_dt, dtdt,      &
                       ptop, ak, bk, pfull, flagstruct, gridstruct, domain, do_sat_adj, &
                       hydrostatic, hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
-                      remap_option, gmao_remap, mfx, mfy, cx, cy)
+                      remap_option, gmao_remap, gmao_top_bc, gmao_bot_bc, mfx, mfy, cx, cy)
   logical, intent(in):: last_step
   real,    intent(in):: mdt                    !< remap time step
   real,    intent(in):: pdt                    !< phys time step
@@ -204,6 +203,7 @@ contains
   real, optional, intent(inout)::  cy(isd:ied ,js:je+1,km)
 
   integer, intent(in):: remap_option, gmao_remap
+  logical, intent(in):: gmao_top_bc, gmao_bot_bc
 
 ! !DESCRIPTION:
 !
@@ -353,7 +353,8 @@ contains
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, adiabatic, &
-!$OMP                                  hs,w,ws,rrg,kord_mt,consv,remap_option,gmao_remap)    &
+!$OMP                                  hs,w,ws,rrg,kord_mt,consv,remap_option,gmao_remap, &
+!$OMP                                  gmao_top_bc, gmao_bot_bc)    &
 !$OMP                          private(gz,cvm,bkh,dpe1,dpe2,dpn1,dpn2,dpe0,dpe3, &
 !$OMP                                  pe0,pe1,pe2,pe3,pn1,pn2,phis,q2,w2,u2,v2)
   do 1000 j=js,je+1
@@ -530,7 +531,8 @@ contains
          call map_scalar(km,  pn1,  te,       &
                          km,  pn2,  q2,       &
                          dpn1, dpn2,          &
-                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), no_min)
+                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), &
+                         optional_top=gmao_top_bc, optional_bot=gmao_bot_bc)
          te(is:ie,j,:) = q2
       endif
    else
@@ -545,7 +547,8 @@ contains
          call map_scalar(km,  pn1,  pt,       &
                          km,  pn2,  q2,       &
                          dpn1, dpn2,          &
-                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), t_min)
+                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), q_min=t_min, &
+                         optional_top=gmao_top_bc, optional_bot=gmao_bot_bc)
          pt(is:ie,j,:) = q2
       endif
    endif
@@ -557,7 +560,7 @@ contains
    call map_scalar(km,  pe1,   q(isd,jsd,1,iq),     &
                    km,  pe2,   q2,     &
                    dpe1, dpe2,         &
-                   is, ie, j, isd, ied, jsd, jed, 0, kord_tr(iq), 0.)
+                   is, ie, j, isd, ied, jsd, jed, 0, kord_tr(iq), q_min=0.)
    if (fill) call fillz(ie-is+1, km, 1, q2, dpe2)
    q(is:ie,j,:,iq) = q2
    enddo
@@ -575,7 +578,7 @@ contains
         call map_scalar(km,   pe1, delz,    &
                         km,   pe2,   q2,    &
                         dpe1, dpe2,         &
-                        is, ie, j, isd,  ied,  jsd,  jed,  1, kord(ikord_wz), no_min)
+                        is, ie, j, isd,  ied,  jsd,  jed,  1, kord(ikord_wz))
         do k=1,km
            do i=is,ie
               delz(i,j,k) = -q2(i,k)*dpe2(i,k)
@@ -586,7 +589,7 @@ contains
         call map_scalar(km,   pe1,  w,      &
                         km,   pe2,  w2,     &
                         dpe1, dpe2,         &
-                        is, ie, j, isd, ied, jsd, jed, -2, kord(ikord_wz), no_min, q_bot=ws(is,j))
+                        is, ie, j, isd, ied, jsd, jed, -2, kord(ikord_wz), q_bot=ws(is,j))
          !Fix excessive w - momentum conserving --- sjl
          if ( w_limiter ) then
             do k=1, km-1
@@ -664,20 +667,20 @@ contains
       call map_scalar(km, pe1,   u,         &
                       km, pe2,  u2,         &
                       dpe1, dpe2,           &
-                      is, ie, j, isd, ied, jsd, jed+1, -1, kord(ikord_mt), no_min)
+                      is, ie, j, isd, ied, jsd, jed+1, -1, kord(ikord_mt))
       u(is:ie,j,:) = u2
       if (present(mfy)) then
          call map_scalar(km, pe1, mfy,      &
                          km, pe2,  u2,      &
                          dpe1, dpe2,        &
-                         is, ie, j, is, ie, js, je+1, -1, kord(ikord_mt), no_min)
+                         is, ie, j, is, ie, js, je+1, -1, kord(ikord_mt))
          mfy(is:ie,j,:) = u2
       endif
       if (present(cy)) then
          call map_scalar(km, pe1, cy,       &
                          km, pe2, u2,       &
                          dpe1, dpe2,        &
-                         is, ie, j, isd, ied, js, je+1, -1, kord(ikord_mt), no_min)
+                         is, ie, j, isd, ied, js, je+1, -1, kord(ikord_mt))
          cy(is:ie,j,:) = u2
       endif
 
@@ -711,20 +714,20 @@ contains
       call map_scalar(km, pe0,  v,               &
                       km, pe3, v2,               &
                       dpe0, dpe3, is, ie+1,      &
-                      j, isd, ied+1, jsd, jed, -1, kord(ikord_mt), no_min)
+                      j, isd, ied+1, jsd, jed, -1, kord(ikord_mt))
       v(is:ie+1,j,:) = v2
       if (present(mfx)) then
          call map_scalar(km, pe0, mfx,           &
                          km, pe3,  v2,           &
                          dpe0, dpe3, is, ie+1,   &
-                         j, is, ie+1, js, je, -1, kord(ikord_mt), no_min)
+                         j, is, ie+1, js, je, -1, kord(ikord_mt))
          mfx(is:ie+1,j,:) = v2
       endif
       if (present(cx)) then
          call map_scalar(km, pe0, cx,            &
                          km, pe3, v2,            &
                          dpe0, dpe3, is, ie+1,   &
-                         j, is, ie+1, jsd, jed, -1, kord(ikord_mt), no_min)
+                         j, is, ie+1, jsd, jed, -1, kord(ikord_mt))
          cx(is:ie+1,j,:) = v2
       endif
     endif ! (j < je+1)
@@ -1466,10 +1469,11 @@ endif        ! end last_step check
 
  end subroutine remap_z
 
- subroutine map_scalar( km,   pe1,    q1,                 &
-                        kn,   pe2,    q2,                 &
-                        dpe1, dpe2,         i1,  i2,      &
-                         j,  ibeg, iend, jbeg, jend, iv, kord, q_min, q_bot)
+ subroutine map_scalar( km,   pe1,    q1,           &
+                        kn,   pe2,    q2,           &
+                        dpe1, dpe2,   i1,  i2,      &
+                        j,  ibeg, iend, jbeg, jend, iv, kord, q_min, &
+                        q_bot, optional_bot, optional_top)
 ! iv=1
  integer, intent(in) :: i1                !< Starting longitude
  integer, intent(in) :: i2                !< Finishing longitude
@@ -1486,9 +1490,11 @@ endif        ! end last_step check
  real, intent(in) ::    q1(ibeg:iend,jbeg:jend,1:km) !< Field input
 ! INPUT/OUTPUT PARAMETERS:
  real, intent(inout)::  q2(i1:i2,1:kn) !< Field output
- real, intent(in):: q_min              !< minimum for scheme
 ! Optional aruguments:
+ real, optional, intent(in):: q_min              !< minimum for scheme
  real, optional, intent(in):: q_bot(i1:i2)       !< bottom BC
+ logical, optional, intent(in):: optional_bot    !< optional GMAO bottom BC
+ logical, optional, intent(in):: optional_top    !< optional GMAO top BC
 
 ! DESCRIPTION:
 ! IV = 0: constituents
@@ -1501,6 +1507,13 @@ endif        ! end last_step check
    real    qsum, pl, pr, pfac0, pfac1, pfac2, dp, esl
    integer i, k, l, m, k0
    integer LM1,LP0,LP1 
+   logical gmao_bot, gmao_top
+
+                              gmao_bot=.false.
+   if (present(optional_bot)) gmao_bot=optional_bot
+
+                              gmao_top=.false.
+   if (present(optional_top)) gmao_top=optional_top
 
    allocate ( q4(4,i1:i2,km) )
 
@@ -1510,8 +1523,11 @@ endif        ! end last_step check
       enddo
    enddo
    if ( kord >  7 ) then
-     call     cs_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord, qs=q_bot )
-    !call scalar_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord, q_min, qs=q_bot)
+     if (present(q_min)) then
+       call scalar_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord,  q_min, qs=q_bot)
+     else
+       call scalar_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord, no_min, qs=q_bot)
+     endif
    else
      call ppm_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord)
    endif
@@ -1521,7 +1537,6 @@ endif        ! end last_step check
    do i=i1,i2
      k0 = 1
      do 555 k=1,kn
-#ifdef GMAO
       LM1 = 1
       LP0 = 1
       do while( LP0.le.km )
@@ -1535,25 +1550,31 @@ endif        ! end last_step check
       LP0 = min(LP0, km)
 ! Entire grid below old ps
 ! ----------------------------------------------------
-      if( pe2(i,k) .ge. pe1(i,km+1)) then
-            q2(i,k) = q1(i,j,km,:)
-! Extrapolate Linearly above first model level
-! ----------------------------------------------------
-      else if( LM1.eq.1 .and. LP0.eq.1 ) then
-            pfac0=(pe2(i,k)-pe1(i,1))/(pe1(i,2)-pe1(i,1))
-            q2(i,k) = q1(i,j,1) + ( q1(i,j,2)-q1(i,j,1) )*pfac0
+      if( gmao_bot .and. (pe2(i,k) .ge. pe1(i,km+1)) ) then
+            q2(i,k) = q1(i,j,km)
 ! Extrapolate Linearly below last model level
 ! ----------------------------------------------------
-      else if( LM1.eq.km .and. LP0.eq.km ) then
+      else if( gmao_bot .and. (LM1.eq.km .and. LP0.eq.km) ) then
             pfac0=(pe2(i,k )-pe1(i,km  ))/(pe1(i,km)-pe1(i,km-1))
             q2(i,k) = q1(i,j,km) + ( q1(i,j,km)-q1(i,j,km-1) )*pfac0
 ! Interpolate Linearly between levels 1 => 2 and km-1 => km
 ! -----------------------------------------------------------------
-      else if( LM1.eq.1 .or. LP0.eq.km ) then
+      else if( gmao_bot .and. (LP0.eq.km) ) then
             pfac0=(pe2(i,k  )-pe1(i,LP0))/(pe1(i,LM1)-pe1(i,LP0))
-            q2(i,k = q1(i,j,LP0) + ( q1(i,j,LM1)-q1(i,j,LP0) )*pfac0
+            q2(i,k) = q1(i,j,LP0) + ( q1(i,j,LM1)-q1(i,j,LP0) )*pfac0
+! Extrapolate Linearly above first model level
+! ----------------------------------------------------
+      else if( gmao_top .and. (LM1.eq.1 .and. LP0.eq.1) ) then
+            pfac0=(pe2(i,k)-pe1(i,1))/(pe1(i,2)-pe1(i,1))
+            q2(i,k) = q1(i,j,1) + ( q1(i,j,2)-q1(i,j,1) )*pfac0
+! Interpolate Linearly between levels 1 => 2 and km-1 => km
+! -----------------------------------------------------------------
+      else if( gmao_top .and. (LM1.eq.1) ) then
+            pfac0=(pe2(i,k  )-pe1(i,LP0))/(pe1(i,LM1)-pe1(i,LP0))
+            q2(i,k) = q1(i,j,LP0) + ( q1(i,j,LM1)-q1(i,j,LP0) )*pfac0
+! Use standard FV3 remapping in between
+! ----------------------------------------------------
       else
-#endif         
       do l=k0,km
 ! locate the top edge: pe2(i,k)
       if( pe2(i,k) >= pe1(i,l) .and. pe2(i,k) <= pe1(i,l+1) ) then
@@ -1594,10 +1615,7 @@ endif        ! end last_step check
       endif
       enddo
 123   q2(i,k) = qsum / dpe2(i,k)
-
-#ifdef GMAO
       endif
-#endif
 555   continue
    enddo
 
