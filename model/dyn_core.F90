@@ -265,7 +265,7 @@ contains
 !---------------------------------------
     integer :: i,j,k, it, iq, n_con, nf_ke
     integer :: iep1, jep1
-    real    :: beta, beta_d, d_con_k, damp_w, damp_t, kgb, cv_air
+    real    :: beta, beta_d, damp_w, damp_t, kgb, cv_air
     real    :: dt, dt2, rdt
     real    :: d2_divg
     real    :: k1k, rdg, dtmp, delt
@@ -299,6 +299,7 @@ contains
     beta = flagstruct%beta
     rdg = -rdgas / grav
     cv_air = cp_air - rdgas
+    rgrav = 1.0/grav
 
 ! Indexes:
     iep1 = ie + 1
@@ -311,7 +312,6 @@ contains
 
     if ( .not.hydrostatic ) then
 
-         rgrav = 1.0/grav
            k1k =  akap / (1.-akap)    ! rg/Cv=0.4
 
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,zs,phis,rgrav)
@@ -545,7 +545,7 @@ contains
                       gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd)
       else
 #ifndef SW_DYNAMICS
-           if ( it == 1 ) then
+         if ( it == 1 ) then
 
                                       call timing_on('COMM_TOTAL')
                                         call timing_on('COMM_NH')
@@ -554,25 +554,25 @@ contains
                                      call timing_off('COMM_TOTAL')
 
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,npz,zh,gz)
-           do k=1,npz+1
-              do j=jsd,jed
-                 do i=isd,ied
+              do k=1,npz+1
+                 do j=jsd,jed
+                    do i=isd,ied
 ! Save edge heights for update_dz_d
-                    zh(i,j,k) = gz(i,j,k)
+                       zh(i,j,k) = gz(i,j,k)
+                    enddo
                  enddo
               enddo
-           enddo
 
-        else 
+         else 
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,npz,zh,gz)
-           do k=1, npz+1
-              do j=jsd,jed
-                 do i=isd,ied
-                    gz(i,j,k) = zh(i,j,k)
+              do k=1, npz+1
+                 do j=jsd,jed
+                    do i=isd,ied
+                       gz(i,j,k) = zh(i,j,k)
+                    enddo
                  enddo
               enddo
-           enddo
-        endif
+         endif
                                             call timing_on('UPDATE_DZ_C')
          call update_dz_c(is, ie, js, je, npz, ng, dt2, flagstruct%dz_min, dp_ref, zs, gridstruct%area, ut, vt, gz, ws3, &
              npx, npy, gridstruct%sw_corner, gridstruct%se_corner, &
@@ -580,13 +580,13 @@ contains
                                             call timing_off('UPDATE_DZ_C')
 
                                                call timing_on('Riem_Solver')
-           call Riem_Solver_C( ms, dt2,   is,  ie,   js,   je,   npz,   ng,   &
-                               akap, cappa,  cp,  ptop, phis, omga, ptc,  &
-                               q_con,  delpc, gz,  pkc, ws3, flagstruct%p_fac, &
-                                flagstruct%a_imp, flagstruct%scale_z )
+         call Riem_Solver_C( ms, dt2,   is,  ie,   js,   je,   npz,   ng,   &
+                             akap, cappa,  cp,  ptop, phis, omga, ptc,  &
+                             q_con,  delpc, gz,  pkc, ws3, flagstruct%p_fac, &
+                              flagstruct%a_imp, flagstruct%scale_z )
                                                call timing_off('Riem_Solver')
 
-           if (gridstruct%nested) then
+         if (gridstruct%nested) then
                  call nested_grid_BC_apply_intT(delz, &
                       0, 0, npx, npy, npz, bd, split_timestep_BC+0.5, real(n_split*k_split), &
                 neststruct%delz_BC, bctype=neststruct%nestbctype )
@@ -605,7 +605,7 @@ contains
                 pkc, gz, pk3, &
                 npx, npy, npz, gridstruct%nested, .false., .false., .false., bd)
 
-           endif
+         endif
 
 #endif SW_DYNAMICS
 
@@ -660,7 +660,7 @@ contains
 
       end if
 
-    if ( gridstruct%nested .and. flagstruct%inline_q ) then
+      if ( gridstruct%nested .and. flagstruct%inline_q ) then
             do iq=1,nq
                   call nested_grid_BC_apply_intT(q(isd:ied,jsd:jed,:,iq), &
                        0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
@@ -675,7 +675,7 @@ contains
 !$OMP                                  crx,cry,xfx,yfx,q_con,zvir,sphum,nq,q,dt,bd,rdt,iep1,jep1, &
 !$OMP                                  heat_source,diss_est,dpx,dddmp,d_ext)                      &
 !$OMP                          private(nord_k, nord_w, nord_t, damp_w, damp_t, d2_divg, kfac, &
-!$OMP                          d_con_k,kgb, hord_m, hord_v, hord_t, hord_p, wk, heat_s,diss_e, z_rat)
+!$OMP                          kgb, hord_m, hord_v, hord_t, hord_p, wk, heat_s,diss_e, z_rat)
     do k=1,npz
        hord_m = flagstruct%hord_mt
        hord_t = flagstruct%hord_tm
@@ -683,14 +683,13 @@ contains
        hord_p = flagstruct%hord_dp
        nord_k = flagstruct%nord
 
-!      if ( k==npz ) then
+       if ( k==npz ) then
           kgb = flagstruct%ke_bg
-!      else
-!         kgb = 0.
-!      endif
+       else
+          kgb = 0.
+       endif
 
        nord_v(k) = min(2, flagstruct%nord)
-!      d2_divg = min(0.20, flagstruct%d2_bg*(1.-3.*tanh(0.1*log(pfull(k)/pfull(npz)))))
        d2_divg = min(0.20, flagstruct%d2_bg)
 
        if ( flagstruct%do_vort_damp ) then
@@ -703,21 +702,17 @@ contains
        nord_t = nord_v(k)
        damp_w = damp_vt(k)
        damp_t = damp_vt(k)
-       d_con_k = flagstruct%d_con
 
 ! Additional diffusion only in RI Z-Filter levels
-       if ( npz==1 .or. flagstruct%n_zfilter<=0 ) then
+       if ( npz==1 .or. k<=flagstruct%n_zfilter ) then
           dddmp(k) = flagstruct%dddmp
           d_ext(k) = flagstruct%d_ext 
-       elseif ( k<=flagstruct%n_zfilter ) then
-          dddmp(k) = flagstruct%dddmp
-          d_ext(k) = flagstruct%d_ext
        else
           dddmp(k) = 0.0
           d_ext(k) = 0.0
        endif
 
-       if ( npz==1 .or. flagstruct%n_sponge<0 ) then
+       if ( npz==1 .or. flagstruct%n_sponge<=0 ) then
            d2_divg = flagstruct%d2_bg
        else
 ! Sponge layers with del-2 damping on divergence, vorticity, w, z, and air mass (delp).
@@ -732,7 +727,6 @@ contains
                         nord_v(k)=0; 
                         damp_vt(k) = 0.5*d2_divg
                    endif
-                   d_con_k = 0.
               elseif ( k<=MAX(2,flagstruct%n_sponge-1) .and. flagstruct%d2_bg_k2>0.01 ) then
                    nord_k=0; d2_divg = max(flagstruct%d2_bg, flagstruct%d2_bg_k2)
                    nord_w=0; damp_w = d2_divg
@@ -740,11 +734,9 @@ contains
                         nord_v(k)=0; 
                         damp_vt(k) = 0.5*d2_divg
                    endif
-                   d_con_k = 0.
               elseif ( k<=MAX(3,flagstruct%n_sponge) .and. flagstruct%d2_bg_k2>0.05 ) then
                    nord_k=0;  d2_divg = max(flagstruct%d2_bg, 0.2*flagstruct%d2_bg_k2)
                    nord_w=0;  damp_w = d2_divg
-                   d_con_k = 0.
               endif
        endif
 
@@ -783,7 +775,7 @@ contains
                   kgb, heat_s, diss_e, dpx(is,js,k), zvir, sphum, nq,  q,  k,  npz, flagstruct%inline_q,  dt,  &
                   flagstruct%hord_tr, hord_m, hord_v, hord_t, hord_p,    &
                   nord_k, nord_v(k), nord_w, nord_t, dddmp(k), d2_divg, flagstruct%d4_bg,  &
-                  damp_vt(k), damp_w, damp_t, d_con_k, hydrostatic, gridstruct, flagstruct, bd)
+                  damp_vt(k), damp_w, damp_t, flagstruct%d_con, hydrostatic, gridstruct, flagstruct, bd)
 
        if( (.not.flagstruct%use_old_omega) .and. last_step ) then
 ! Average horizontal "convergence" to cell center
