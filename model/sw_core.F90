@@ -969,18 +969,17 @@ module sw_core_mod
 
         if ( .not. hydrostatic ) then
             if ( damp_w>1.E-5 ) then
-                 dd8 = kgb*abs(dt)
-                 damp4 = (damp_w*gridstruct%da_min_c)**(nord_w+1)
-                 call del6_vt_flux(nord_w, npx, npy, damp4, w, wk, fx2, fy2, gridstruct, bd)
+                dd8 = kgb*abs(dt)
+                damp4 = (damp_w*gridstruct%da_min_c)**(nord_w+1)
+                call del6_vt_flux(nord_w, npx, npy, damp4, w, wk, fx2, fy2, gridstruct, bd)
                 do j=js,je
                    do i=is,ie
                       dw(i,j) = (fx2(i,j)-fx2(i+1,j)+fy2(i,j)-fy2(i,j+1))*rarea(i,j)
-! 0.5 * [ (w+dw)**2 - w**2 ] = w*dw + 0.5*dw*dw
-!                   heat_source(i,j) = -d_con*dw(i,j)*(w(i,j)+0.5*dw(i,j))
-                    heat_source(i,j) = dd8 - dw(i,j)*(w(i,j)+0.5*dw(i,j))
-                    if ( flagstruct%do_skeb ) then
-                       diss_est(i,j) = heat_source(i,j)
-                    endif
+                                                   ! 0.5 * [ (w+dw)**2 - w**2 ] = w*dw + 0.5*dw*dw
+                      heat_source(i,j) = dd8 - d_con*dw(i,j)*(w(i,j)+0.5*dw(i,j))
+                      if ( flagstruct%do_skeb ) then
+                         diss_est(i,j) = heat_source(i,j)
+                      endif
                    enddo
                 enddo
             endif
@@ -1432,10 +1431,10 @@ module sw_core_mod
       endif
      endif
 
-     dd8 = gridstruct%da_min * d4_bg**n2
+     dd8   = gridstruct%da_min * d4_bg**n2  ! higher order daming coeficient
      do j=js,je+1
         do i=is,ie+1
-           damp2 =  gridstruct%da_min_c*max(d2_bg, min(0.20, dddmp*vort(i,j)))  ! del-2
+           damp2 = gridstruct%da_min_c*max(d2_bg, min(0.20, dddmp*vort(i,j)))     ! del-2
            vort(i,j) = damp2*delpc(i,j) + dd8*divg_d(i,j)
              ke(i,j) = ke(i,j) + vort(i,j)
         enddo
