@@ -69,7 +69,9 @@ elseif (FV_PRECISION STREQUAL R8)
   endforeach()
 endif ()
 
-#set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT}")
+#if (CMAKE_Fortran_COMPILER_ID MATCHES Intel AND CMAKE_BUILD_TYPE MATCHES Release)
+#set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_AGGRESSIVE}")
+#endif ()
 
 if (CRAY_POINTER)
   set_target_properties (${this} PROPERTIES COMPILE_FLAGS ${CRAY_POINTER})
