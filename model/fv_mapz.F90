@@ -347,6 +347,8 @@ contains
             call qs_init(kmp)
        endif
 
+      call timing_on('Remap_State')
+
 !$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,kord,ikord_wz,ikord_tm,ikord_mt,remap_t, &
 !$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic, &
 !$OMP                                  pt,pk,rg,peln,q,nwat,liq_wat,rainwat,ice_wat,snowwat,    &
@@ -734,7 +736,11 @@ contains
 
 1000  continue
 
+      call timing_off('Remap_State')
+
 ! Update pressure variables and get new pkz, T_v, and omega
+
+      call timing_on('Remap_PressureVars')
 
 !$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,remap_t, &
 !$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic, &
@@ -936,8 +942,12 @@ contains
 
 2000  continue
 
+      call timing_off('Remap_PressureVars')
+
 ! Do total energy conservation and fast saturation adjustment as requested
 ! and fill new PT (Theta_V) for next k_split step or export dry T
+
+      call timing_on('Remap_TotalEnergyConsv')
 
 !$OMP parallel default(none) shared(is,ie,js,je,km,kmp,ptop,u,v,pe,isd,ied,jsd,jed, &
 !$OMP                               remap_t,remap_pt,remap_te, tmp_2D, &
@@ -1188,6 +1198,8 @@ endif        ! end last_step check
 
     endif
 !$OMP end parallel
+
+      call timing_off('Remap_TotalEnergyConsv')
 
  end subroutine Lagrangian_to_Eulerian
 

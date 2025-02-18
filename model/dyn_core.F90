@@ -626,14 +626,17 @@ contains
 #endif
 
                                                                    call timing_on('COMM_TOTAL')
+                                        call timing_on('COMM_TRACER')
     if (flagstruct%inline_q .and. nq>0) call complete_group_halo_update(i_pack(10), domain)
+                                        call timing_off('COMM_TRACER')
+
                                         call timing_on('COMM_DIVGD')
     if (flagstruct%nord > 0) call complete_group_halo_update(i_pack(3), domain)
                                         call timing_off('COMM_DIVGD')
+
                                         call timing_on('COMM_UCVC')
                              call complete_group_halo_update(i_pack(9), domain)
                                         call timing_off('COMM_UCVC')
-
                                                                    call timing_off('COMM_TOTAL')
       if (gridstruct%nested) then
          !On a nested grid we have to do SOMETHING with uc and vc in
