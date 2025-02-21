@@ -554,9 +554,9 @@ contains
 !----------------
 ! Map constituents
 !----------------
-!$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,iq,nq,kord_tr, &
+!$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,nq,kord_tr, &
 !$OMP                                  q,pe,peO,dpe,dpeO,fill) &
-!$OMP                          private(i,j,k,q2)
+!$OMP                          private(i,j,k,iq,q2)
       do 1001 iq=1,nq
         do j=js,je
           call map_scalar(km,  pe (is:ie,1:km+1,j),   q(isd,jsd,1,iq),  &
