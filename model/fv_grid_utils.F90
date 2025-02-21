@@ -2950,8 +2950,7 @@
 !-------------------------
 ! FMS global sum algorithm:
 !-------------------------
-         gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast), &
-                               flags=sflag)
+         gsum = mpp_global_sum(domain, p(:,:)*area(ifirst:ilast,jfirst:jlast), flags=sflag)
       endif
 
       if ( mode==1 ) then
