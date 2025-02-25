@@ -357,14 +357,14 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 
   enddo    ! k-loop
 
-  do iq=1,nq
-     n=0
-     do k=1,npz
-        nsplt = int(1. + cmax(k))
-        n=n+icount(k,iq)/nsplt
-     enddo
-     if ( is_master() )  write(*,*) 'Tracer_2d_1L_icount=', iq, n
-  enddo
+ !do iq=1,nq
+ !   n=0
+ !   do k=1,npz
+ !      nsplt = int(1. + cmax(k))
+ !      n=n+icount(k,iq)/nsplt
+ !   enddo
+ !   if ( is_master() )  write(*,*) 'Tracer_2d_1L_icount=', iq, n
+ !enddo
 
 end subroutine tracer_2d_1L
 
@@ -1066,12 +1066,10 @@ end subroutine offline_tracer_advection
 
          ! numerator
          globalSums(1) = g_sum_r8(domain, qsum1, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, &
-                                  reproduce=flagstruct%exact_sum)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
          ! denominator
          globalSums(2) = g_sum_r8(domain, qsum2, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, &
-                                  reproduce=flagstruct%exact_sum)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
 
          if (globalSums(2) > TINY_DENOMINATOR) then
             scalingR8 =  globalSums(1) / globalSums(2)
