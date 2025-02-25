@@ -127,9 +127,11 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real ::  cx2(bd%is:bd%ie+1,bd%jsd:bd%jed, npz)
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
       real :: cmax(npz)
+      real :: qmax(npz*nq)
+      integer :: icount(npz,nq)
       real :: frac
       integer :: nsplt
-      integer :: i,j,k,it,iq
+      integer :: i,j,k,n,it,iq
 
       real, pointer, dimension(:,:) :: area, rarea
       real, pointer, dimension(:,:,:) :: sin_sg
@@ -194,7 +196,11 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      endif
   enddo  ! k-loop
 
+                        call timing_on('COMM_TOTAL')
+                            call timing_on('COMM_TRACER')
   call mp_reduce_max(cmax,npz)
+                           call timing_off('COMM_TRACER')
+                       call timing_off('COMM_TOTAL')
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
 !$OMP                                  cy,yfx,mfx,mfy,cmax,mfx2,mfy2,cx2,cy2)   &
@@ -239,6 +245,26 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                         call timing_off('COMM_TRACER')
                               call timing_off('COMM_TOTAL')
 
+! Check for levels where Q does not need to be advected
+!$OMP parallel do default(none) shared(nq,npz,is,ie,js,je,q,qmax) private(n)
+  do iq=1,nq
+     do k=1,npz
+        n=(iq-1)*npz + k
+        qmax(n) = 0.0
+        do j=js,je
+           do i=is,ie
+              qmax(n) = max(qmax(n),q(i,j,k,iq))
+           enddo
+        enddo
+     enddo
+  enddo
+                               call timing_on('COMM_TOTAL')
+                         call timing_on('COMM_TRACER')
+  call mp_reduce_max(qmax,nq*npz)
+                         call timing_off('COMM_TRACER')
+                              call timing_off('COMM_TOTAL')
+  icount(:,:) = 0
+
 ! Begin k-independent tracer transport; can not be OpenMPed because the mpp_update call.
   do k=1,npz
 
@@ -256,8 +282,6 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 
      nsplt = int(1. + cmax(k))
 
-     if ( is_master() .and. nsplt > 3 )  write(*,*) 'Tracer_2d_1L_split=', k, nsplt, cmax(k)
-
      do it=1,nsplt
 
 !$OMP parallel do default(none) shared(k,is,ie,js,je,rarea,mfx2,mfy2,dp1,dp2)
@@ -267,11 +291,14 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
            enddo
         enddo
 
-!$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx2,xfx,hord,trdm, &
+!$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,npz,cx2,xfx,hord,trdm,qmax,icount, &
 !$OMP                                  nord_tr,nq,gridstruct,bd,cy2,yfx,mfx2,mfy2,qn2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) & 
-!$OMP                          private(fx,fy)
+!$OMP                          private(fx,fy,n)
         do iq=1,nq
-        if ( nsplt /= 1 ) then
+        n=(iq-1)*npz + k
+        if ( qmax(n) > tiny(0.0) ) then
+         icount(k,iq) = icount(k,iq) + 1
+         if ( nsplt /= 1 ) then
            if ( it==1 ) then
               do j=jsd,jed
                  do i=isd,ied
@@ -295,7 +322,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
               enddo
               enddo
            endif
-        else
+         else
            call fv_tp_2d(q(isd,jsd,k,iq), cx2(is,jsd,k), cy2(isd,js,k), &
                          npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx2(is,js,k), mfy=mfy2(is,js,k))
@@ -304,6 +331,9 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                  q(i,j,k,iq) = (q(i,j,k,iq)*dp1(i,j,k)+((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j))/dp2(i,j)
               enddo
            enddo
+         endif
+        else
+         if ( it == nsplt ) q(:,:,k,iq) = 0.0
         endif
         enddo   !  tracer-loop
 
@@ -326,6 +356,15 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      endif
 
   enddo    ! k-loop
+
+ !do iq=1,nq
+ !   n=0
+ !   do k=1,npz
+ !      nsplt = int(1. + cmax(k))
+ !      n=n+icount(k,iq)/nsplt
+ !   enddo
+ !   if ( is_master() )  write(*,*) 'Tracer_2d_1L_icount=', iq, n
+ !enddo
 
 end subroutine tracer_2d_1L
 
@@ -974,9 +1013,9 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                             npz, pe2, q2,                   &
                             dp1, dp2,                       & 
                             is, ie, j, isd, ied, jsd, jed, 0, flagstruct%kord_tr, q_min=0.)
+            if (flagstruct%fill) call fillz(ie-is+1, npz, 1, q2, dp2)
             q3(is:ie,j,1:npz,iq) = q2
          enddo
-          if (flagstruct%fill) call fillz(ie-is+1, npz, nq, q3, dp2)
        enddo
 
        ! Rescale tracers based on pleA at destination timestep
@@ -1025,19 +1064,12 @@ end subroutine offline_tracer_advection
             qsum2(:,:) = qsum2(:,:) + q2(:,:,k) * (ple2(:,:,k+1)-ple2(:,:,k))
          enddo
 
-         sflag = NON_BITWISE_EXACT_SUM
-        !if (flagstruct%exact_sum==0) sflag = NON_BITWISE_EXACT_SUM
-        !if (flagstruct%exact_sum==1) sflag = BITWISE_EXACT_SUM
-        !if (flagstruct%exact_sum==2) sflag = BITWISE_EFP_SUM
-
          ! numerator
          globalSums(1) = g_sum_r8(domain, qsum1, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, &
-                                  reproduce=sflag)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
          ! denominator
          globalSums(2) = g_sum_r8(domain, qsum2, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1, &
-                                  reproduce=sflag)
+                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
 
          if (globalSums(2) > TINY_DENOMINATOR) then
             scalingR8 =  globalSums(1) / globalSums(2)
