@@ -147,10 +147,11 @@ contains
 
    integer:: is, ie, js, je, isd, ied, jsd, jed
    !$ser verbatim integer :: k,nz, dir
-   !$ser verbatim real, dimension(1,1) :: damp_c_dup, nord_dup, damp_dup
+   !$ser verbatim real, dimension(1,1) :: damp_c_dup, nord_dup, damp_dup, da_min_dup
    !$ser verbatim if (present(damp_c)) then
    !$ser verbatim damp_c_dup(1,1)=damp_c
    !$ser verbatim nord_dup(1,1)=nord
+   !$ser verbatim da_min_dup(1,1)=gridstruct%da_min
    !$ser verbatim endif
    !$ser verbatim call get_k(k)
    !$ser verbatim call get_nz(nz)
@@ -266,7 +267,6 @@ contains
       if ( present(nord) .and. present(damp_c) .and. present(mass) ) then
          !$ser savepoint DelnFlux-In
          !$ser data_kbuff k=k k_size=nz q=q fx=fx fy=fy mass=mass damp_c=damp_c_dup nord_column=nord_dup
-         damp = 0
          if ( damp_c > 1.e-4 ) then
            damp = (damp_c * gridstruct%da_min)**(nord+1)
            call deln_flux(nord, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass, fx_tmp, fy_tmp )
@@ -291,7 +291,7 @@ contains
       enddo
       if ( present(nord) .and. present(damp_c) ) then
          !$ser savepoint DelnFlux_2-In
-         !$ser data_kbuff k=k k_size=nz q=q fx=fx fy=fy damp_c=damp_c_dup nord_column=nord_dup
+         !$ser data_kbuff k=k k_size=nz q=q fx=fx fy=fy damp_c=damp_c_dup nord_column=nord_dup da_min_deln=da_min_dup
          if ( damp_c > 1.E-4 ) then
                 damp = (damp_c * gridstruct%da_min)**(nord+1)
                 call deln_flux(nord, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd)

@@ -2318,8 +2318,6 @@ do 1000 j=jfirst,jlast
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
       !$ser verbatim logical ::complete_mpp
-      !$ser verbatim real ::real_cd
-      !$ser verbatim real_cd=real(cd)
       !Local routine pointers
 !     real, pointer, dimension(:,:) :: rarea
 !     real, pointer, dimension(:,:) :: del6_u, del6_v
@@ -2356,7 +2354,7 @@ do 1000 j=jfirst,jlast
 
 
       !$ser savepoint Del2Cubed-In
-      !$ser data qdel=q nmax=nmax cd=real_cd km=km
+      !$ser data qdel=q nmax=nmax cd=cd km=km
       do n=1,ntimes
          nt = ntimes - n
 
