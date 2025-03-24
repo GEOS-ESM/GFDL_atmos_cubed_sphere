@@ -937,7 +937,7 @@ module sw_core_mod
 
 
       call fv_tp_2d(delp, crx_adv, cry_adv, npx, npy, hord_dp, fx, fy,  &
-                    xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac) !, nord=nord_v, damp_c=damp_v)
+                    xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, nord=nord_v, damp_c=damp_v)
 
 ! <<< Save the mass fluxes to the "Flux Capacitor" for tracer transport >>>
         do j=jsd,jed
@@ -994,7 +994,7 @@ module sw_core_mod
 
 #ifdef USE_COND
            call fv_tp_2d(q_con, crx_adv,cry_adv, npx, npy, hord_dp, gx, gy,  &
-                xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy, mass=delp) !, nord=nord_t, damp_c=damp_t)
+                xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
             do j=js,je
                do i=is,ie
                   q_con(i,j) = delp(i,j)*q_con(i,j) + (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
@@ -1023,7 +1023,7 @@ module sw_core_mod
         do iq=1,nq
            call fv_tp_2d(q(isd,jsd,k,iq), crx_adv,cry_adv, npx, npy, hord_tr, gx, gy,  &
                          xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
-                         mfx=fx, mfy=fy, mass=delp) !, nord=nord_t, damp_c=damp_t)
+                         mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
            do j=js,je
               do i=is,ie
                  q(i,j,k,iq) = (q(i,j,k,iq)*wk(i,j) +               &

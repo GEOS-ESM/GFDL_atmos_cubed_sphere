@@ -718,14 +718,9 @@ contains
        else
             damp_vt(k) = 0.
        endif
-! Diffusion on w & t at higher levels
-       if ( npz==1 .or. k<=flagstruct%n_zfilter ) then
-            damp_w = damp_vt(k)
-            damp_t = damp_vt(k)
-       else
-            damp_w = 0.0
-            damp_t = 0.0
-       endif
+! Diffusion on w & t
+       damp_w = damp_vt(k)
+       damp_t = damp_vt(k)
 ! External diffusion only in RI Z-Filter levels
        if ( npz==1 .or. k<=flagstruct%n_zfilter ) then
           d_ext(k) = flagstruct%d_ext 
