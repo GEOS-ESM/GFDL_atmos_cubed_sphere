@@ -68,6 +68,7 @@ module fv_tracer2d_mod
    use fv_mp_mod,         only: group_halo_update_type
    use fv_mp_mod,         only: start_group_halo_update, complete_group_halo_update
    use mpp_domains_mod,   only: mpp_update_domains, CGRID_NE, domain2d, mpp_get_boundary
+   use mpp_domains_mod,   only: NON_BITWISE_EXACT_SUM, BITWISE_EXACT_SUM, BITWISE_EFP_SUM
    use fv_timing_mod,     only: timing_on, timing_off
    use boundary_mod,      only: nested_grid_BC_apply_intT
    use fv_arrays_mod,     only: fv_grid_type, fv_flags_type, fv_nest_type, fv_atmos_type, fv_grid_bounds_type, REAL8
@@ -126,9 +127,11 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real ::  cx2(bd%is:bd%ie+1,bd%jsd:bd%jed, npz)
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
       real :: cmax(npz)
+      real :: qmax(npz*nq)
+      integer :: icount(npz,nq)
       real :: frac
       integer :: nsplt
-      integer :: i,j,k,it,iq
+      integer :: i,j,k,n,it,iq
 
       real, pointer, dimension(:,:) :: area, rarea
       real, pointer, dimension(:,:,:) :: sin_sg
@@ -193,7 +196,11 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      endif
   enddo  ! k-loop
 
+                        call timing_on('COMM_TOTAL')
+                            call timing_on('COMM_TRACER')
   call mp_reduce_max(cmax,npz)
+                           call timing_off('COMM_TRACER')
+                       call timing_off('COMM_TOTAL')
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
 !$OMP                                  cy,yfx,mfx,mfy,cmax,mfx2,mfy2,cx2,cy2)   &
@@ -238,6 +245,26 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                         call timing_off('COMM_TRACER')
                               call timing_off('COMM_TOTAL')
 
+! Check for levels where Q does not need to be advected
+!$OMP parallel do default(none) shared(nq,npz,is,ie,js,je,q,qmax) private(n)
+  do iq=1,nq
+     do k=1,npz
+        n=(iq-1)*npz + k
+        qmax(n) = 0.0
+        do j=js,je
+           do i=is,ie
+              qmax(n) = max(qmax(n),q(i,j,k,iq))
+           enddo
+        enddo
+     enddo
+  enddo
+                               call timing_on('COMM_TOTAL')
+                         call timing_on('COMM_TRACER')
+  call mp_reduce_max(qmax,nq*npz)
+                         call timing_off('COMM_TRACER')
+                              call timing_off('COMM_TOTAL')
+  icount(:,:) = 0
+
 ! Begin k-independent tracer transport; can not be OpenMPed because the mpp_update call.
   do k=1,npz
 
@@ -255,8 +282,6 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 
      nsplt = int(1. + cmax(k))
 
- !   if ( is_master() )  write(*,*) 'Tracer_2d_split=', k, cmax(k), nsplt
-
      do it=1,nsplt
 
 !$OMP parallel do default(none) shared(k,is,ie,js,je,rarea,mfx2,mfy2,dp1,dp2)
@@ -266,11 +291,14 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
            enddo
         enddo
 
-!$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx2,xfx,hord,trdm, &
+!$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,npz,cx2,xfx,hord,trdm,qmax,icount, &
 !$OMP                                  nord_tr,nq,gridstruct,bd,cy2,yfx,mfx2,mfy2,qn2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) & 
-!$OMP                          private(fx,fy)
+!$OMP                          private(fx,fy,n)
         do iq=1,nq
-        if ( nsplt /= 1 ) then
+        n=(iq-1)*npz + k
+        if ( qmax(n) > tiny(0.0) ) then
+         icount(k,iq) = icount(k,iq) + 1
+         if ( nsplt /= 1 ) then
            if ( it==1 ) then
               do j=jsd,jed
                  do i=isd,ied
@@ -294,7 +322,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
               enddo
               enddo
            endif
-        else
+         else
            call fv_tp_2d(q(isd,jsd,k,iq), cx2(is,jsd,k), cy2(isd,js,k), &
                          npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx2(is,js,k), mfy=mfy2(is,js,k))
@@ -303,6 +331,9 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                  q(i,j,k,iq) = (q(i,j,k,iq)*dp1(i,j,k)+((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j))/dp2(i,j)
               enddo
            enddo
+         endif
+        else
+         if ( it == nsplt ) q(:,:,k,iq) = 0.0
         endif
         enddo   !  tracer-loop
 
@@ -325,6 +356,15 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      endif
 
   enddo    ! k-loop
+
+ !do iq=1,nq
+ !   n=0
+ !   do k=1,npz
+ !      nsplt = int(1. + cmax(k))
+ !      n=n+icount(k,iq)/nsplt
+ !   enddo
+ !   if ( is_master() )  write(*,*) 'Tracer_2d_1L_icount=', iq, n
+ !enddo
 
 end subroutine tracer_2d_1L
 
@@ -448,7 +488,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
          enddo
       endif
       nsplt = int(1. + c_global)
-      if ( is_master() )  write(*,*) 'Tracer_2d_split=', nsplt, c_global
+      if ( is_master() .and. nsplt > 3 )  write(*,*) 'Tracer_2d_split=', nsplt, c_global
    else
       nsplt = q_split
    endif
@@ -886,7 +926,6 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real  pe2(bd%is:bd%ie,npz+1)
       real  dp1(bd%is:bd%ie,npz)
       real  dp2(bd%is:bd%ie,npz)
-      integer kord_tracers(nq)
 
 ! Local indices
       integer     :: i,j,k,n,iq
@@ -938,23 +977,23 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     q3(is:ie,js:je,:,:) = q(is:ie,js:je,:,:)
     call start_group_halo_update(i_pack, q3, domain)
 
-   !if ( flagstruct%z_tracer ) then
-   !     call tracer_2d_1L(q3, dpL, mfxL, mfyL, cxL, cyL, &
-   !                     gridstruct, bd, domain, npx, npy, npz, nq,    &
-   !                     flagstruct%hord_tr, flagstruct%q_split, dt, 0, i_pack, &
-   !                     flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
-   !else
+    if ( flagstruct%z_tracer ) then
+         call tracer_2d_1L(q3, dpL, mfxL, mfyL, cxL, cyL, &
+                         gridstruct, bd, domain, npx, npy, npz, nq,    &
+                         flagstruct%hord_tr, flagstruct%q_split, dt, 0, i_pack, &
+                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
+    else
          call tracer_2d(q3, dpL, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, flagstruct%q_split, dt, 0, i_pack, &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
-   !endif
+    endif
 
 !------------------------------------------------------------------
 ! Re-Map constituents
 !------------------------------------------------------------------
-       do iq=1,nq
-          kord_tracers(iq) = flagstruct%kord_tr
-       enddo
+!$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,npz,nq, &
+!$OMP                                  pleB,dpA,pleA,q3,flagstruct) &
+!$OMP                          private(i,j,k,iq,pe1,dp1,pe2,dp2,q2)
        do j=js,je
         ! pressures mapping from (dpA is new delp after tracer_2d)
           pe1(:,1) = pleB(:,j,1)
@@ -970,13 +1009,13 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
              dp2(:,k) = pe2(:,k+1) - pe2(:,k)
           enddo
           do iq=1,nq
-            call map_scalar(npz, pe1, q3(isd,jsd,1,iq),                    &
-                            npz, pe2, q2,                                 &
-                            dp1, dp2,                        & 
-                            is, ie, j, isd, ied, jsd, jed, 0, kord_tracers(iq), 0.)
+            call map_scalar(npz, pe1, q3(isd,jsd,1,iq),     &
+                            npz, pe2, q2,                   &
+                            dp1, dp2,                       & 
+                            is, ie, j, isd, ied, jsd, jed, 0, flagstruct%kord_tr, q_min=0.)
+            if (flagstruct%fill) call fillz(ie-is+1, npz, 1, q2, dp2)
             q3(is:ie,j,1:npz,iq) = q2
          enddo
-          if (flagstruct%fill) call fillz(ie-is+1, npz, nq, q3, dp2)
        enddo
 
        ! Rescale tracers based on pleA at destination timestep
@@ -1003,6 +1042,7 @@ end subroutine offline_tracer_advection
          type(domain2D), intent(INOUT) :: domain
          type(fv_grid_type), intent(IN   ) :: gridstruct
          type(fv_flags_type), intent(INOUT) :: flagstruct
+         integer :: sflag
          real :: scaling
 
          integer :: k

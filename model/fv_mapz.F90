@@ -176,7 +176,7 @@ contains
   real, intent(inout):: delp(isd:ied,jsd:jed,km)      !< pressure thickness
   real, intent(inout)::  pe(is-1:ie+1,km+1,js-1:je+1) !< pressure at layer edges
   real, intent(inout):: ps(isd:ied,jsd:jed)           !< surface pressure
-
+ 
 ! u-wind will be ghosted one latitude to the north upon exit
   real, intent(inout)::  u(isd:ied  ,jsd:jed+1,km)   !< u-wind (m/s)
   real, intent(inout)::  v(isd:ied+1,jsd:jed  ,km)   !< v-wind (m/s)
@@ -231,6 +231,11 @@ contains
   integer:: i,j,k
   integer:: nt, liq_wat, ice_wat, rainwat, snowwat, cld_amt, graupel, iq, n, kmp, kp, k_next
   logical:: remap_t, remap_pt, remap_te
+
+! local versions of full pe/dpe arrays
+  real, dimension(is-1:ie+1,km+1,js-1:je+1) ::  peO
+  real, dimension(is:ie,km,js:je) :: dpe
+  real, dimension(is:ie,km,js:je) :: dpeO
 
   kord(ikord_tm) = kord_tm
   kord(ikord_wz) = kord_wz
@@ -347,44 +352,30 @@ contains
             call qs_init(kmp)
        endif
 
-!$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,kord,ikord_wz,ikord_tm,ikord_mt,remap_t, &
-!$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic, &
-!$OMP                                  pt,pk,rg,peln,q,nwat,liq_wat,rainwat,ice_wat,snowwat,    &
-!$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
-!$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
-!$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, adiabatic, &
-!$OMP                                  hs,w,ws,rrg,kord_mt,consv,remap_option,gmao_remap, &
-!$OMP                                  gmao_top_bc, gmao_bot_bc)    &
-!$OMP                          private(gz,cvm,bkh,dpe1,dpe2,dpn1,dpn2,dpe0,dpe3, &
-!$OMP                                  pe0,pe1,pe2,pe3,pn1,pn2,phis,q2,w2,u2,v2)
-  do 1000 j=js,je+1
-
-     do k=1,km+1
-        do i=is,ie
-           pe1(i,k) = pe(i,k,j)
-        enddo
-     enddo
-
-     do i=is,ie
-        pe2(i,   1) = ptop
-        pe2(i,km+1) = pe(i,km+1,j)
-     enddo
-
-  if ( j /= (je+1) ) then
+      call timing_on('Remap_GetT')
 
       if (remap_t) then
        ! Remap T in logP
 ! Note: pt at this stage is Theta_v
              if ( hydrostatic ) then
 ! Transform virtual pt to virtual Temp
+!$OMP parallel do default(none) shared(is,ie,js,je,km,pk,akap,peln,pt) &
+!$OMP                           private(i,j,k)
                do k=1,km
+                 do j=js,je
                    do i=is,ie
                       pt(i,j,k) = pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
                    enddo
+                 enddo
                enddo
              else
 ! Transform "density pt" to "density temp"
+!$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,nwat, &
+!$OMP                                  sphum,liq_wat,rainwat,ice_wat,snowwat,graupel,&
+!$OMP                                  q,cappa,r_vir,pt,rrg,delp,delz,k1k) & 
+!$OMP                           private(i,j,k,gz,cvm)
                do k=1,km
+                 do j=js,je
 #ifdef MOIST_CAPPA
                   call moist_cv(is,ie,isd,ied,jsd,jed, km, j, k, nwat, sphum, liq_wat, rainwat,    &
                                 ice_wat, snowwat, graupel, q, gz, cvm)
@@ -397,6 +388,7 @@ contains
                      pt(i,j,k) = pt(i,j,k)*exp(k1k*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)))
                   enddo
 #endif
+                 enddo
                enddo
              endif         ! hydro test
       elseif (remap_pt) then
@@ -406,10 +398,12 @@ contains
        ! Remap TE in logP
        ! Transform virtual pt to total energy
            if ( hydrostatic ) then
+!$OMP parallel do default(none) shared(is,ie,js,je,km,pt,pe,pk,akap,peln,pkz,ptop, &
+!$OMP                                  te,gridstruct,u,v,hs) &
+!$OMP                           private(i,j,k,phis)
+             do j=js,je
                call pkez(km, is, ie, js, je, j, pe, pk, akap, peln, pkz, ptop)
-               do i=is,ie
-                  phis(i,km+1) = hs(i,j)
-               enddo
+               phis(i,km+1) = hs(i,j)
                do k=km,1,-1
                  do i=is,ie
                     phis(i,k) = phis(i,k+1) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
@@ -430,8 +424,15 @@ contains
                               + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j))
                   enddo
                enddo
+             enddo
            else
 ! TE using 3D winds (pt is virtual potential temperature):
+!$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,hs,nwat, &
+!$OMP                                  sphum,liq_wat,rainwat,ice_wat,snowwat,graupel,&
+!$OMP                                  te,q,cappa,r_vir,pt,pe,pkz,rrg,delp,delz,k1k,& 
+!$OMP                                  gridstruct,u,v,w) &
+!$OMP                           private(i,j,k,phis,gz,cvm)
+             do j=js,je
                do i=is,ie
                   phis(i,km+1) = hs(i,j)
                enddo
@@ -471,138 +472,152 @@ contains
                   enddo
 #endif
                enddo
+             enddo
            endif ! hydro test
-       endif
-
-! update ps
-   do i=is,ie
-      ps(i,j) = pe1(i,km+1)
-   enddo
-!
-! Hybrid sigma-P coordinate:
-!
-   do k=2,km
-      do i=is,ie
-         pe2(i,k) = ak(k) + bk(k)*pe(i,km+1,j)
-      enddo
-   enddo
-   do k=1,km
-      do i=is,ie
-         dpe1(i,k) = pe1(i,k+1) - pe1(i,k)
-         dpe2(i,k) = pe2(i,k+1) - pe2(i,k)
-      enddo
-   enddo
-
-!------------------
-! Compute p**Kappa
-!------------------
-   do k=1,km+1
-      do i=is,ie
-         pn1(i,k) = peln(i,k,j)
-      enddo
-   enddo
-
-   do i=is,ie
-      pn2(i,   1) = peln(i,   1,j)
-      pn2(i,km+1) = peln(i,km+1,j)
-   enddo
-   do k=2,km
-      do i=is,ie
-         pn2(i,k) = log(pe2(i,k))
-      enddo
-   enddo
-
-   do k=1,km
-      do i=is,ie
-         dpn1(i,k) = pn1(i,k+1) - pn1(i,k)
-         dpn2(i,k) = pn2(i,k+1) - pn2(i,k)
-      enddo
-   enddo
-
-   if (remap_te) then
-!----------------------------------
-! map TE in log P
-!----------------------------------
-      if ( gmao_remap > 0 ) then
-         call map1_gmao (km,  pe1,  te,       &
-                         km,  pe2,  te,       &
-                         is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, P_MAP=1, conserv=.true.)
-      else
-         call map_scalar(km,  pn1,  te,       &
-                         km,  pn2,  q2,       &
-                         dpn1, dpn2,          &
-                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), &
-                         optional_top=gmao_top_bc, optional_bot=gmao_bot_bc)
-         te(is:ie,j,:) = q2
       endif
-   else
-!----------------------------------
-! map T or PT in log P
-!----------------------------------
+
+! Get output edge pressures
+      peO(:,1     ,:) = ptop
+      peO(:,  km+1,:) = pe(:,km+1,:)
+!$OMP parallel do default(none) shared(is,ie,js,je,km,ak,bk,pe,peO) &
+!$OMP                          private(i,j)
+      do j=js-1,je+1
+        do i=is-1,ie+1
+           peO(i,2: km  ,j) = ak(2:km) + bk(2:km)*pe(i,km+1,j)
+        enddo
+      enddo
+
+      call timing_off('Remap_GetT')
+
+      call timing_on('Remap_T')
+
+!$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,kord,ikord_tm,remap_te, &
+!$OMP                                  te,pt,pe,peO,ptop,peln,akap,gmao_remap, &
+!$OMP                                  gmao_top_bc, gmao_bot_bc)    &
+!$OMP                          private(i,j,k,pn1,pn2,dpn1,dpn2,q2)
+  do 1000 j=js,je
+
       if ( gmao_remap > 0 ) then
-         call map1_gmao (km,  pe1,  pt,       &
-                         km,  pe2,  pt,       &
-                         is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, P_MAP=1, conserv=.false.)
+         if (remap_te) then
+           call map1_gmao (km,  pe (is:ie,1:km+1,j),  te,       &
+                           km,  peO(is:ie,1:km+1,j),  te,       &
+                           is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, P_MAP=1, conserv=.true.)
+         else
+           call map1_gmao (km,  pe (is:ie,1:km+1,j),  pt,       &
+                           km,  peO(is:ie,1:km+1,j),  pt,       &
+                           is, ie, j, isd, ied, jsd, jed, akap, gmao_remap, P_MAP=1, conserv=.false.)
+         endif
       else
-         call map_scalar(km,  pn1,  pt,       &
-                         km,  pn2,  q2,       &
-                         dpn1, dpn2,          &
-                         is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), q_min=t_min, &
-                         optional_top=gmao_top_bc, optional_bot=gmao_bot_bc)
-         pt(is:ie,j,:) = q2
+         pn1(is:ie,1:km+1) = peln(is:ie,1:km+1,j)
+         pn2(is:ie,1     ) = peln(is:ie,1     ,j)
+         pn2(is:ie,  km+1) = peln(is:ie,  km+1,j)
+         do i=is,ie
+            pn2(i,2: km  ) = log(peO(i,2:km,j))
+         enddo
+         dpn1(is:ie,1:km) = pn1(is:ie,2:km+1)-pn1(is:ie,1:km)
+         dpn2(is:ie,1:km) = pn2(is:ie,2:km+1)-pn2(is:ie,1:km)  
+         if (remap_te) then
+           call map_scalar(km,  pn1,  te,       &
+                           km,  pn2,  q2,       &
+                           dpn1, dpn2,          &
+                           is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), &
+                           optional_top=gmao_top_bc, optional_bot=gmao_bot_bc)
+           te(is:ie,j,:) = q2
+         else
+           call map_scalar(km,  pn1,  pt,       &
+                           km,  pn2,  q2,       &
+                           dpn1, dpn2,          &
+                           is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), q_min=t_min, &
+                           optional_top=gmao_top_bc, optional_bot=gmao_bot_bc)
+           pt(is:ie,j,:) = q2
+         endif
       endif
-   endif
+
+1000  continue             
+
+      call timing_off('Remap_T')  
+
+
+      call timing_on('Remap_Q')
+
+!$OMP parallel do default(none) shared(is,ie,js,je,km,pe,peO,dpe,dpeO) &
+!$OMP                          private(i,j,k)
+      do j=js,je
+        do k=1,km       
+          do i=is,ie  
+            dpe (i,k,j) = pe (i,k+1,j) - pe (i,k,j)
+            dpeO(i,k,j) = peO(i,k+1,j) - peO(i,k,j)
+          enddo     
+        enddo  
+      enddo      
 
 !----------------
 ! Map constituents
 !----------------
-   do iq=1,nq
-   call map_scalar(km,  pe1,   q(isd,jsd,1,iq),     &
-                   km,  pe2,   q2,     &
-                   dpe1, dpe2,         &
-                   is, ie, j, isd, ied, jsd, jed, 0, kord_tr(iq), q_min=0.)
-   if (fill) call fillz(ie-is+1, km, 1, q2, dpe2)
-   q(is:ie,j,:,iq) = q2
-   enddo
+!$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,nq,kord_tr, &
+!$OMP                                  q,pe,peO,dpe,dpeO,fill) &
+!$OMP                          private(i,j,k,iq,q2)
+      do 1001 iq=1,nq
+        do j=js,je
+          call map_scalar(km,  pe (is:ie,1:km+1,j),   q(isd,jsd,1,iq),  &
+                          km,  peO(is:ie,1:km+1,j),   q2,               &
+                              dpe (is:ie,1:km  ,j),                     &
+                              dpeO(is:ie,1:km  ,j),                     &
+                          is, ie, j, isd, ied, jsd, jed, 0, kord_tr(iq), q_min=0.)
+          if (fill) call fillz(ie-is+1, km, 1, q2, dpeO(is:ie,1:km  ,j))
+          q(is:ie,j,:,iq) = q2
+        enddo
+1001  continue
+
+      call timing_off('Remap_Q')
 
 !----------------
 ! Map NH W & DZ
 !----------------
    if ( .not. hydrostatic ) then
+
+      call timing_on('Remap_NH')           
+
 ! Remap delz for hybrid sigma-p coordinate
+!$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,kord,ikord_wz, &
+!$OMP                                  delz,w,pe,peO,dpe,dpeO,ws) &
+!$OMP                          private(i,j,k,q2,w2,gz)
+      do 1002 j=js,je
         do k=1,km
            do i=is,ie
-              delz(i,j,k) = -delz(i,j,k) / delp(i,j,k) ! ="specific volume"/grav
+              delz(i,j,k) = -delz(i,j,k) / dpe (i,k,j) ! ="specific volume"/grav
            enddo
         enddo
-        call map_scalar(km,   pe1, delz,    &
-                        km,   pe2,   q2,    &
-                        dpe1, dpe2,         &
-                        is, ie, j, isd,  ied,  jsd,  jed,  1, kord(ikord_wz))
+        call map_scalar(km,  pe (is:ie,1:km+1,j),   delz,             &
+                        km,  peO(is:ie,1:km+1,j),   q2,               &
+                            dpe (is:ie,1:km  ,j),                     &
+                            dpeO(is:ie,1:km  ,j),                     &
+                        is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_wz))
         do k=1,km
            do i=is,ie
-              delz(i,j,k) = -q2(i,k)*dpe2(i,k)
+              delz(i,j,k) = -q2(i,k)*dpeO(i,k,j)
            enddo
         enddo
 
 ! Remap vertical wind:
-        call map_scalar(km,   pe1,  w,      &
-                        km,   pe2,  w2,     &
-                        dpe1, dpe2,         &
+        call map_scalar(km,  pe (is:ie,1:km+1,j),   w,                &
+                        km,  peO(is:ie,1:km+1,j),   w2,               &
+                            dpe (is:ie,1:km  ,j),                     &
+                            dpeO(is:ie,1:km  ,j),                     &
                         is, ie, j, isd, ied, jsd, jed, -2, kord(ikord_wz), q_bot=ws(is,j))
          !Fix excessive w - momentum conserving --- sjl
          if ( w_limiter ) then
             do k=1, km-1
                do i=is,ie
                   if ( w2(i,k) > w_max ) then
-                     gz(i) = (w2(i,k)-w_max) * dpe2(i,k)
+                     gz(i) = (w2(i,k)-w_max) * dpeO(i,k,j)
                      w2(i,k  ) = w_max
-                     w2(i,k+1) = w2(i,k+1) + gz(i)/dpe2(i,k+1)
+                     w2(i,k+1) = w2(i,k+1) + gz(i)/dpeO(i,k+1,j)
                      !print*, ' W_LIMITER down: ', i,j,k, w2(i,k:k+1), w(i,j,k:k+1)
                   elseif ( w2(i,k) < w_min ) then
-                     gz(i) = (w2(i,k)-w_min) * dpe2(i,k)
+                     gz(i) = (w2(i,k)-w_min) * dpeO(i,k,j)
                      w2(i,k  ) = w_min
-                     w2(i,k+1) = w2(i,k+1) + gz(i)/dpe2(i,k+1)
+                     w2(i,k+1) = w2(i,k+1) + gz(i)/dpeO(i,k+1,j)
                      !print*, ' W_LIMITER down: ', i,j,k, w2(i,k:k+1), w(i,j,k:k+1)
                   endif
                enddo
@@ -610,14 +625,14 @@ contains
             do k=km, 2, -1
                do i=is,ie
                   if ( w2(i,k) > w_max ) then
-                     gz(i) = (w2(i,k)-w_max) * dpe2(i,k)
+                     gz(i) = (w2(i,k)-w_max) * dpeO(i,k,j)
                      w2(i,k  ) = w_max
-                     w2(i,k-1) = w2(i,k-1) + gz(i)/dpe2(i,k-1)
+                     w2(i,k-1) = w2(i,k-1) + gz(i)/dpeO(i,k-1,j)
                      !print*, ' W_LIMITER up: ', i,j,k, w2(i,k-1:k), w(i,j,k-1:k)
                   elseif ( w2(i,k) < w_min ) then
-                     gz(i) = (w2(i,k)-w_min) * dpe2(i,k)
+                     gz(i) = (w2(i,k)-w_min) * dpeO(i,k,j)
                      w2(i,k  ) = w_min
-                     w2(i,k-1) = w2(i,k-1) + gz(i)/dpe2(i,k-1)
+                     w2(i,k-1) = w2(i,k-1) + gz(i)/dpeO(i,k-1,j)
                      !print*, ' W_LIMITER up: ', i,j,k, w2(i,k-1:k), w(i,j,k-1:k)
                   endif
                enddo
@@ -634,9 +649,18 @@ contains
          endif
         ! fill new W
          w(is:ie,j,:) = w2
+1002  continue
+
+      call timing_off('Remap_NH')          
+
     endif
 
-  endif !(j < je+1)
+      call timing_on('Remap_UV')
+
+!$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,pe,ptop,kord,ikord_mt, &
+!$OMP                                  u,v,cx,cy,mfx,mfy,ak,bk) &
+!$OMP                          private(i,j,k,u2,v2,pe1,pe2,dpe1,dpe2,pe0,pe3,dpe0,dpe3,bkh)
+      do 1003 j=js,je+1
 
 !------
 ! map u
@@ -732,15 +756,19 @@ contains
       endif
     endif ! (j < je+1)
 
-1000  continue
+1003  continue
+
+      call timing_off('Remap_UV')
 
 ! Update pressure variables and get new pkz, T_v, and omega
+
+      call timing_on('Remap_PressureVars')
 
 !$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,remap_t, &
 !$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic, &
 !$OMP                                  pt,pk,rg,peln,q,nwat,liq_wat,rainwat,ice_wat,snowwat,    &
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
-!$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
+!$OMP                                  delz,akap,pkz,te,u,v,gridstruct, &
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,fill, &
 !$OMP                                  hs,w,ws,do_omega,omga,rrg)    &
 !$OMP                          private(gz,cvm,kp,k_next,bkh,dpe2,   &
@@ -936,8 +964,12 @@ contains
 
 2000  continue
 
+      call timing_off('Remap_PressureVars')
+
 ! Do total energy conservation and fast saturation adjustment as requested
 ! and fill new PT (Theta_V) for next k_split step or export dry T
+
+      call timing_on('Remap_TotalEnergyConsv')
 
 !$OMP parallel default(none) shared(is,ie,js,je,km,kmp,ptop,u,v,pe,isd,ied,jsd,jed, &
 !$OMP                               remap_t,remap_pt,remap_te, tmp_2D, &
@@ -1188,6 +1220,8 @@ endif        ! end last_step check
 
     endif
 !$OMP end parallel
+
+      call timing_off('Remap_TotalEnergyConsv')
 
  end subroutine Lagrangian_to_Eulerian
 

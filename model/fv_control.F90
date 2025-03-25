@@ -183,7 +183,8 @@ module fv_control_mod
    integer , pointer :: nord_tr
    real    , pointer :: dddmp 
    real    , pointer :: d2_bg 
-   real    , pointer :: d4_bg 
+   real    , pointer :: d4_bg_top
+   real    , pointer :: d4_bg_bot
    real    , pointer :: vtdm4 
    real    , pointer :: trdm2 
    real    , pointer :: d2_bg_k1 
@@ -476,11 +477,12 @@ module fv_control_mod
                write(*,*) 'Internal mode del-2 background diff=', d2_bg*Atm(n)%gridstruct%da_min_c/sdt
 
                if (nord==1) then
-                   write(*,*) 'Internal mode del-4 background diff=', d4_bg
+                   write(*,*) 'Internal mode del-4 background diff Top=', d4_bg_top
+                   write(*,*) 'Internal mode del-4 background diff Bot=', d4_bg_bot
                    write(*,*) 'Vorticity del-4 (m**4/s)=', (vtdm4*Atm(n)%gridstruct%da_min)**2/sdt*1.E-6
                endif
-               if (nord==2) write(*,*) 'Internal mode del-6 background diff=', d4_bg
-               if (nord==3) write(*,*) 'Internal mode del-8 background diff=', d4_bg
+               if (nord==2) write(*,*) 'Internal mode del-6 background diff Top=', d4_bg_top
+               if (nord==3) write(*,*) 'Internal mode del-8 background diff Bot=', d4_bg_bot
                write(*,*) 'tracer del-2 diff=', trdm2
 
                write(*,*) 'Vorticity del-4 (m**4/s)=', (vtdm4*Atm(n)%gridstruct%da_min)**2/sdt*1.E-6
@@ -666,7 +668,7 @@ module fv_control_mod
                          kord_mt, kord_wz, kord_tm, kord_tr, fv_debug, fv_land, nudge, do_sat_adj, do_f3d, &
                          external_ic, read_increment, ncep_ic, nggps_ic, ecmwf_ic, use_new_ncep, use_ncep_phy, fv_diag_ic, &
                          external_eta, res_latlon_dynamics, res_latlon_tracers, scale_z, w_max, z_min, lim_fac, &
-                         dddmp, d2_bg, d4_bg, vtdm4, trdm2, d_ext, delt_max, beta, non_ortho, n_sponge, n_zfilter, &
+                         dddmp, d2_bg, d4_bg_top, d4_bg_bot, vtdm4, trdm2, d_ext, delt_max, beta, non_ortho, n_sponge, n_zfilter, &
                          warm_start, adjust_dry_mass, mountain, d_con, ke_bg, nord, nord_tr, convert_ke, use_old_omega, &
                          dry_mass, grid_type, do_Held_Suarez, do_reed_physics, reed_cond_only, &
                          consv_te, exact_sum, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, Beljaars_TOFD, &
@@ -891,12 +893,6 @@ module fv_control_mod
 !----------------------------------------
 ! Adjust divergence damping coefficients:
 !----------------------------------------
-!      d_fac = real(n0split)/real(n_split)
-!      dddmp = dddmp * d_fac
-!      d2_bg = d2_bg * d_fac
-!      d4_bg = d4_bg * d_fac
-!      d_ext = d_ext * d_fac
-!      vtdm4 = vtdm4 * d_fac
       if (old_divg_damp) then
         if (is_master()) write(*,*) " fv_control: using original values for divergence damping "
         d2_bg_k1 = 6.         ! factor for d2_bg (k=1)  - default(4.)
@@ -1190,7 +1186,8 @@ module fv_control_mod
      nord_tr                       => Atm%flagstruct%nord_tr
      dddmp                         => Atm%flagstruct%dddmp
      d2_bg                         => Atm%flagstruct%d2_bg
-     d4_bg                         => Atm%flagstruct%d4_bg
+     d4_bg_top                     => Atm%flagstruct%d4_bg_top
+     d4_bg_bot                     => Atm%flagstruct%d4_bg_bot
      vtdm4                         => Atm%flagstruct%vtdm4
      trdm2                         => Atm%flagstruct%trdm2
      d2_bg_k1                      => Atm%flagstruct%d2_bg_k1

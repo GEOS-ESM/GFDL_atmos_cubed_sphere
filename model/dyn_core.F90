@@ -146,6 +146,9 @@ public :: dyn_core, del2_cubed, init_ijk_mem
                                        ! 6 deg per 10-min
   real(kind=R_GRID), parameter :: cnst_0p20=0.20d0
 
+  real, allocatable :: d4dmp(:)
+  logical:: d4dmp_initialized = .false.
+
   real, allocatable ::  rf(:)
   integer:: k_rf = 0
   logical:: RFF_initialized = .false.
@@ -626,14 +629,17 @@ contains
 #endif
 
                                                                    call timing_on('COMM_TOTAL')
+                                        call timing_on('COMM_TRACER')
     if (flagstruct%inline_q .and. nq>0) call complete_group_halo_update(i_pack(10), domain)
+                                        call timing_off('COMM_TRACER')
+
                                         call timing_on('COMM_DIVGD')
     if (flagstruct%nord > 0) call complete_group_halo_update(i_pack(3), domain)
                                         call timing_off('COMM_DIVGD')
+
                                         call timing_on('COMM_UCVC')
                              call complete_group_halo_update(i_pack(9), domain)
                                         call timing_off('COMM_UCVC')
-
                                                                    call timing_off('COMM_TOTAL')
       if (gridstruct%nested) then
          !On a nested grid we have to do SOMETHING with uc and vc in
@@ -668,12 +674,23 @@ contains
             end do
       endif
 
+! higher order hyper-diffusion on divergence
+     if ( .not. d4dmp_initialized ) then
+        allocate( d4dmp(npz) )
+        ! High order divergence damping coefs (less diffusion in the troposphere)
+        do k=1,npz
+          d4dmp(k) = MAX(0.0,MIN(1.0,SIN(0.5*pi*LOG(25000.0/pfull(k))/LOG(25000.0/ptop))))
+          d4dmp(k) = flagstruct%d4_bg_top*d4dmp(k) + flagstruct%d4_bg_bot*(1.0-d4dmp(k))
+        end do
+        d4dmp_initialized = .true.
+     endif
+
                                                      call timing_on('d_sw')
 !$OMP parallel do default(none) shared(npz,flagstruct,nord_v,pfull,damp_vt,hydrostatic,last_step, &
 !$OMP                                  is,ie,js,je,isd,ied,jsd,jed,omga,delp,gridstruct,npx,npy,  &
 !$OMP                                  ng,zh,vt,ptc,pt,u,v,w,uc,vc,ua,va,divgd,mfx,mfy,cx,cy,     &
 !$OMP                                  crx,cry,xfx,yfx,q_con,zvir,sphum,nq,q,dt,bd,rdt,iep1,jep1, &
-!$OMP                                  heat_source,diss_est,dpx,dddmp,d_ext)                      &
+!$OMP                                  heat_source,diss_est,dpx,dddmp,d_ext,d4dmp)                      &
 !$OMP                          private(nord_k, nord_w, nord_t, damp_w, damp_t, d2_divg, kfac, &
 !$OMP                          kgb, hord_m, hord_v, hord_t, hord_p, wk, heat_s,diss_e, z_rat)
     do k=1,npz
@@ -690,27 +707,28 @@ contains
        endif
 
        nord_v(k) = min(2, flagstruct%nord)
-       d2_divg = min(0.20, flagstruct%d2_bg)
+       nord_w = nord_v(k)
+       nord_t = nord_v(k)
 
+! 2nd order divergence damping
+       d2_divg = min(0.20, flagstruct%d2_bg)
+! Vorticity damping
        if ( flagstruct%do_vort_damp ) then
-            damp_vt(k) = flagstruct%vtdm4     ! for delp, delz, and vorticity
+            damp_vt(k) = max(0.01,min(flagstruct%vtdm4,flagstruct%d4_bg_top/3.0))     ! for delp, delz, and vorticity
        else
             damp_vt(k) = 0.
        endif
-
-       nord_w = nord_v(k)
-       nord_t = nord_v(k)
+! Diffusion on w & t
        damp_w = damp_vt(k)
        damp_t = damp_vt(k)
-
-! Additional diffusion only in RI Z-Filter levels
+! External diffusion only in RI Z-Filter levels
        if ( npz==1 .or. k<=flagstruct%n_zfilter ) then
-          dddmp(k) = flagstruct%dddmp
           d_ext(k) = flagstruct%d_ext 
        else
-          dddmp(k) = 0.0
           d_ext(k) = 0.0
        endif
+! Smagorinsky diffusion
+       dddmp(k) = flagstruct%dddmp
 
        if ( npz==1 .or. flagstruct%n_sponge<=0 ) then
            d2_divg = flagstruct%d2_bg
@@ -774,7 +792,7 @@ contains
 #endif
                   kgb, heat_s, diss_e, dpx(is,js,k), zvir, sphum, nq,  q,  k,  npz, flagstruct%inline_q,  dt,  &
                   flagstruct%hord_tr, hord_m, hord_v, hord_t, hord_p,    &
-                  nord_k, nord_v(k), nord_w, nord_t, dddmp(k), d2_divg, flagstruct%d4_bg,  &
+                  nord_k, nord_v(k), nord_w, nord_t, dddmp(k), d2_divg, d4dmp(k),  &
                   damp_vt(k), damp_w, damp_t, flagstruct%d_con, hydrostatic, gridstruct, flagstruct, bd)
 
        if( (.not.flagstruct%use_old_omega) .and. last_step ) then
