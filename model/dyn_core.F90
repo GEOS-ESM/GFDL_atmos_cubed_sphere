@@ -33,8 +33,8 @@ USE m_serialize, ONLY: &
   fs_create_savepoint, &
   fs_disable_serialization, &
   fs_enable_serialization, &
-  fs_write_field, &
-  fs_read_field
+  fs_read_field, &
+  fs_write_field
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
   ppser_intlength, &
@@ -219,7 +219,11 @@ contains
 #else
     real   , intent(IN) :: ptop
 #endif
+#ifdef SERIALIZE
+    logical :: hydrostatic
+#else
     logical, intent(IN) :: hydrostatic
+#endif
     logical, intent(IN) :: init_step, end_step
 #ifdef SERIALIZE
     real :: pfull(npz)
@@ -244,6 +248,10 @@ contains
     real, intent(inout) :: q(   bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz, nq)  ! 
     real, intent(in), optional:: time_total  !< total time (seconds) since start
     real, intent(inout) :: diss_est(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  !< skeb dissipation estimate
+
+#ifdef SERIALIZE
+logical :: sw_dynamics, use_old, use_cond, moist_cappa, do_tofd, rot3
+#endif
 
 !-----------------------------------------------------------------------
 ! Auxilliary pressure arrays:    
@@ -478,9 +486,95 @@ call init_ijk_mem(isd,ied, jsd,jed, npz, vt, 0.)
          endif
     endif
 
+#ifdef SERIALIZE
+#ifdef SW_DYNAMICS
+sw_dynamics = .true.
+#else
+sw_dynamics = .false.
+#endif
+#ifdef USE_OLD
+use_old = .true.
+#else
+use_old = .false.
+#endif
+#ifdef MOIST_CAPPA
+moist_cappa = .true.
+#else
+moist_cappa = .false.
+#endif
+#ifdef USE_COND
+use_cond = .true.
+#else
+use_cond = .false.
+#endif
+#ifdef DO_TOFD
+do_tofd = .true.
+#else
+do_tofd = .false.
+#endif
+#ifdef ROT3
+rot3 = .true.
+#else
+rot3 = .false.
+#endif
+#endif
+    
+#ifdef SERIALIZE
+call fs_create_savepoint('AcousticsFlags-In', ppser_savepoint)
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'sw_dynamics', sw_dynamics)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'use_old', use_old)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'hydrostatic', hydrostatic)
+END SELECT
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'nested', gridstruct%nested)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'breed_vortex_inline', flagstruct%breed_vortex_inline)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'inline_q', flagstruct%inline_q)
+END SELECT
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'use_old_omega', flagstruct%use_old_omega)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'nord', flagstruct%nord)
+END SELECT
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'a2b_ord', flagstruct%a2b_ord)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'a_imp', flagstruct%a_imp)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'scale_z', flagstruct%scale_z)
+END SELECT
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'do_vort_damp', flagstruct%do_vort_damp)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'n_sponge', flagstruct%n_sponge)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'd_ext', flagstruct%d_ext)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'do_f3d', flagstruct%do_f3d)
+END SELECT
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'hord_tr', flagstruct%hord_tr)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dddmp', flagstruct%dddmp)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'd4_bg', flagstruct%d4_bg)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'fill_dp', flagstruct%fill_dp)
+END SELECT
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'fv_debug', flagstruct%fv_debug)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'm_split', flagstruct%m_split)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'use_logp', flagstruct%use_logp)
+END SELECT
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'tau', flagstruct%tau)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'RF_fast', flagstruct%RF_fast)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'do_tofd', do_tofd)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'beljaars_tofd', flagstruct%Beljaars_TOFD)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'rot3', rot3)
+END SELECT
+#endif
 
-
-!-----------------------------------------------------
+!----------------------------------------------------
   do it=1,n_split
 !-----------------------------------------------------
 #ifdef SERIALIZE
@@ -587,9 +681,37 @@ endif
      else
        last_step = .false.
      endif
-       
+#ifdef SERIALIZE
+call fs_create_savepoint('HaloEx-In', ppser_savepoint)
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'u', u)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'v', v)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v, ppser_zrperturb)
+END SELECT
+#endif
                                                      call timing_on('COMM_TOTAL')
      call complete_group_halo_update(i_pack(8), domain)
+#ifdef SERIALIZE
+call fs_create_savepoint('HaloEx-Out', ppser_savepoint)
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'u', u)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'v', v)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'u', u, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'v', v, ppser_zrperturb)
+END SELECT
+#endif
+
      if( .not. hydrostatic )  &
           call complete_group_halo_update(i_pack(7), domain)
                                                      call timing_off('COMM_TOTAL')
@@ -796,6 +918,10 @@ SELECT CASE ( ppser_get_mode() )
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'zs', zs, ppser_zrperturb)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'ws', ws3, ppser_zrperturb)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dt2', dt2, ppser_zrperturb)
+END SELECT
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dz_min', flagstruct%dz_min)
 END SELECT
 #endif
          call update_dz_c(is, ie, js, je, npz, ng, dt2, flagstruct%dz_min, dp_ref, zs, gridstruct%area, ut, vt, gz, ws3, &
@@ -1183,8 +1309,8 @@ call fs_create_savepoint('D_SW_COLUMN_NORD-In', ppser_savepoint)
     call fs_write_scalar(ppser_serializer, ppser_savepoint, "d2_bg_COL", flagstruct%d2_bg)
     call fs_write_scalar(ppser_serializer, ppser_savepoint, "d2_bg_k1", flagstruct%d2_bg_k1)
     call fs_write_scalar(ppser_serializer, ppser_savepoint, "d2_bg_k2", flagstruct%d2_bg_k2)
-    call fs_write_scalar(ppser_serializer, ppser_savepoint, "do_vort_damp", flagstruct%do_vort_damp)
-    call fs_write_scalar(ppser_serializer, ppser_savepoint, "n_sponge", flagstruct%n_sponge)
+    call fs_write_scalar(ppser_serializer, ppser_savepoint, "col__do_vort_damp", flagstruct%do_vort_damp)
+    call fs_write_scalar(ppser_serializer, ppser_savepoint, "col__n_sponge", flagstruct%n_sponge)
 #endif
 
 #ifdef SERIALIZE
@@ -1195,7 +1321,7 @@ call fs_create_savepoint('D_SW_COLUMN_NORD-Out', ppser_savepoint)
     call fs_write_scalar(ppser_serializer, ppser_savepoint, "d2_divg", d2_divg)
     call fs_write_scalar(ppser_serializer, ppser_savepoint, "nord_v_COL", nord_v(k))
     call fs_write_scalar(ppser_serializer, ppser_savepoint, "damp_vt_COL", damp_vt(k))
-    call fs_write_scalar(ppser_serializer, ppser_savepoint, "d_con_k", d_con_k)
+    call fs_write_scalar(ppser_serializer, ppser_savepoint, "col__d_con_k", d_con_k)
 #endif
 
        if( hydrostatic .and. (.not.flagstruct%use_old_omega) .and. last_step ) then
@@ -1501,6 +1627,10 @@ SELECT CASE ( ppser_get_mode() )
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'delz', delz, ppser_zrperturb)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'wsd', ws, ppser_zrperturb)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dt', dt, ppser_zrperturb)
+END SELECT
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dz_min', flagstruct%dz_min)
 END SELECT
 #endif
                                             call timing_on('UPDATE_DZ')
@@ -2584,7 +2714,11 @@ real, intent(inout):: uc(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz)
 real, intent(inout):: vc(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz)
 real, intent(IN) :: rdxc(bd%isd:bd%ied+1,bd%jsd:bd%jed+1)
 real, intent(IN) :: rdyc(bd%isd:bd%ied  ,bd%jsd:bd%jed)
+#ifdef SERIALIZE
+logical:: hydrostatic
+#else
 logical, intent(in):: hydrostatic
+#endif
 ! Local:
 real:: wk(bd%is-1:bd%ie+1,bd%js-1:bd%je+1)
 integer:: i,j,k
@@ -2877,7 +3011,11 @@ real :: dt, ptop, d_ext
 #else
 real,    intent(IN) :: dt, ptop, d_ext
 #endif
+#ifdef SERIALIZE
+logical :: hydrostatic
+#else
 logical, intent(in) :: hydrostatic
+#endif
 type(fv_grid_bounds_type), intent(IN) :: bd
 real,    intent(in) :: divg2(bd%is:bd%ie+1,bd%js:bd%je+1)
 real, intent(inout) ::    pk(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz+1)
@@ -3131,7 +3269,11 @@ real   , intent(IN) :: ak(km+1), bk(km+1)
 type(fv_grid_bounds_type), intent(IN) :: bd
 real, intent(INOUT), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,km):: pt, delp
 real, intent(INOUT), dimension(bd%isd:,bd%jsd:,1:):: w
+#ifdef SERIALIZE
+logical :: hydrostatic, CG, fv_debug
+#else
 logical, intent(IN) :: hydrostatic, CG, fv_debug
+#endif
 ! Local:
 real dp, dpmin
 integer i, j, k, ip
@@ -3357,7 +3499,11 @@ do 1000 j=jfirst,jlast
 #else
       integer, intent(in):: npx, npy, km, nmax
 #endif
+#ifdef SERIALIZE
+      real(kind=R_GRID):: cd            !< cd = K * da_min;   0 < K < 0.25
+#else
       real(kind=R_GRID),    intent(in):: cd            !< cd = K * da_min;   0 < K < 0.25
+#endif
       type(fv_grid_bounds_type), intent(IN) :: bd
       real, intent(inout):: q(bd%isd:bd%ied,bd%jsd:bd%jed,km)
       type(fv_grid_type), intent(IN), target :: gridstruct
@@ -3370,8 +3516,6 @@ do 1000 j=jfirst,jlast
       integer :: isd, ied, jsd, jed
 #ifdef SERIALIZE
 logical ::complete_mpp
-real ::real_cd
-real_cd=real(cd)
 #endif
       !Local routine pointers
 !     real, pointer, dimension(:,:) :: rarea
@@ -3435,17 +3579,17 @@ SELECT CASE ( ppser_get_mode() )
   CASE(0)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'qdel', q)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'nmax', nmax)
-    call fs_write_field(ppser_serializer, ppser_savepoint, 'cd', real_cd)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'cd', cd)
     call fs_write_field(ppser_serializer, ppser_savepoint, 'km', km)
   CASE(1)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qdel', q)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nmax', nmax)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cd', real_cd)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cd', cd)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'km', km)
   CASE(2)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'qdel', q, ppser_zrperturb)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nmax', nmax, ppser_zrperturb)
-    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cd', real_cd, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'cd', cd, ppser_zrperturb)
     call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'km', km, ppser_zrperturb)
 END SELECT
 #endif
@@ -3676,7 +3820,11 @@ END SELECT
 #else
     integer, intent(in):: npx, npy, npz, ks
 #endif
+#ifdef SERIALIZE
+    logical:: hydrostatic
+#else
     logical, intent(in):: hydrostatic
+#endif
     type(fv_grid_bounds_type), intent(IN) :: bd
     real, intent(inout):: u(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz) !< D grid zonal wind (m/s)
     real, intent(inout):: v(bd%isd:bd%ied+1,bd%jsd:bd%jed,npz) !< D grid meridional wind (m/s)

@@ -192,6 +192,8 @@ contains
     real, intent(in), optional:: time_total  !< total time (seconds) since start
     real, intent(inout) :: diss_est(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  !< skeb dissipation estimate
 
+    !$ser verbatim logical :: sw_dynamics, use_old, use_cond, moist_cappa, do_tofd, rot3
+
 !-----------------------------------------------------------------------
 ! Auxilliary pressure arrays:    
 ! The 5 vars below can be re-computed from delp and ptop.
@@ -403,9 +405,48 @@ contains
          endif
     endif
 
+!$ser verbatim #ifdef SW_DYNAMICS
+!$ser verbatim    sw_dynamics = .true.
+!$ser verbatim #else
+!$ser verbatim    sw_dynamics = .false.
+!$ser verbatim #endif
+!$ser verbatim #ifdef USE_OLD
+!$ser verbatim    use_old = .true.
+!$ser verbatim #else
+!$ser verbatim    use_old = .false.
+!$ser verbatim #endif
+!$ser verbatim #ifdef MOIST_CAPPA
+!$ser verbatim    moist_cappa = .true.
+!$ser verbatim #else
+!$ser verbatim    moist_cappa = .false.
+!$ser verbatim #endif
+!$ser verbatim #ifdef USE_COND
+!$ser verbatim    use_cond = .true.
+!$ser verbatim #else
+!$ser verbatim    use_cond = .false.
+!$ser verbatim #endif
+!$ser verbatim #ifdef DO_TOFD
+!$ser verbatim    do_tofd = .true.
+!$ser verbatim #else
+!$ser verbatim    do_tofd = .false.
+!$ser verbatim #endif
+!$ser verbatim #ifdef ROT3
+!$ser verbatim    rot3 = .true.
+!$ser verbatim #else
+!$ser verbatim    rot3 = .false.
+!$ser verbatim #endif
 
+!$ser savepoint AcousticsFlags-In
+!$ser data_writeonly sw_dynamics=sw_dynamics use_old=use_old hydrostatic=hydrostatic
+!$ser data_writeonly nested=gridstruct%nested breed_vortex_inline=flagstruct%breed_vortex_inline inline_q=flagstruct%inline_q
+!$ser data_writeonly use_old_omega=flagstruct%use_old_omega nord=flagstruct%nord
+!$ser data_writeonly a2b_ord=flagstruct%a2b_ord a_imp=flagstruct%a_imp scale_z=flagstruct%scale_z
+!$ser data_writeonly do_vort_damp=flagstruct%do_vort_damp n_sponge=flagstruct%n_sponge d_ext=flagstruct%d_ext do_f3d=flagstruct%do_f3d
+!$ser data_writeonly hord_tr=flagstruct%hord_tr dddmp=flagstruct%dddmp d4_bg=flagstruct%d4_bg fill_dp=flagstruct%fill_dp
+!$ser data_writeonly fv_debug=flagstruct%fv_debug m_split=flagstruct%m_split use_logp=flagstruct%use_logp
+!$ser data_writeonly tau=flagstruct%tau RF_fast=flagstruct%RF_fast do_tofd=do_tofd beljaars_tofd=flagstruct%Beljaars_TOFD rot3=rot3
 
-!-----------------------------------------------------
+!----------------------------------------------------
   do it=1,n_split
 !-----------------------------------------------------
      !$ser verbatim if (it > 1) then
@@ -510,9 +551,13 @@ contains
      else
        last_step = .false.
      endif
-       
+     !$ser savepoint HaloEx-In
+     !$ser data u=u v=v       
                                                      call timing_on('COMM_TOTAL')
      call complete_group_halo_update(i_pack(8), domain)
+     !$ser savepoint HaloEx-Out
+     !$ser data u=u v=v
+
      if( .not. hydrostatic )  &
           call complete_group_halo_update(i_pack(7), domain)
                                                      call timing_off('COMM_TOTAL')
@@ -586,7 +631,8 @@ contains
         endif
                                             call timing_on('UPDATE_DZ_C')
          !$ser savepoint UpdateDzC-In
-         !$ser data dp0=dp_ref utc=ut vtc=vt gz=gz zs=zs ws=ws3 dt2=dt2                                            
+         !$ser data dp0=dp_ref utc=ut vtc=vt gz=gz zs=zs ws=ws3 dt2=dt2
+         !$ser data_writeonly dz_min=flagstruct%dz_min
          call update_dz_c(is, ie, js, je, npz, ng, dt2, flagstruct%dz_min, dp_ref, zs, gridstruct%area, ut, vt, gz, ws3, &
              npx, npy, gridstruct%sw_corner, gridstruct%se_corner, &
              gridstruct%ne_corner, gridstruct%nw_corner, bd, gridstruct%grid_type)
@@ -761,11 +807,11 @@ contains
 
       !$ser savepoint D_SW_COLUMN_NORD-In
       !$ser data_append d2_bg_COL=flagstruct%d2_bg d2_bg_k1=flagstruct%d2_bg_k1 d2_bg_k2=flagstruct%d2_bg_k2
-      !$ser data_append do_vort_damp=flagstruct%do_vort_damp n_sponge=flagstruct%n_sponge
+      !$ser data_append col__do_vort_damp=flagstruct%do_vort_damp col__n_sponge=flagstruct%n_sponge
 
       !$ser savepoint D_SW_COLUMN_NORD-Out
       !$ser data_append nord_k=nord_k nord_w_COL=nord_w damp_w=damp_w d2_divg=d2_divg
-      !$ser data_append nord_v_COL=nord_v(k) damp_vt_COL=damp_vt(k) d_con_k=d_con_k
+      !$ser data_append nord_v_COL=nord_v(k) damp_vt_COL=damp_vt(k) col__d_con_k=d_con_k
 
        if( hydrostatic .and. (.not.flagstruct%use_old_omega) .and. last_step ) then
 ! Average horizontal "convergence" to cell center
@@ -912,6 +958,7 @@ contains
 
     !$ser savepoint UpdateDzD-In
     !$ser data ndif=nord_v damp_vtd=damp_vt dp0=dp_ref zs=zs zh=zh crx=crx cry=cry xfx=xfx yfx=yfx delz=delz wsd=ws dt=dt
+    !$ser data_writeonly dz_min=flagstruct%dz_min
                                             call timing_on('UPDATE_DZ')
         call update_dz_d(nord_v, damp_vt, flagstruct%hord_tm, is, ie, js, je, npz, ng, npx, npy, gridstruct%area,  &
                          gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, flagstruct%dz_min, gridstruct, bd, flagstruct%lim_fac)
