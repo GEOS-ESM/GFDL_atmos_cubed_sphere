@@ -70,8 +70,8 @@ USE m_serialize, ONLY: &
   fs_create_savepoint, &
   fs_disable_serialization, &
   fs_enable_serialization, &
-  fs_write_field, &
-  fs_read_field
+  fs_read_field, &
+  fs_write_field
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
   ppser_intlength, &

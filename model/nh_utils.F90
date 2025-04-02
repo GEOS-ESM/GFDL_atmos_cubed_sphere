@@ -28,8 +28,8 @@ module nh_utils_mod
 
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
-  fs_disable_serialization, &
-  fs_enable_serialization
+  fs_enable_serialization, &
+  fs_disable_serialization
 USE utils_ppser, ONLY:  &
   ppser_intlength, &
   ppser_reallength, &

@@ -185,10 +185,11 @@ contains
    integer:: is, ie, js, je, isd, ied, jsd, jed
 #ifdef SERIALIZE
 integer :: k,nz, dir
-real, dimension(1,1) :: damp_c_dup, nord_dup, damp_dup
+real, dimension(1,1) :: damp_c_dup, nord_dup, damp_dup, da_min_dup
 if (present(damp_c)) then
 damp_c_dup(1,1)=damp_c
 nord_dup(1,1)=nord
+da_min_dup(1,1)=gridstruct%da_min
 endif
 call get_k(k)
 call get_nz(nz)
@@ -270,8 +271,8 @@ call fs_create_savepoint('YPPM-Out', ppser_savepoint)
    enddo
 #ifdef SERIALIZE
 call fs_create_savepoint('XPPM-In', ppser_savepoint)
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'qx', q_i, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'crx', crx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xppm_q', q_i, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xppm_c', crx, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
@@ -292,7 +293,7 @@ endif
    call xppm(fx, q_i, crx(is,js), ord_ou, is,ie,isd,ied, js,je,jsd,jed, npx,npy, gridstruct%dxa, gridstruct%nested, gridstruct%grid_type, lim_fac)
 #ifdef SERIALIZE
 call fs_create_savepoint('XPPM-Out', ppser_savepoint)
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xppm_flux', fx, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
 
 #ifdef SERIALIZE
@@ -319,8 +320,8 @@ call fs_create_savepoint('CopyCorners-Out', ppser_savepoint)
 
 #ifdef SERIALIZE
 call fs_create_savepoint('XPPM-2-In', ppser_savepoint)
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'q', q, k=k, k_size=nz, mode=ppser_get_mode())
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'crx', crx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xppm_q2', q, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xppm_c', crx, k=k, k_size=nz, mode=ppser_get_mode())
 if (k == nz) then
 SELECT CASE ( ppser_get_mode() )
   CASE(0)
@@ -341,7 +342,7 @@ endif
    call xppm(fx2, q, crx, ord_in, is,ie,isd,ied, jsd,jed,jsd,jed, npx,npy, gridstruct%dxa, gridstruct%nested, gridstruct%grid_type, lim_fac)
 #ifdef SERIALIZE
 call fs_create_savepoint('XPPM-2-Out', ppser_savepoint)
-    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xflux_2', fx2, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'xppm_flux_2', fx2, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
    do j=jsd,jed
       do i=is,ie+1
@@ -406,7 +407,6 @@ call fs_create_savepoint('DelnFlux-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'damp_c', damp_c_dup, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_column', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
-         damp = 0
          if ( damp_c > 1.e-4 ) then
            damp = (damp_c * gridstruct%da_min)**(nord+1)
            call deln_flux(nord, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass, fx_tmp, fy_tmp )
@@ -443,6 +443,7 @@ call fs_create_savepoint('DelnFlux_2-In', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'fy', fy, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'damp_c', damp_c_dup, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'nord_column', nord_dup, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'da_min_deln', da_min_dup, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
          if ( damp_c > 1.E-4 ) then
                 damp = (damp_c * gridstruct%da_min)**(nord+1)

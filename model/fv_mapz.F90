@@ -28,10 +28,10 @@ module fv_mapz_mod
 
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
-  fs_add_savepoint_metainfo, &
   fs_create_savepoint, &
   fs_read_field, &
-  fs_write_field
+  fs_write_field, &
+  fs_add_savepoint_metainfo
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
   ppser_intlength, &
