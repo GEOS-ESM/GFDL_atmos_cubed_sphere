@@ -1334,6 +1334,11 @@ module sw_core_mod
       endif
     end if
 
+   !$ser savepoint DSW_ComputeKE-Out
+   !$ser data_kbuff k=k k_size=nz ke=ke
+
+   !$ser savepoint DSW_ComputeVorticity-In
+   !$ser data_kbuff k=k k_size=nz dsw-u=u dsw-dx=dx dsw-v=v dsw-dy=dy raera=rarea
 ! Compute vorticity:
        do j=jsd,jed+1
           do i=isd,ied
@@ -1352,6 +1357,8 @@ module sw_core_mod
              wk(i,j) = rarea(i,j)*(vt(i,j)-vt(i,j+1)-ut(i,j)+ut(i+1,j))
           enddo
        enddo
+   !$ser savepoint DSW_ComputeVorticity-Out
+   !$ser data_kbuff k=k k_size=nz dsw-wk-vort=wk
 
      if ( .not. hydrostatic ) then
         if( flagstruct%do_f3d ) then
@@ -1622,9 +1629,12 @@ module sw_core_mod
         enddo
      enddo
 
+      !$ser savepoint NordHighOrder-Out
+      !$ser data dsw-ke=ke dsw-vort=vort
+
    endif
    !$ser savepoint DivergenceDamping-Out 
-   !$ser data_kbuff k=k k_size=nz vort=vort ke=ke delpc=delpc
+   !$ser data_kbuff k=k k_size=nz vort=vort ke=ke delpc=delpc divg_d=divg_d uc=uc vc=vc
 
    if ( d_con > 1.e-5 ) then
       do j=js,je+1
@@ -1640,6 +1650,8 @@ module sw_core_mod
    endif
 
 ! Vorticity transport
+   !$ser savepoint DSW_VorticityTransport-In
+   !$ser data_kbuff k=k k_size=nz dsw-f0=f0 dsw-wk=wk
    if ( hydrostatic ) then
     do j=jsd,jed
        do i=isd,ied
@@ -1661,9 +1673,18 @@ module sw_core_mod
        enddo
     endif
    endif
+   !$ser savepoint DSW_VorticityTransport-Out
+   !$ser data_kbuff k=k k_size=nz dsw2-vort=vort
 
-    call fv_tp_2d(vort, crx_adv, cry_adv, npx, npy, hord_vt, fx, fy, &
+    !$ser savepoint DSW_FluxFromVorticity-In
+    !$ser data_kbuff k=k k_size=nz dsw-crx=crx_adv dsw-cry=cry_adv dsw-xfx=xfx_adv dsw-yfx=yfx_adv dsw2-vort=vort dsw-fx=fx dsw-fy=fy
+   call fv_tp_2d(vort, crx_adv, cry_adv, npx, npy, hord_vt, fx, fy, &
                   xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac)
+    !$ser savepoint DSW_FluxFromVorticity-out
+    !$ser data_kbuff k=k k_size=nz dsw-fx=fx dsw-fy=fy
+
+                  !$ser savepoint DSW_UV-FromKE-In
+    !$ser data_kbuff k=k k_size=nz dsw-u=u ke=ke dsw-fy=fy dsw-fx=fx
     do j=js,je+1
        do i=is,ie
           u(i,j) = vt(i,j) + ke(i,j) - ke(i+1,j) + fy(i,j)
@@ -1674,7 +1695,8 @@ module sw_core_mod
           v(i,j) = ut(i,j) + ke(i,j) - ke(i,j+1) - fx(i,j)
        enddo
     enddo
-
+    !$ser savepoint DSW_UV-FromKE-Out
+    !$ser data_kbuff k=k k_size=nz dsw-u=u ke=ke
 !--------------------------------------------------------
 ! damping applied to relative vorticity (wk):
    if ( damp_v>1.E-5 ) then
@@ -1729,6 +1751,8 @@ module sw_core_mod
    endif
 
 ! Add diffusive fluxes to the momentum equation:
+   !$ser savepoint DSW_UpdateUV-In
+   !$ser data_kbuff k=k k_size=nz dsw-u=u dsw-vt=vt
    if ( damp_v>1.E-5 ) then
       do j=js,je+1
          do i=is,ie
@@ -1741,6 +1765,8 @@ module sw_core_mod
          enddo
       enddo
    endif
+   !$ser savepoint DSW_UpdateUV-Out
+   !$ser data_kbuff k=k k_size=nz dsw-u=u
 
 #ifdef SW_DYNAMICS
       endif ! test_case

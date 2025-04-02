@@ -28,10 +28,10 @@ module sw_core_mod
 
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
-  fs_add_savepoint_metainfo, &
   fs_create_savepoint, &
+  fs_read_field, &
   fs_write_field, &
-  fs_read_field
+  fs_add_savepoint_metainfo
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
   ppser_intlength, &
@@ -1623,6 +1623,19 @@ call fs_create_savepoint('XTP_U-Out', ppser_savepoint)
       endif
     end if
 
+#ifdef SERIALIZE
+call fs_create_savepoint('DSW_ComputeKE-Out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ke', ke, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
+
+#ifdef SERIALIZE
+call fs_create_savepoint('DSW_ComputeVorticity-In', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-u', u, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-dx', dx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-v', v, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-dy', dy, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'raera', rarea, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
 ! Compute vorticity:
        do j=jsd,jed+1
           do i=isd,ied
@@ -1641,6 +1654,10 @@ call fs_create_savepoint('XTP_U-Out', ppser_savepoint)
              wk(i,j) = rarea(i,j)*(vt(i,j)-vt(i,j+1)-ut(i,j)+ut(i+1,j))
           enddo
        enddo
+#ifdef SERIALIZE
+call fs_create_savepoint('DSW_ComputeVorticity-Out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-wk-vort', wk, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
 
      if ( .not. hydrostatic ) then
         if( flagstruct%do_f3d ) then
@@ -1991,12 +2008,30 @@ call fs_create_savepoint('A2B_Ord4-Out', ppser_savepoint)
         enddo
      enddo
 
+#ifdef SERIALIZE
+call fs_create_savepoint('NordHighOrder-Out', ppser_savepoint)
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dsw-ke', ke)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dsw-vort', vort)
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dsw-ke', ke)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dsw-vort', vort)
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dsw-ke', ke, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dsw-vort', vort, ppser_zrperturb)
+END SELECT
+#endif
+
    endif
 #ifdef SERIALIZE
 call fs_create_savepoint('DivergenceDamping-Out', ppser_savepoint)
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vort', vort, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ke', ke, k=k, k_size=nz, mode=ppser_get_mode())
     call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'delpc', delpc, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'divg_d', divg_d, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'uc', uc, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'vc', vc, k=k, k_size=nz, mode=ppser_get_mode())
 #endif
 
    if ( d_con > 1.e-5 ) then
@@ -2013,6 +2048,11 @@ call fs_create_savepoint('DivergenceDamping-Out', ppser_savepoint)
    endif
 
 ! Vorticity transport
+#ifdef SERIALIZE
+call fs_create_savepoint('DSW_VorticityTransport-In', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-f0', f0, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-wk', wk, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
    if ( hydrostatic ) then
     do j=jsd,jed
        do i=isd,ied
@@ -2034,9 +2074,36 @@ call fs_create_savepoint('DivergenceDamping-Out', ppser_savepoint)
        enddo
     endif
    endif
+#ifdef SERIALIZE
+call fs_create_savepoint('DSW_VorticityTransport-Out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw2-vort', vort, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
 
-    call fv_tp_2d(vort, crx_adv, cry_adv, npx, npy, hord_vt, fx, fy, &
+#ifdef SERIALIZE
+call fs_create_savepoint('DSW_FluxFromVorticity-In', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-crx', crx_adv, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-cry', cry_adv, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-xfx', xfx_adv, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-yfx', yfx_adv, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw2-vort', vort, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-fy', fy, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
+   call fv_tp_2d(vort, crx_adv, cry_adv, npx, npy, hord_vt, fx, fy, &
                   xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac)
+#ifdef SERIALIZE
+call fs_create_savepoint('DSW_FluxFromVorticity-out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-fy', fy, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
+
+#ifdef SERIALIZE
+call fs_create_savepoint('DSW_UV-FromKE-In', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-u', u, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ke', ke, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-fy', fy, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-fx', fx, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
     do j=js,je+1
        do i=is,ie
           u(i,j) = vt(i,j) + ke(i,j) - ke(i+1,j) + fy(i,j)
@@ -2047,7 +2114,11 @@ call fs_create_savepoint('DivergenceDamping-Out', ppser_savepoint)
           v(i,j) = ut(i,j) + ke(i,j) - ke(i,j+1) - fx(i,j)
        enddo
     enddo
-
+#ifdef SERIALIZE
+call fs_create_savepoint('DSW_UV-FromKE-Out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-u', u, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'ke', ke, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
 !--------------------------------------------------------
 ! damping applied to relative vorticity (wk):
    if ( damp_v>1.E-5 ) then
@@ -2114,6 +2185,11 @@ call fs_create_savepoint('Del6VtFlux-Out', ppser_savepoint)
    endif
 
 ! Add diffusive fluxes to the momentum equation:
+#ifdef SERIALIZE
+call fs_create_savepoint('DSW_UpdateUV-In', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-u', u, k=k, k_size=nz, mode=ppser_get_mode())
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-vt', vt, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
    if ( damp_v>1.E-5 ) then
       do j=js,je+1
          do i=is,ie
@@ -2126,6 +2202,10 @@ call fs_create_savepoint('Del6VtFlux-Out', ppser_savepoint)
          enddo
       enddo
    endif
+#ifdef SERIALIZE
+call fs_create_savepoint('DSW_UpdateUV-Out', ppser_savepoint)
+    call fs_write_kbuff(ppser_serializer, ppser_savepoint, 'dsw-u', u, k=k, k_size=nz, mode=ppser_get_mode())
+#endif
 
 #ifdef SW_DYNAMICS
       endif ! test_case
@@ -2557,7 +2637,11 @@ end subroutine divergence_corner_nest
 #endif
  real, INTENT(IN)::   c(is:ie+1,js:je+1)
  real, INTENT(out):: flux(is:ie+1,js:je+1)
+#ifdef SERIALIZE
+ real ::   dx(isd:ied,  jsd:jed+1)
+#else
  real, INTENT(IN) ::   dx(isd:ied,  jsd:jed+1)
+#endif
  real, INTENT(IN) ::  rdx(isd:ied,  jsd:jed+1)
  integer, INTENT(IN) :: iord, npx, npy, grid_type
  logical, INTENT(IN) :: nested
@@ -2935,7 +3019,11 @@ end subroutine divergence_corner_nest
 #endif
  real, INTENT(IN) ::    c(is:ie+1,js:je+1)   !<  Courant   N (like FLUX)
  real, INTENT(OUT):: flux(is:ie+1,js:je+1)
+#ifdef SERIALIZE
+ real ::   dy(isd:ied+1,jsd:jed)
+#else
  real, INTENT(IN) ::   dy(isd:ied+1,jsd:jed)
+#endif
  real, INTENT(IN) ::  rdy(isd:ied+1,jsd:jed)
  integer, INTENT(IN) :: npx, npy, grid_type
  logical, INTENT(IN) :: nested
