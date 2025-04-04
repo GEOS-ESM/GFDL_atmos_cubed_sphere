@@ -127,7 +127,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real ::  cx2(bd%is:bd%ie+1,bd%jsd:bd%jed, npz)
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
       real :: cmax(npz)
-      real :: qmax(npz*nq)
+      real :: qmax(npz*(nq+1))
       integer :: icount(npz,nq)
       real :: frac
       integer :: nsplt
@@ -158,8 +158,28 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       dx     => gridstruct%dx  
       dy     => gridstruct%dy  
 
+                               call timing_on('COMM_TOTAL')
+                         call timing_on('COMM_TRACER')
+  call complete_group_halo_update(q_pack, domain)
+                        call timing_off('COMM_TRACER')
+                              call timing_off('COMM_TOTAL')
+
+! Check for levels where Q does not need to be advected
+!$OMP parallel do default(none) shared(nq,npz,is,ie,js,je,q,qmax) private(n)
+  do iq=1,nq
+     do k=1,npz
+        n=(iq-1)*npz + k
+        qmax(n) = 0.0
+        do j=js,je
+           do i=is,ie
+              qmax(n) = max(qmax(n),q(i,j,k,iq))
+           enddo
+        enddo
+     enddo
+  enddo
+
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &
-!$OMP                                  sin_sg,cy,yfx,dya,dx,cmax)
+!$OMP                                  sin_sg,cy,yfx,dya,dx,cmax,qmax,nq) private(n)
   do k=1,npz
      do j=jsd,jed
         do i=is,ie+1
@@ -194,18 +214,25 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
              enddo
           enddo
      endif
+    ! add to qmax for allreduce
+     n=nq*npz + k
+     qmax(n) = cmax(k)
   enddo  ! k-loop
 
                         call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER')
-  call mp_reduce_max(cmax,npz)
-                           call timing_off('COMM_TRACER')
+                            call timing_on('COMM_TRACER_MAX')
+  call mp_reduce_max(qmax,(nq+1)*npz)
+                           call timing_off('COMM_TRACER_MAX')
                        call timing_off('COMM_TOTAL')
 
-!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
-!$OMP                                  cy,yfx,mfx,mfy,cmax,mfx2,mfy2,cx2,cy2)   &
-!$OMP                          private(nsplt, frac)
+!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,nq, &
+!$OMP                                  cy,yfx,mfx,mfy,qmax,cmax,mfx2,mfy2,cx2,cy2)   &
+!$OMP                          private(n, nsplt, frac)
   do k=1,npz
+
+    ! get cmax from allreduce array
+     n=nq*npz + k
+     cmax(k) = qmax(n)
 
      mfx2(:,:,k)=mfx(:,:,k)
      mfy2(:,:,k)=mfy(:,:,k)
@@ -239,32 +266,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      endif
 
   enddo
-                               call timing_on('COMM_TOTAL')
-                         call timing_on('COMM_TRACER')
-  call complete_group_halo_update(q_pack, domain)
-                        call timing_off('COMM_TRACER')
-                              call timing_off('COMM_TOTAL')
 
-! Check for levels where Q does not need to be advected
-!$OMP parallel do default(none) shared(nq,npz,is,ie,js,je,q,qmax) private(n)
-  do iq=1,nq
-     do k=1,npz
-        n=(iq-1)*npz + k
-        qmax(n) = 0.0
-        do j=js,je
-           do i=is,ie
-              qmax(n) = max(qmax(n),q(i,j,k,iq))
-           enddo
-        enddo
-     enddo
-  enddo
-                               call timing_on('COMM_TOTAL')
-                         call timing_on('COMM_TRACER')
-  call mp_reduce_max(qmax,nq*npz)
-                         call timing_off('COMM_TRACER')
-                              call timing_off('COMM_TOTAL')
   icount(:,:) = 0
-
 ! Begin k-independent tracer transport; can not be OpenMPed because the mpp_update call.
   do k=1,npz
 
