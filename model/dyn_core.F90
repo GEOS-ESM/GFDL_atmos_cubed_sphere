@@ -414,12 +414,10 @@ contains
         split_timestep_bc = real(n_split*k_split+neststruct%nest_timestep)
      endif
 
-     if ( nq > 0 ) then
+     if ( (nq > 0) .and. (flagstruct%inline_q) ) then
                                     call timing_on('COMM_TOTAL')
                                         call timing_on('COMM_TRACER')
-         if ( flagstruct%inline_q ) then
                       call start_group_halo_update(i_pack(10), q, domain)
-         endif
                                        call timing_off('COMM_TRACER')
                                    call timing_off('COMM_TOTAL')
      endif
@@ -629,18 +627,21 @@ contains
 #endif
 
                                                                    call timing_on('COMM_TOTAL')
+      if (flagstruct%inline_q .and. nq>0) then
                                         call timing_on('COMM_TRACER')
-    if (flagstruct%inline_q .and. nq>0) call complete_group_halo_update(i_pack(10), domain)
+                             call complete_group_halo_update(i_pack(10), domain)
                                         call timing_off('COMM_TRACER')
-
+      endif
+      if (flagstruct%nord > 0) then
                                         call timing_on('COMM_DIVGD')
-    if (flagstruct%nord > 0) call complete_group_halo_update(i_pack(3), domain)
+                             call complete_group_halo_update(i_pack(3), domain)
                                         call timing_off('COMM_DIVGD')
-
+      endif
                                         call timing_on('COMM_UCVC')
                              call complete_group_halo_update(i_pack(9), domain)
                                         call timing_off('COMM_UCVC')
                                                                    call timing_off('COMM_TOTAL')
+
       if (gridstruct%nested) then
          !On a nested grid we have to do SOMETHING with uc and vc in
          ! the boundary halo, particularly at the corners of the
@@ -830,11 +831,11 @@ contains
 
                                                              call timing_on('COMM_TOTAL')
                                                              call timing_on('COMM_DSW')
-    call start_group_halo_update(i_pack(1), delp, domain, complete=.false.)
-    call start_group_halo_update(i_pack(1), pt,   domain, complete=.true.)
 #ifdef USE_COND
-    call start_group_halo_update(i_pack(11), q_con, domain)
+    call start_group_halo_update(i_pack(1), q_con, domain, complete=.false.)
 #endif
+    call start_group_halo_update(i_pack(1), delp,  domain, complete=.false.)
+    call start_group_halo_update(i_pack(1), pt,    domain, complete=.true.)
                                                              call timing_off('COMM_DSW')
                                                              call timing_off('COMM_TOTAL')
 
@@ -866,9 +867,6 @@ contains
                                        call timing_on('COMM_TOTAL')
                                                              call timing_on('COMM_DSW')
      call complete_group_halo_update(i_pack(1), domain)
-#ifdef USE_COND
-     call complete_group_halo_update(i_pack(11), domain)
-#endif
                                                              call timing_off('COMM_DSW')
                                        call timing_off('COMM_TOTAL')
 
@@ -1091,8 +1089,7 @@ contains
                 v(ie+1,j,k) = ebuffer(j-js+1,k)
              enddo
           enddo
-
-    endif
+    endif        
 
 #ifndef ROT3
     if ( it/=n_split)   &
@@ -1185,13 +1182,13 @@ contains
 !-----------------------------------------------------
   enddo   ! time split loop
 !-----------------------------------------------------
-    if ( nq > 0 .and. .not. flagstruct%inline_q ) then
-       call timing_on('COMM_TOTAL')
+  if ( nq > 0 .and. .not. flagstruct%inline_q ) then
+     call timing_on('COMM_TOTAL')
        call timing_on('COMM_TRACER')
        call start_group_halo_update(i_pack(10), q, domain)
        call timing_off('COMM_TRACER')
-       call timing_off('COMM_TOTAL')
-     endif
+     call timing_off('COMM_TOTAL')
+  endif
 
 
   if ( flagstruct%fv_debug ) then

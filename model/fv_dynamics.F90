@@ -617,15 +617,15 @@ contains
                                            call timing_on('COMM_TOTAL')
     if (.not. hydrostatic) then
 #ifdef USE_COND
-      call start_group_halo_update(i_pack(11), q_con, domain)
+      call start_group_halo_update(i_pack(1), q_con, domain, complete=.false.)
 #ifdef MOIST_CAPPA
-      call start_group_halo_update(i_pack(12), cappa, domain)
+      call start_group_halo_update(i_pack(1), cappa, domain, complete=.false.)
 #endif
 #endif
     endif
+    call start_group_halo_update(i_pack(1), delp,  domain, complete=.false.)
+    call start_group_halo_update(i_pack(1), pt,    domain, complete=.true.)
 
-    call start_group_halo_update(i_pack(1), delp, domain, complete=.false.)
-    call start_group_halo_update(i_pack(1), pt,   domain, complete=.true.)
 #ifndef ROT3
     call start_group_halo_update(i_pack(8), u, v, domain, gridtype=DGRID_NE)
 #endif
@@ -640,17 +640,6 @@ contains
     enddo
 
     if ( n_map==k_split ) last_step = .true.
-
-    if (.not. hydrostatic) then
-#ifdef USE_COND
-                                           call timing_on('COMM_TOTAL')
-     call complete_group_halo_update(i_pack(11), domain)
-#ifdef MOIST_CAPPA
-     call complete_group_halo_update(i_pack(12), domain)
-#endif
-                                           call timing_off('COMM_TOTAL')
-#endif
-    endif
 
                                            call timing_on('DYN_CORE')
       call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
@@ -739,7 +728,7 @@ contains
                         flagstruct%nord_tr, flagstruct%trdm2, &
                         k_split, neststruct, parent_grid, flagstruct%lim_fac)
        else
-         if ( flagstruct%z_tracer ) then
+         if ( flagstruct%z_tracer .and. (q_split==0) ) then
          call tracer_2d_1L(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac)

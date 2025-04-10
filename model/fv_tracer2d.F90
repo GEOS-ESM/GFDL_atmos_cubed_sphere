@@ -158,28 +158,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       dx     => gridstruct%dx  
       dy     => gridstruct%dy  
 
-                               call timing_on('COMM_TOTAL')
-                         call timing_on('COMM_TRACER')
-  call complete_group_halo_update(q_pack, domain)
-                        call timing_off('COMM_TRACER')
-                              call timing_off('COMM_TOTAL')
-
-! Check for levels where Q does not need to be advected
-!$OMP parallel do default(none) shared(nq,npz,is,ie,js,je,q,qmax) private(n)
-  do iq=1,nq
-     do k=1,npz
-        n=(iq-1)*npz + k
-        qmax(n) = 0.0
-        do j=js,je
-           do i=is,ie
-              qmax(n) = max(qmax(n),q(i,j,k,iq))
-           enddo
-        enddo
-     enddo
-  enddo
-
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &
-!$OMP                                  sin_sg,cy,yfx,dya,dx,cmax,qmax,nq) private(n)
+!$OMP                                  sin_sg,cy,yfx,dya,dx) private(i,j,k)
   do k=1,npz
      do j=jsd,jed
         do i=is,ie+1
@@ -199,7 +179,30 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
            endif
         enddo
      enddo
+  enddo  ! k-loop
 
+                               call timing_on('COMM_TOTAL')
+                         call timing_on('COMM_TRACER')
+  call complete_group_halo_update(q_pack, domain)
+                        call timing_off('COMM_TRACER')
+                              call timing_off('COMM_TOTAL')
+
+! Check for levels where Q does not need to be advected
+!$OMP parallel do default(none) shared(nq,npz,is,ie,js,je,q,qmax) private(iq,i,j,k,n)
+  do iq=1,nq
+     do k=1,npz
+        n=(iq-1)*npz + k
+        qmax(n) = 0.0
+        do j=js,je
+           do i=is,ie
+              qmax(n) = max(qmax(n),q(i,j,k,iq))
+           enddo
+        enddo
+     enddo
+  enddo
+!$OMP parallel do default(none) shared(is,ie,js,je,npz,nq,&
+!$OMP                                  sin_sg,cx,cy,cmax,qmax) private(i,j,k,n)
+  do k=1,npz
      cmax(k) = 0.
      if ( k < npz/6 ) then
           do j=js,je
@@ -214,6 +217,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
              enddo
           enddo
      endif
+!!!  if ( is_master() )  write(*,*) 'tracer_2d_1L: k, nsplt, cmax =', k, int(1. + cmax(k)), cmax(k)
     ! add to qmax for allreduce
      n=nq*npz + k
      qmax(n) = cmax(k)
@@ -405,11 +409,12 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
       real :: xfx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)
       real :: yfx(bd%isd:bd%ied,bd%js: bd%je+1, npz)
       real :: cmax(npz)
+      real :: qmax(npz*(nq))
       real :: c_global
       real :: frac, rdt
       integer :: ksplt(npz)
       integer :: nsplt
-      integer :: i,j,k,it,iq
+      integer :: i,j,k,n,it,iq
 
       real, pointer, dimension(:,:) :: area, rarea
       real, pointer, dimension(:,:,:) :: sin_sg
@@ -457,7 +462,6 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
               endif
           enddo
        enddo
-
        if ( q_split == 0 ) then
          cmax(k) = 0.
          if ( k < npz/6 ) then
@@ -475,8 +479,20 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
          endif
        endif
        ksplt(k) = 1
-
     enddo
+
+!$OMP parallel do default(none) shared(nq,npz,is,ie,js,je,q,qmax) private(iq,i,j,k,n)
+  do iq=1,nq
+     do k=1,npz
+        n=(iq-1)*npz + k
+        qmax(n) = 0.0
+        do j=js,je
+           do i=is,ie
+              qmax(n) = max(qmax(n),q(i,j,k,iq))
+           enddo
+        enddo
+     enddo
+  enddo
 
 !--------------------------------------------------------------------------------
 
@@ -491,7 +507,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
          enddo
       endif
       nsplt = int(1. + c_global)
-      if ( is_master() .and. nsplt > 3 )  write(*,*) 'Tracer_2d_split=', nsplt, c_global
+!!    if ( is_master() )  write(*,*) 'Tracer_2d_split=', nsplt, c_global
    else
       nsplt = q_split
    endif
@@ -544,9 +560,9 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
                            call timing_off('COMM_TRACER')
                        call timing_off('COMM_TOTAL')
 
-!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfx,mfy,rarea,nq,ksplt,&
+!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfx,mfy,rarea,nq,ksplt,qmax,&
 !$OMP                                  area,xfx,yfx,q,cx,cy,npx,npy,hord,gridstruct,bd,it,nsplt,nord_tr,trdm,lim_fac,dpA) &
-!$OMP                          private(dp2, ra_x, ra_y, fx, fy)
+!$OMP                          private(dp2, ra_x, ra_y, fx, fy, n)
      do k=1,npz
 
        if ( it .le. ksplt(k) ) then
@@ -569,30 +585,35 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
          enddo
 
          do iq=1,nq
-         if ( it==1 .and. trdm>1.e-4 ) then
+          n=(iq-1)*npz + k
+          if ( qmax(n) > tiny(0.0) ) then
+           if ( it==1 .and. trdm>1.e-4 ) then
             call fv_tp_2d(q(isd,jsd,k,iq), cx(is,jsd,k), cy(isd,js,k), &
                           npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                           gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx(is,js,k), mfy=mfy(is,js,k),   &
                           mass=dp1(isd,jsd,k), nord=nord_tr, damp_c=trdm)
-         else
+           else
             call fv_tp_2d(q(isd,jsd,k,iq), cx(is,jsd,k), cy(isd,js,k), &
                           npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                           gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx(is,js,k), mfy=mfy(is,js,k))
-         endif
-            do j=js,je
-               do i=is,ie
-                  q(i,j,k,iq) = ( q(i,j,k,iq)*dp1(i,j,k) + &
-                                ((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j) )/dp2(i,j)
-               enddo
-               enddo
+           endif
+           do j=js,je
+              do i=is,ie
+                 q(i,j,k,iq) = ( q(i,j,k,iq)*dp1(i,j,k) + &
+                               ((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j) )/dp2(i,j)
+              enddo
             enddo
+           else
+                 q(:,:,k,iq) = 0.0
+           endif
+         enddo
 
          if ( it /= ksplt(k) ) then
-              do j=js,je
-                 do i=is,ie
-                    dp1(i,j,k) = dp2(i,j)
-                 enddo
-              enddo
+            do j=js,je
+               do i=is,ie
+                  dp1(i,j,k) = dp2(i,j)
+               enddo
+            enddo
          else
             if (present(dpA)) then
                dpA(:,:,k)=dp2
@@ -741,7 +762,7 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
          enddo
       endif
       nsplt = int(1. + c_global)
-      if ( is_master() .and. nsplt > 3 )  write(*,*) 'Tracer_2d_split=', nsplt, c_global
+!!    if ( is_master() .and. nsplt > 3 )  write(*,*) 'Tracer_2d_split=', nsplt, c_global
    else
       nsplt = q_split
       if (gridstruct%nested .and. neststruct%nestbctype > 1) msg_split_steps = max(q_split/parent_grid%flagstruct%q_split,1)
@@ -887,7 +908,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                                     npx, npy, npz,   &
                                     nq, dt)
 
-      use fv_mapz_mod,        only: map_scalar
+      use fv_mapz_mod,        only: mapn_tracer
       use fv_fill_mod,        only: fillz
 
       integer, intent(IN) :: npx
@@ -919,6 +940,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
 ! Local Tracer Arrays
       real ::   q3(bd%isd:bd%ied,bd%jsd:bd%jed, npz,nq)! Ghosted 3D Tracers
       real ::   q2(bd%is :bd%ie ,               npz   )! 2D Tmp
+      integer :: kord_tracers(nq)
 ! Local Buffer Arrarys
       real :: wbuffer(bd%js:bd%je,npz)
       real :: sbuffer(bd%is:bd%ie,npz)
@@ -994,9 +1016,10 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
 !------------------------------------------------------------------
 ! Re-Map constituents
 !------------------------------------------------------------------
+       kord_tracers = flagstruct%kord_tr
 !$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,npz,nq, &
-!$OMP                                  pleB,dpA,pleA,q3,flagstruct) &
-!$OMP                          private(i,j,k,iq,pe1,dp1,pe2,dp2,q2)
+!$OMP                                  pleB,dpA,pleA,q3,flagstruct,kord_tracers) &
+!$OMP                          private(i,j,k,pe1,dp1,pe2,dp2)
        do j=js,je
         ! pressures mapping from (dpA is new delp after tracer_2d)
           pe1(:,1) = pleB(:,j,1)
@@ -1011,14 +1034,8 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
           do k=1,npz
              dp2(:,k) = pe2(:,k+1) - pe2(:,k)
           enddo
-          do iq=1,nq
-            call map_scalar(npz, pe1, q3(isd,jsd,1,iq),     &
-                            npz, pe2, q2,                   &
-                            dp1, dp2,                       & 
-                            is, ie, j, isd, ied, jsd, jed, 0, flagstruct%kord_tr, q_min=0.)
-            if (flagstruct%fill) call fillz(ie-is+1, npz, 1, q2, dp2)
-            q3(is:ie,j,1:npz,iq) = q2
-         enddo
+          call mapn_tracer(nq, npz, pe1, pe2, q3, dp2, kord_tracers, j,     &
+                           is, ie, isd, ied, jsd, jed, 0., flagstruct%fill)
        enddo
 
        ! Rescale tracers based on pleA at destination timestep
