@@ -562,7 +562,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfx,mfy,rarea,nq,ksplt,qmax,&
 !$OMP                                  area,xfx,yfx,q,cx,cy,npx,npy,hord,gridstruct,bd,it,nsplt,nord_tr,trdm,lim_fac,dpA) &
-!$OMP                          private(dp2, ra_x, ra_y, fx, fy, n)
+!$OMP                          private(dp2, ra_x, ra_y, fx, fy, i, j, k, n, iq)
      do k=1,npz
 
        if ( it .le. ksplt(k) ) then
@@ -586,7 +586,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
 
          do iq=1,nq
           n=(iq-1)*npz + k
-          if ( qmax(n) > tiny(0.0) ) then
+          if ( qmax(n) > 0.0 ) then
            if ( it==1 .and. trdm>1.e-4 ) then
             call fv_tp_2d(q(isd,jsd,k,iq), cx(is,jsd,k), cy(isd,js,k), &
                           npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
@@ -603,8 +603,6 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
                                ((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j) )/dp2(i,j)
               enddo
             enddo
-           else
-                 q(:,:,k,iq) = 0.0
            endif
          enddo
 

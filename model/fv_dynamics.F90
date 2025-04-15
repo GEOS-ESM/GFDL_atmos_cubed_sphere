@@ -427,7 +427,7 @@ contains
       enddo
 
     if ( hydrostatic ) then
-!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,zvir,nwat,q,q_con,sphum,liq_wat, &
+!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,zvir,nwat,q,sphum,liq_wat, &
 !$OMP      rainwat,ice_wat,snowwat,graupel) private(cvm)
       do k=1,npz
          do j=js,je
@@ -728,7 +728,7 @@ contains
                         flagstruct%nord_tr, flagstruct%trdm2, &
                         k_split, neststruct, parent_grid, flagstruct%lim_fac)
        else
-         if ( flagstruct%z_tracer .and. (q_split==0) ) then
+         if ( flagstruct%z_tracer ) then
          call tracer_2d_1L(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac)
