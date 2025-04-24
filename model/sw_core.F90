@@ -990,8 +990,6 @@ module sw_core_mod
                   w(i,j) = delp(i,j)*w(i,j) + (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
                enddo
             enddo
-        endif
-
 #ifdef USE_COND
            call fv_tp_2d(q_con, crx_adv,cry_adv, npx, npy, hord_dp, gx, gy,  &
                 xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
@@ -1001,6 +999,7 @@ module sw_core_mod
                enddo
             enddo
 #endif
+        endif
 
         call fv_tp_2d(pt, crx_adv,cry_adv, npx, npy, hord_tm, gx, gy,  &
                       xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
@@ -1261,15 +1260,14 @@ module sw_core_mod
              enddo
           enddo
         endif
-
-     endif
 #ifdef USE_COND
-     do j=js,je
-        do i=is,ie
-           q_con(i,j) = q_con(i,j)/delp(i,j)
+        do j=js,je
+           do i=is,ie
+              q_con(i,j) = q_con(i,j)/delp(i,j)
+           enddo
         enddo
-     enddo
 #endif
+     endif
 
 !-----------------------------
 ! Compute divergence damping

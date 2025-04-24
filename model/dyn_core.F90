@@ -414,12 +414,10 @@ contains
         split_timestep_bc = real(n_split*k_split+neststruct%nest_timestep)
      endif
 
-     if ( nq > 0 ) then
+     if ( (nq > 0) .and. (flagstruct%inline_q) ) then
                                     call timing_on('COMM_TOTAL')
                                         call timing_on('COMM_TRACER')
-         if ( flagstruct%inline_q ) then
                       call start_group_halo_update(i_pack(10), q, domain)
-         endif
                                        call timing_off('COMM_TRACER')
                                    call timing_off('COMM_TOTAL')
      endif
@@ -629,18 +627,21 @@ contains
 #endif
 
                                                                    call timing_on('COMM_TOTAL')
+      if (flagstruct%inline_q .and. nq>0) then
                                         call timing_on('COMM_TRACER')
-    if (flagstruct%inline_q .and. nq>0) call complete_group_halo_update(i_pack(10), domain)
+                             call complete_group_halo_update(i_pack(10), domain)
                                         call timing_off('COMM_TRACER')
-
+      endif
+      if (flagstruct%nord > 0) then
                                         call timing_on('COMM_DIVGD')
-    if (flagstruct%nord > 0) call complete_group_halo_update(i_pack(3), domain)
+                             call complete_group_halo_update(i_pack(3), domain)
                                         call timing_off('COMM_DIVGD')
-
+      endif
                                         call timing_on('COMM_UCVC')
                              call complete_group_halo_update(i_pack(9), domain)
                                         call timing_off('COMM_UCVC')
                                                                    call timing_off('COMM_TOTAL')
+
       if (gridstruct%nested) then
          !On a nested grid we have to do SOMETHING with uc and vc in
          ! the boundary halo, particularly at the corners of the
@@ -714,7 +715,7 @@ contains
        d2_divg = min(0.20, flagstruct%d2_bg)
 ! Vorticity damping
        if ( flagstruct%do_vort_damp ) then
-            damp_vt(k) = max(0.01,min(flagstruct%vtdm4,flagstruct%d4_bg_top/3.0))     ! for delp, delz, and vorticity
+            damp_vt(k) = max(0.01,min(flagstruct%vtdm4,flagstruct%d4_bg_top/4.0))     ! for delp, delz, and vorticity
        else
             damp_vt(k) = 0.
        endif
@@ -830,11 +831,12 @@ contains
 
                                                              call timing_on('COMM_TOTAL')
                                                              call timing_on('COMM_DSW')
-    call start_group_halo_update(i_pack(1), delp, domain, complete=.false.)
-    call start_group_halo_update(i_pack(1), pt,   domain, complete=.true.)
 #ifdef USE_COND
-    call start_group_halo_update(i_pack(11), q_con, domain)
+    if (.not. hydrostatic) &
+    call start_group_halo_update(i_pack(1), q_con, domain, complete=.false.)
 #endif
+    call start_group_halo_update(i_pack(1), delp,  domain, complete=.false.)
+    call start_group_halo_update(i_pack(1), pt,    domain, complete=.true.)
                                                              call timing_off('COMM_DSW')
                                                              call timing_off('COMM_TOTAL')
 
@@ -866,9 +868,6 @@ contains
                                        call timing_on('COMM_TOTAL')
                                                              call timing_on('COMM_DSW')
      call complete_group_halo_update(i_pack(1), domain)
-#ifdef USE_COND
-     call complete_group_halo_update(i_pack(11), domain)
-#endif
                                                              call timing_off('COMM_DSW')
                                        call timing_off('COMM_TOTAL')
 
@@ -1091,8 +1090,7 @@ contains
                 v(ie+1,j,k) = ebuffer(j-js+1,k)
              enddo
           enddo
-
-    endif
+    endif        
 
 #ifndef ROT3
     if ( it/=n_split)   &
@@ -1185,13 +1183,13 @@ contains
 !-----------------------------------------------------
   enddo   ! time split loop
 !-----------------------------------------------------
-    if ( nq > 0 .and. .not. flagstruct%inline_q ) then
-       call timing_on('COMM_TOTAL')
+  if ( nq > 0 .and. .not. flagstruct%inline_q ) then
+     call timing_on('COMM_TOTAL')
        call timing_on('COMM_TRACER')
        call start_group_halo_update(i_pack(10), q, domain)
        call timing_off('COMM_TRACER')
-       call timing_off('COMM_TOTAL')
-     endif
+     call timing_off('COMM_TOTAL')
+  endif
 
 
   if ( flagstruct%fv_debug ) then
@@ -2116,8 +2114,6 @@ do 1000 j=jfirst,jlast
    ! !DESCRIPTION:
    !    Calculates geopotential and pressure to the kappa.
    ! Local:
-   real peg(bd%isd:bd%ied,km+1)
-   real pkg(bd%isd:bd%ied,km+1)
    real(kind=8) p1d(bd%isd:bd%ied)
    real(kind=8) g1d(bd%isd:bd%ied)
    real logp(bd%isd:bd%ied)
@@ -2154,7 +2150,7 @@ do 1000 j=jfirst,jlast
 
 !$OMP parallel do default(none) shared(jfirst,jlast,ifirst,ilast,pk,km,gz,hs,ptop,ptk, &
 !$OMP                                  js,je,is,ie,peln,peln1,pe,delp,akap,pt,CG,pkz,q_con) &
-!$OMP                          private(peg, pkg, p1d, g1d, logp)
+!$OMP                          private(p1d, g1d, logp)
    do 2000 j=jfirst,jlast
 
       do i=ifirst, ilast
@@ -2162,10 +2158,6 @@ do 1000 j=jfirst,jlast
          pk(i,j,1) = ptk
          g1d(i) = hs(i,j)
          gz(i,j,km+1) = hs(i,j)
-#ifdef USE_COND
-         peg(i,1) = ptop
-         pkg(i,1) = ptk
-#endif
       enddo
 
 #ifndef SW_DYNAMICS
@@ -2188,10 +2180,6 @@ do 1000 j=jfirst,jlast
             p1d(i)  = p1d(i) + delp(i,j,k-1)
             logp(i) = log(p1d(i))
             pk(i,j,k) = exp( akap*logp(i) ) 
-#ifdef USE_COND
-            peg(i,k) = peg(i,k-1) + delp(i,j,k-1)*(1.-q_con(i,j,k-1))
-            pkg(i,k) = exp( akap*log(peg(i,k)) )
-#endif
          enddo
 
          if( j>(js-2) .and. j<(je+2) ) then
@@ -2213,11 +2201,7 @@ do 1000 j=jfirst,jlast
 #ifdef SW_DYNAMICS
             g1d(i) = g1d(i) + pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
 #else
-#ifdef USE_COND
-            g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pkg(i,k+1)-pkg(i,k))
-#else
             g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
-#endif
 #endif
             gz(i,j,k) = g1d(i)
          enddo
