@@ -23,6 +23,10 @@
 !! parallel decompostion/communication module
       module fv_mp_mod
 
+#ifdef MAPL_MODE        
+#define DEALLOCGLOB_(A) if(associated(A)) then;A=0;if(MAPL_ShmInitialized) then; call MAPL_DeAllocNodeArray(A,rc=status);else; deallocate(A);endif;NULLIFY(A);endif
+#endif                  
+
 ! <table>
 ! <tr>
 !     <th>Module Name</th>
@@ -101,6 +105,10 @@
       use mpp_domains_mod, only : mpp_get_F2C_index, mpp_update_nest_coarse
       use mpp_domains_mod, only : mpp_get_domain_shift
       use ensemble_manager_mod, only : get_ensemble_id
+
+#ifdef MAPL_MODE          
+      use MAPL               
+#endif                  
 
       implicit none
       private
@@ -2407,12 +2415,32 @@ end subroutine switch_current_Atm
          real(kind=4), intent(INOUT)  :: mymax(npts)
         
          real(kind=4) :: gmax(npts)
-        
+         real(kind=4), pointer :: smax(:)
+
+         integer :: status
+
+#ifdef MAPL_MODE
+      ! allocate global arrays (preferable in shared memory)
+         if (MAPL_ShmInitialized) then
+            call MAPL_AllocNodeArray(smax,Shp=(/npts/),rc=status)
+            call MPI_REDUCE( mymax, smax, npts, MPI_REAL, MPI_MAX, masterproc, &
+                             commglobal, ierror)
+            call MAPL_BroadcastToNodes(smax, N=npts, ROOT=masterproc, RC=status)
+            call MAPL_SyncSharedMemory(rc=status)
+            mymax=smax
+            call MAPL_SyncSharedMemory(rc=STATUS)
+            DEALLOCGLOB_(smax)
+         else
+            call MPI_ALLREDUCE( mymax, gmax, npts, MPI_REAL, MPI_MAX, &
+                                commglobal, ierror )
+            mymax = gmax
+         endif
+#else
          call MPI_ALLREDUCE( mymax, gmax, npts, MPI_REAL, MPI_MAX, &
                              commglobal, ierror )
-      
          mymax = gmax
-        
+#endif
+      
       end subroutine mp_reduce_max_r4_1d
 !     
 ! ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ !
