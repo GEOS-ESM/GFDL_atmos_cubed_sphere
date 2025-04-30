@@ -403,7 +403,9 @@ contains
 !$OMP                           private(i,j,k,phis)
              do j=js,je
                call pkez(km, is, ie, js, je, j, pe, pk, akap, peln, pkz, ptop)
-               phis(i,km+1) = hs(i,j)
+               do i=is,ie
+                  phis(i,km+1) = hs(i,j)
+               enddo
                do k=km,1,-1
                  do i=is,ie
                     phis(i,k) = phis(i,k+1) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))

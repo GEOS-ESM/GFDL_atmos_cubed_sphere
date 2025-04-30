@@ -75,10 +75,6 @@ module fv_tracer2d_mod
    use mpp_mod,           only: mpp_error, FATAL, mpp_broadcast, mpp_send, mpp_recv, mpp_sum, mpp_max
    use fv_grid_utils_mod, only: g_sum_r8
 
-#ifdef SKIP_MAPL_MODE
-   use MAPL
-#endif
-
 implicit none
 private
 
@@ -191,39 +187,6 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                         call timing_off('COMM_TRACER')
                               call timing_off('COMM_TOTAL')
 
-#ifdef SKIP_MAPL_MODE
-                        call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER_MAX')
-! Check for levels where Q does not need to be advected
-  do iq=1,nq
-     do k=1,npz
-        n=(iq-1)*npz + k
-        qmax(n) = 0.0
-        call MAPL_MaxMin('tracer_2d_1L: qmax', q(is:ie,js:je,k,iq), qmin(n), qmax(n), 0.0)
-     enddo
-  enddo
-  do k=1,npz
-     cmax(k) = 0.
-     if ( k < npz/6 ) then
-          do j=js,je
-             do i=is,ie
-                c2d(i,j) = max( abs(cx(i,j,k)), abs(cy(i,j,k)) )
-             enddo
-          enddo
-     else
-          do j=js,je
-             do i=is,ie
-                c2d(i,j) = max(abs(cx(i,j,k)),abs(cy(i,j,k))) + 1. - sin_sg(i,j,5)
-             enddo
-          enddo
-     endif
-     call MAPL_MaxMin('tracer_2d_1L: cmax', c2d, cmin(k), cmax(k), 0.0)
-!!!  if ( is_master() )  write(*,*) 'tracer_2d_1L: k, nsplt, cmax =', k, int(1. + cmax(k)), cmax(k)
-  enddo  ! k-loop
-                           call timing_off('COMM_TRACER_MAX')
-                       call timing_off('COMM_TOTAL')
-#else
-
 ! Check for levels where Q does not need to be advected
 !$OMP parallel do default(none) shared(nq,npz,is,ie,js,je,q,qmax) private(iq,i,j,k,n)
    do iq=1,nq
@@ -272,11 +235,9 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      cmax(k) = qmax(n)
   enddo  ! k-loop
 
-#endif
-
-!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,nq, &
-!$OMP                                  cy,yfx,mfx,mfy,qmax,cmax,mfx2,mfy2,cx2,cy2)   &
-!$OMP                          private(n, nsplt, frac)
+!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
+!$OMP                                  cy,yfx,mfx,mfy,cmax,mfx2,mfy2,cx2,cy2)   &
+!$OMP                          private(nsplt, frac)
   do k=1,npz
 
      mfx2(:,:,k)=mfx(:,:,k)
@@ -312,7 +273,6 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 
   enddo
 
-  icount(:,:) = 0
 ! Begin k-independent tracer transport; can not be OpenMPed because the mpp_update call.
   do k=1,npz
 
@@ -339,14 +299,11 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
            enddo
         enddo
 
-!$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,npz,cx2,xfx,hord,trdm,qmax,icount, &
+!$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx2,xfx,hord,trdm, &
 !$OMP                                  nord_tr,nq,gridstruct,bd,cy2,yfx,mfx2,mfy2,qn2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) & 
-!$OMP                          private(fx,fy,n)
+!$OMP                          private(fx,fy)
         do iq=1,nq
-        n=(iq-1)*npz + k
-        if ( qmax(n) > 0.0 ) then
-         icount(k,iq) = icount(k,iq) + 1
-         if ( nsplt /= 1 ) then
+        if ( nsplt /= 1 ) then
            if ( it==1 ) then
               do j=jsd,jed
                  do i=isd,ied
@@ -370,7 +327,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
               enddo
               enddo
            endif
-         else
+        else
            call fv_tp_2d(q(isd,jsd,k,iq), cx2(is,jsd,k), cy2(isd,js,k), &
                          npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx2(is,js,k), mfy=mfy2(is,js,k))
@@ -379,9 +336,6 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                  q(i,j,k,iq) = (q(i,j,k,iq)*dp1(i,j,k)+((fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))*rarea(i,j))/dp2(i,j)
               enddo
            enddo
-         endif
-        else
-         if ( it == nsplt ) q(:,:,k,iq) = 0.0
         endif
         enddo   !  tracer-loop
 
@@ -404,15 +358,6 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      endif
 
   enddo    ! k-loop
-
- !do iq=1,nq
- !   n=0
- !   do k=1,npz
- !      nsplt = int(1. + cmax(k))
- !      n=n+icount(k,iq)/nsplt
- !   enddo
- !   if ( is_master() )  write(*,*) 'Tracer_2d_1L_icount=', iq, n
- !enddo
 
 end subroutine tracer_2d_1L
 
