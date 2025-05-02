@@ -117,7 +117,7 @@ module fv_mapz_mod
   private
 
   public compute_total_energy, Lagrangian_to_Eulerian, moist_cv, moist_cp,   &
-         rst_remap, mappm, E_Flux, map_scalar
+         rst_remap, mappm, E_Flux, map_scalar, mapn_tracer
 
 !---- version number -----
   character(len=128) :: version = '$Id$'
@@ -403,7 +403,9 @@ contains
 !$OMP                           private(i,j,k,phis)
              do j=js,je
                call pkez(km, is, ie, js, je, j, pe, pk, akap, peln, pkz, ptop)
-               phis(i,km+1) = hs(i,j)
+               do i=is,ie
+                  phis(i,km+1) = hs(i,j)
+               enddo
                do k=km,1,-1
                  do i=is,ie
                     phis(i,k) = phis(i,k+1) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
@@ -539,37 +541,48 @@ contains
 
 
       call timing_on('Remap_Q')
+!----------------
+! Map constituents
+!----------------
+!$OMP parallel do default(none) shared(nq,is,ie,js,je,km,q,kord_tr, &
+!$OMP                                  pe,ptop,ak,bk,isd,ied,jsd,jed,fill) &
+!$OMP                          private(j,pe1,pe2,dp2)
+      do 1001 j=js,je
+         do k=1,km+1
+            do i=is,ie
+               pe1(i,k) = pe(i,k,j)
+            enddo
+         enddo
+         do i=is,ie
+            pe2(i,   1) = ptop
+            pe2(i,km+1) = pe(i,km+1,j)
+         enddo
+         do k=2,km
+            do i=is,ie
+               pe2(i,k) = ak(k) + bk(k)*pe(i,km+1,j)
+            enddo
+         enddo
+         do k=1,km
+            do i=is,ie
+               dp2(i,k) = pe2(i,k+1) - pe2(i,k)
+            enddo
+         enddo
+         call mapn_tracer(nq, km, pe1, pe2, q, dp2, kord_tr, j,     &
+                          is, ie, isd, ied, jsd, jed, 0., fill)
+1001  continue
+      call timing_off('Remap_Q')
+
 
 !$OMP parallel do default(none) shared(is,ie,js,je,km,pe,peO,dpe,dpeO) &
 !$OMP                          private(i,j,k)
       do j=js,je
-        do k=1,km       
-          do i=is,ie  
+        do k=1,km
+          do i=is,ie
             dpe (i,k,j) = pe (i,k+1,j) - pe (i,k,j)
             dpeO(i,k,j) = peO(i,k+1,j) - peO(i,k,j)
-          enddo     
-        enddo  
-      enddo      
-
-!----------------
-! Map constituents
-!----------------
-!$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,nq,kord_tr, &
-!$OMP                                  q,pe,peO,dpe,dpeO,fill) &
-!$OMP                          private(i,j,k,iq,q2)
-      do 1001 iq=1,nq
-        do j=js,je
-          call map_scalar(km,  pe (is:ie,1:km+1,j),   q(isd,jsd,1,iq),  &
-                          km,  peO(is:ie,1:km+1,j),   q2,               &
-                              dpe (is:ie,1:km  ,j),                     &
-                              dpeO(is:ie,1:km  ,j),                     &
-                          is, ie, j, isd, ied, jsd, jed, 0, kord_tr(iq), q_min=0.)
-          if (fill) call fillz(ie-is+1, km, 1, q2, dpeO(is:ie,1:km  ,j))
-          q(is:ie,j,:,iq) = q2
+          enddo
         enddo
-1001  continue
-
-      call timing_off('Remap_Q')
+      enddo
 
 !----------------
 ! Map NH W & DZ
@@ -1657,6 +1670,118 @@ endif        ! end last_step check
 
  end subroutine map_scalar
 
+ subroutine mapn_tracer(nq, km, pe1, pe2, q1, dp2, kord, j,     &
+                        i1, i2, isd, ied, jsd, jed, q_min, fill, qs)
+! INPUT PARAMETERS:
+      integer, intent(in):: km                !< vertical dimension
+      integer, intent(in):: j, nq, i1, i2
+      integer, intent(in):: isd, ied, jsd, jed
+      integer, intent(in):: kord(nq)
+      real, intent(in)::  pe1(i1:i2,km+1)     !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
+      real, intent(in)::  pe2(i1:i2,km+1)     !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
+      real, intent(in)::  dp2(i1:i2,km)
+      real, intent(in)::  q_min
+      logical, intent(in):: fill
+      real, intent(inout):: q1(isd:ied,jsd:jed,km,nq) ! Field input
+
+      real, optional, intent(in) ::   qs(i1:i2)
+
+! LOCAL VARIABLES:
+      real:: q4(4,i1:i2,km,nq)
+      real:: q2(i1:i2,km,nq) !< Field output
+      real:: qsum(nq)
+      real:: dp1(i1:i2,km)
+      real:: pl, pr, dp, esl, fac1, fac2
+      integer:: i, k, l, m, k0, iq
+
+      do k=1,km
+         do i=i1,i2
+            dp1(i,k) = pe1(i,k+1) - pe1(i,k)
+         enddo
+      enddo
+
+      do iq=1,nq
+         do k=1,km
+            do i=i1,i2
+               q4(1,i,k,iq) = q1(i,j,k,iq)
+            enddo
+         enddo
+         call scalar_profile( q4(1,i1,1,iq), dp1, km, i1, i2, 0, kord(iq), q_min, qs=qs)
+      enddo
+
+! Mapping
+      do 4000 i=i1,i2
+         k0 = 1
+      do 555 k=1,km
+      do 100 l=k0,km
+! locate the top edge: pe2(i,k)
+      if(pe2(i,k) >= pe1(i,l) .and. pe2(i,k) <= pe1(i,l+1)) then
+         pl = (pe2(i,k)-pe1(i,l)) / dp1(i,l)
+         if(pe2(i,k+1) <= pe1(i,l+1)) then
+! entire new grid is within the original grid
+            pr = (pe2(i,k+1)-pe1(i,l)) / dp1(i,l)
+            fac1 = pr + pl
+            fac2 = r3*(pr*fac1 + pl*pl)
+            fac1 = 0.5*fac1
+            do iq=1,nq
+               q2(i,k,iq) = q4(2,i,l,iq) + (q4(4,i,l,iq)+q4(3,i,l,iq)-q4(2,i,l,iq))*fac1  &
+                                         -  q4(4,i,l,iq)*fac2
+            enddo
+            k0 = l
+            goto 555
+          else
+! Fractional area...
+            dp = pe1(i,l+1) - pe2(i,k)
+            fac1 = 1. + pl
+            fac2 = r3*(1.+pl*fac1)
+            fac1 = 0.5*fac1
+            do iq=1,nq
+               qsum(iq) = dp*(q4(2,i,l,iq) + (q4(4,i,l,iq)+   &
+                              q4(3,i,l,iq) - q4(2,i,l,iq))*fac1 - q4(4,i,l,iq)*fac2)
+            enddo
+            do m=l+1,km
+! locate the bottom edge: pe2(i,k+1)
+               if(pe2(i,k+1) > pe1(i,m+1) ) then
+                                                   ! Whole layer..
+                  do iq=1,nq
+                     qsum(iq) = qsum(iq) + dp1(i,m)*q4(1,i,m,iq)
+                  enddo
+               else
+                  dp = pe2(i,k+1)-pe1(i,m)
+                  esl = dp / dp1(i,m)
+                  fac1 = 0.5*esl
+                  fac2 = 1.-r23*esl
+                  do iq=1,nq
+                     qsum(iq) = qsum(iq) + dp*( q4(2,i,m,iq) + fac1*(         &
+                                q4(3,i,m,iq)-q4(2,i,m,iq)+q4(4,i,m,iq)*fac2 ) )
+                  enddo
+                  k0 = m
+                  goto 123
+               endif
+            enddo
+            goto 123
+          endif
+      endif
+100   continue
+123   continue
+      do iq=1,nq
+         q2(i,k,iq) = qsum(iq) / dp2(i,k)
+      enddo
+555   continue
+4000  continue
+
+  if (fill) call fillz(i2-i1+1, km, nq, q2, dp2)
+
+  do iq=1,nq
+!    if (fill) call fillz(i2-i1+1, km, 1, q2(i1,1,iq), dp2)
+     do k=1,km
+        do i=i1,i2
+           q1(i,j,k,iq) = q2(i,k,iq)
+        enddo
+     enddo
+  enddo
+
+ end subroutine mapn_tracer
 
  subroutine remap_2d(km,   pe1,   q1,        &
                      kn,   pe2,   q2,        &
