@@ -146,6 +146,9 @@ public :: dyn_core, del2_cubed, init_ijk_mem
                                        ! 6 deg per 10-min
   real(kind=R_GRID), parameter :: cnst_0p20=0.20d0
 
+  real, allocatable :: d4dmp(:)
+  logical:: d4dmp_initialized = .false.
+
   real, allocatable ::  rf(:)
   integer:: k_rf = 0
   logical:: RFF_initialized = .false.
@@ -411,12 +414,10 @@ contains
         split_timestep_bc = real(n_split*k_split+neststruct%nest_timestep)
      endif
 
-     if ( nq > 0 ) then
+     if ( (nq > 0) .and. (flagstruct%inline_q) ) then
                                     call timing_on('COMM_TOTAL')
                                         call timing_on('COMM_TRACER')
-         if ( flagstruct%inline_q ) then
                       call start_group_halo_update(i_pack(10), q, domain)
-         endif
                                        call timing_off('COMM_TRACER')
                                    call timing_off('COMM_TOTAL')
      endif
@@ -626,18 +627,21 @@ contains
 #endif
 
                                                                    call timing_on('COMM_TOTAL')
+      if (flagstruct%inline_q .and. nq>0) then
                                         call timing_on('COMM_TRACER')
-    if (flagstruct%inline_q .and. nq>0) call complete_group_halo_update(i_pack(10), domain)
+                             call complete_group_halo_update(i_pack(10), domain)
                                         call timing_off('COMM_TRACER')
-
+      endif
+      if (flagstruct%nord > 0) then
                                         call timing_on('COMM_DIVGD')
-    if (flagstruct%nord > 0) call complete_group_halo_update(i_pack(3), domain)
+                             call complete_group_halo_update(i_pack(3), domain)
                                         call timing_off('COMM_DIVGD')
-
+      endif
                                         call timing_on('COMM_UCVC')
                              call complete_group_halo_update(i_pack(9), domain)
                                         call timing_off('COMM_UCVC')
                                                                    call timing_off('COMM_TOTAL')
+
       if (gridstruct%nested) then
          !On a nested grid we have to do SOMETHING with uc and vc in
          ! the boundary halo, particularly at the corners of the
@@ -671,12 +675,23 @@ contains
             end do
       endif
 
+! higher order hyper-diffusion on divergence
+     if ( .not. d4dmp_initialized ) then
+        allocate( d4dmp(npz) )
+        ! High order divergence damping coefs (less diffusion in the troposphere)
+        do k=1,npz
+          d4dmp(k) = MAX(0.0,MIN(1.0,SIN(0.5*pi*LOG(25000.0/pfull(k))/LOG(25000.0/ptop))))
+          d4dmp(k) = flagstruct%d4_bg_top*d4dmp(k) + flagstruct%d4_bg_bot*(1.0-d4dmp(k))
+        end do
+        d4dmp_initialized = .true.
+     endif
+
                                                      call timing_on('d_sw')
 !$OMP parallel do default(none) shared(npz,flagstruct,nord_v,pfull,damp_vt,hydrostatic,last_step, &
 !$OMP                                  is,ie,js,je,isd,ied,jsd,jed,omga,delp,gridstruct,npx,npy,  &
 !$OMP                                  ng,zh,vt,ptc,pt,u,v,w,uc,vc,ua,va,divgd,mfx,mfy,cx,cy,     &
 !$OMP                                  crx,cry,xfx,yfx,q_con,zvir,sphum,nq,q,dt,bd,rdt,iep1,jep1, &
-!$OMP                                  heat_source,diss_est,dpx,dddmp,d_ext)                      &
+!$OMP                                  heat_source,diss_est,dpx,dddmp,d_ext,d4dmp)                      &
 !$OMP                          private(nord_k, nord_w, nord_t, damp_w, damp_t, d2_divg, kfac, &
 !$OMP                          kgb, hord_m, hord_v, hord_t, hord_p, wk, heat_s,diss_e, z_rat)
     do k=1,npz
@@ -693,27 +708,28 @@ contains
        endif
 
        nord_v(k) = min(2, flagstruct%nord)
-       d2_divg = min(0.20, flagstruct%d2_bg)
+       nord_w = nord_v(k)
+       nord_t = nord_v(k)
 
+! 2nd order divergence damping
+       d2_divg = min(0.20, flagstruct%d2_bg)
+! Vorticity damping
        if ( flagstruct%do_vort_damp ) then
-            damp_vt(k) = flagstruct%vtdm4     ! for delp, delz, and vorticity
+            damp_vt(k) = max(0.01,min(flagstruct%vtdm4,flagstruct%d4_bg_top/4.0))     ! for delp, delz, and vorticity
        else
             damp_vt(k) = 0.
        endif
-
-       nord_w = nord_v(k)
-       nord_t = nord_v(k)
+! Diffusion on w & t
        damp_w = damp_vt(k)
        damp_t = damp_vt(k)
-
-! Additional diffusion only in RI Z-Filter levels
+! External diffusion only in RI Z-Filter levels
        if ( npz==1 .or. k<=flagstruct%n_zfilter ) then
-          dddmp(k) = flagstruct%dddmp
           d_ext(k) = flagstruct%d_ext 
        else
-          dddmp(k) = 0.0
           d_ext(k) = 0.0
        endif
+! Smagorinsky diffusion
+       dddmp(k) = flagstruct%dddmp
 
        if ( npz==1 .or. flagstruct%n_sponge<=0 ) then
            d2_divg = flagstruct%d2_bg
@@ -777,7 +793,7 @@ contains
 #endif
                   kgb, heat_s, diss_e, dpx(is,js,k), zvir, sphum, nq,  q,  k,  npz, flagstruct%inline_q,  dt,  &
                   flagstruct%hord_tr, hord_m, hord_v, hord_t, hord_p,    &
-                  nord_k, nord_v(k), nord_w, nord_t, dddmp(k), d2_divg, flagstruct%d4_bg,  &
+                  nord_k, nord_v(k), nord_w, nord_t, dddmp(k), d2_divg, d4dmp(k),  &
                   damp_vt(k), damp_w, damp_t, flagstruct%d_con, hydrostatic, gridstruct, flagstruct, bd)
 
        if( (.not.flagstruct%use_old_omega) .and. last_step ) then
@@ -815,11 +831,12 @@ contains
 
                                                              call timing_on('COMM_TOTAL')
                                                              call timing_on('COMM_DSW')
-    call start_group_halo_update(i_pack(1), delp, domain, complete=.false.)
-    call start_group_halo_update(i_pack(1), pt,   domain, complete=.true.)
 #ifdef USE_COND
-    call start_group_halo_update(i_pack(11), q_con, domain)
+    if (.not. hydrostatic) &
+    call start_group_halo_update(i_pack(1), q_con, domain, complete=.false.)
 #endif
+    call start_group_halo_update(i_pack(1), delp,  domain, complete=.false.)
+    call start_group_halo_update(i_pack(1), pt,    domain, complete=.true.)
                                                              call timing_off('COMM_DSW')
                                                              call timing_off('COMM_TOTAL')
 
@@ -851,9 +868,6 @@ contains
                                        call timing_on('COMM_TOTAL')
                                                              call timing_on('COMM_DSW')
      call complete_group_halo_update(i_pack(1), domain)
-#ifdef USE_COND
-     call complete_group_halo_update(i_pack(11), domain)
-#endif
                                                              call timing_off('COMM_DSW')
                                        call timing_off('COMM_TOTAL')
 
@@ -1076,8 +1090,7 @@ contains
                 v(ie+1,j,k) = ebuffer(j-js+1,k)
              enddo
           enddo
-
-    endif
+    endif        
 
 #ifndef ROT3
     if ( it/=n_split)   &
@@ -1170,13 +1183,13 @@ contains
 !-----------------------------------------------------
   enddo   ! time split loop
 !-----------------------------------------------------
-    if ( nq > 0 .and. .not. flagstruct%inline_q ) then
-       call timing_on('COMM_TOTAL')
+  if ( nq > 0 .and. .not. flagstruct%inline_q ) then
+     call timing_on('COMM_TOTAL')
        call timing_on('COMM_TRACER')
        call start_group_halo_update(i_pack(10), q, domain)
        call timing_off('COMM_TRACER')
-       call timing_off('COMM_TOTAL')
-     endif
+     call timing_off('COMM_TOTAL')
+  endif
 
 
   if ( flagstruct%fv_debug ) then
@@ -2101,8 +2114,6 @@ do 1000 j=jfirst,jlast
    ! !DESCRIPTION:
    !    Calculates geopotential and pressure to the kappa.
    ! Local:
-   real peg(bd%isd:bd%ied,km+1)
-   real pkg(bd%isd:bd%ied,km+1)
    real(kind=8) p1d(bd%isd:bd%ied)
    real(kind=8) g1d(bd%isd:bd%ied)
    real logp(bd%isd:bd%ied)
@@ -2139,7 +2150,7 @@ do 1000 j=jfirst,jlast
 
 !$OMP parallel do default(none) shared(jfirst,jlast,ifirst,ilast,pk,km,gz,hs,ptop,ptk, &
 !$OMP                                  js,je,is,ie,peln,peln1,pe,delp,akap,pt,CG,pkz,q_con) &
-!$OMP                          private(peg, pkg, p1d, g1d, logp)
+!$OMP                          private(p1d, g1d, logp)
    do 2000 j=jfirst,jlast
 
       do i=ifirst, ilast
@@ -2147,10 +2158,6 @@ do 1000 j=jfirst,jlast
          pk(i,j,1) = ptk
          g1d(i) = hs(i,j)
          gz(i,j,km+1) = hs(i,j)
-#ifdef USE_COND
-         peg(i,1) = ptop
-         pkg(i,1) = ptk
-#endif
       enddo
 
 #ifndef SW_DYNAMICS
@@ -2173,10 +2180,6 @@ do 1000 j=jfirst,jlast
             p1d(i)  = p1d(i) + delp(i,j,k-1)
             logp(i) = log(p1d(i))
             pk(i,j,k) = exp( akap*logp(i) ) 
-#ifdef USE_COND
-            peg(i,k) = peg(i,k-1) + delp(i,j,k-1)*(1.-q_con(i,j,k-1))
-            pkg(i,k) = exp( akap*log(peg(i,k)) )
-#endif
          enddo
 
          if( j>(js-2) .and. j<(je+2) ) then
@@ -2198,11 +2201,7 @@ do 1000 j=jfirst,jlast
 #ifdef SW_DYNAMICS
             g1d(i) = g1d(i) + pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
 #else
-#ifdef USE_COND
-            g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pkg(i,k+1)-pkg(i,k))
-#else
             g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
-#endif
 #endif
             gz(i,j,k) = g1d(i)
          enddo
