@@ -1703,7 +1703,9 @@ endif        ! end last_step check
       real:: qs(i1:i2)
       real:: pl, pr, dp, esl, fac1, fac2
       integer:: i, k, l, m, k0, iq
-
+      !$ser verbatim integer:: kord_iq, iv, im, js2d
+      !$ser verbatim js2d=jsd+3
+      
       do k=1,km
          do i=i1,i2
             dp1(i,k) = pe1(i,k+1) - pe1(i,k)
@@ -1779,9 +1781,17 @@ endif        ! end last_step check
       enddo
 555   continue
 4000  continue
-
+      !$ser verbatim if(j == js2d ) then
+       !$ser verbatim im = i2-i1+1
+       !$ser savepoint Fillz-In
+      !$ser data im=im km=km nq=nq dp2=dp2  q2tracers=q2(:,:,1:nq)
+      !$ser verbatim endif
   if (fill) call fillz(i2-i1+1, km, nq, q2, dp2)
-
+      !$ser verbatim if(j == js2d ) then
+      !$ser savepoint Fillz-Out
+      !$ser data  q2tracers=q2(:,:,1:nq)
+      !$ser verbatim endif
+  
   do iq=1,nq
 !    if (fill) call fillz(i2-i1+1, km, 1, q2(i1,1,iq), dp2)
      do k=1,km

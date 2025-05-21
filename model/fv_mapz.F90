@@ -28,10 +28,10 @@ module fv_mapz_mod
 
 #ifdef SERIALIZE
 USE m_serialize, ONLY: &
+  fs_add_savepoint_metainfo, &
   fs_create_savepoint, &
   fs_read_field, &
-  fs_write_field, &
-  fs_add_savepoint_metainfo
+  fs_write_field
 USE utils_ppser, ONLY:  &
   ppser_get_mode, &
   ppser_intlength, &
@@ -162,7 +162,11 @@ contains
   logical, intent(in):: last_step
   real,    intent(in):: mdt                    !< remap time step
   real,    intent(in):: pdt                    !< phys time step
+#ifdef SERIALIZE
+  integer:: km
+#else
   integer, intent(in):: km
+#endif
 #ifdef SERIALIZE
   integer:: nq                     !< number of tracers (including h2o)
 #else
@@ -1385,7 +1389,11 @@ endif        ! end last_step check
 ! Compute vertically integrated total energy per column
 !------------------------------------------------------
 ! !INPUT PARAMETERS:
+#ifdef SERIALIZE
+   integer:: km, is, ie, js, je, isd, ied, jsd, jed, id_te
+#else
    integer,  intent(in):: km, is, ie, js, je, isd, ied, jsd, jed, id_te
+#endif
    integer,  intent(in):: sphum, liq_wat, ice_wat, rainwat, snowwat, graupel, nwat
    real, intent(inout), dimension(isd:ied,jsd:jed,km):: ua, va
    real, intent(in), dimension(isd:ied,jsd:jed,km):: pt, delp
@@ -1526,7 +1534,11 @@ endif        ! end last_step check
                   pe, pk, akap, peln, pkz, ptop)
 
 ! INPUT PARAMETERS:
+#ifdef SERIALIZE
+   integer:: km, j
+#else
    integer, intent(in):: km, j
+#endif
    integer, intent(in):: ifirst, ilast        !< Latitude strip
    integer, intent(in):: jfirst, jlast        !< Latitude strip
    real, intent(in):: akap
@@ -1587,7 +1599,11 @@ endif        ! end last_step check
       integer, intent(in) :: i1                !< Starting longitude
       integer, intent(in) :: i2                !< Finishing longitude
       integer, intent(in) :: kord              !< Method order
+#ifdef SERIALIZE
+      integer :: km                !< Original vertical dimension
+#else
       integer, intent(in) :: km                !< Original vertical dimension
+#endif
       integer, intent(in) :: kn                !< Target vertical dimension
       integer, intent(in) :: iv
 
@@ -1681,7 +1697,11 @@ endif        ! end last_step check
  integer, intent(in) :: kord              !< Method order
  integer, intent(in) :: j                 !< Current latitude
  integer, intent(in) :: ibeg, iend, jbeg, jend
+#ifdef SERIALIZE
+ integer :: km                !< Original vertical dimension
+#else
  integer, intent(in) :: km                !< Original vertical dimension
+#endif
  integer, intent(in) :: kn                !< Target vertical dimension
  real, intent(in) ::   qs(i1:i2)       !< bottom BC
 #ifdef SERIALIZE
@@ -1811,7 +1831,11 @@ endif        ! end last_step check
  integer, intent(in) :: kord              !< Method order
  integer, intent(in) :: j                 !< Current latitude
  integer, intent(in) :: ibeg, iend, jbeg, jend
+#ifdef SERIALIZE
+ integer :: km                !< Original vertical dimension
+#else
  integer, intent(in) :: km                !< Original vertical dimension
+#endif
  integer, intent(in) :: kn                !< Target vertical dimension
  real, intent(in) ::   qs(i1:i2)       !< bottom BC
 #ifdef SERIALIZE
@@ -1902,7 +1926,11 @@ endif        ! end last_step check
  subroutine mapn_tracer(nq, km, pe1, pe2, q1, dp2, kord, j,     &
                         i1, i2, isd, ied, jsd, jed, q_min, fill)
 ! INPUT PARAMETERS:
+#ifdef SERIALIZE
+      integer:: km                !< vertical dimension
+#else
       integer, intent(in):: km                !< vertical dimension
+#endif
 #ifdef SERIALIZE
       integer:: j, nq, i1, i2
 #else
@@ -1936,7 +1964,11 @@ endif        ! end last_step check
       real:: qs(i1:i2)
       real:: pl, pr, dp, esl, fac1, fac2
       integer:: i, k, l, m, k0, iq
-
+#ifdef SERIALIZE
+integer:: kord_iq, iv, im, js2d
+js2d=jsd+3
+#endif
+      
       do k=1,km
          do i=i1,i2
             dp1(i,k) = pe1(i,k+1) - pe1(i,k)
@@ -2012,9 +2044,47 @@ endif        ! end last_step check
       enddo
 555   continue
 4000  continue
-
+#ifdef SERIALIZE
+if(j == js2d ) then
+im = i2-i1+1
+call fs_create_savepoint('Fillz-In', ppser_savepoint)
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'im', im)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'km', km)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'nq', nq)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'dp2', dp2)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'q2tracers', q2(:,:,1:nq))
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'im', im)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'km', km)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nq', nq)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dp2', dp2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'q2tracers', q2(:,:,1:nq))
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'im', im, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'km', km, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'nq', nq, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'dp2', dp2, ppser_zrperturb)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'q2tracers', q2(:,:,1:nq), ppser_zrperturb)
+END SELECT
+endif
+#endif
   if (fill) call fillz(i2-i1+1, km, nq, q2, dp2)
-
+#ifdef SERIALIZE
+if(j == js2d ) then
+call fs_create_savepoint('Fillz-Out', ppser_savepoint)
+SELECT CASE ( ppser_get_mode() )
+  CASE(0)
+    call fs_write_field(ppser_serializer, ppser_savepoint, 'q2tracers', q2(:,:,1:nq))
+  CASE(1)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'q2tracers', q2(:,:,1:nq))
+  CASE(2)
+    call fs_read_field(ppser_serializer_ref, ppser_savepoint, 'q2tracers', q2(:,:,1:nq), ppser_zrperturb)
+END SELECT
+endif
+#endif
+  
   do iq=1,nq
 !    if (fill) call fillz(i2-i1+1, km, 1, q2(i1,1,iq), dp2)
      do k=1,km
@@ -2039,7 +2109,11 @@ endif        ! end last_step check
       integer, intent(in) :: ibeg, iend, jbeg, jend
       integer, intent(in) :: iv                !< Mode: 0 ==  constituents 1 == ???
       integer, intent(in) :: kord
+#ifdef SERIALIZE
+      integer :: km                !< Original vertical dimension
+#else
       integer, intent(in) :: km                !< Original vertical dimension
+#endif
       integer, intent(in) :: kn                !< Target vertical dimension
 
 #ifdef SERIALIZE
@@ -2135,7 +2209,11 @@ endif        ! end last_step check
    integer, intent(in):: i1, i2
    integer, intent(in):: iv               !< Mode: 0 ==  constituents 1 ==others
    integer, intent(in):: kord
+#ifdef SERIALIZE
+   integer:: km               !< Original vertical dimension
+#else
    integer, intent(in):: km               !< Original vertical dimension
+#endif
    integer, intent(in):: kn               !< Target vertical dimension
 #ifdef SERIALIZE
    real:: pe1(i1:i2,km+1)     !< Pressure at layer edges from model top to bottom surface in the original vertical coordinate
@@ -2234,7 +2312,11 @@ endif        ! end last_step check
 ! Optimized vertical profile reconstruction:
 ! Latest: Apr 2008 S.-J. Lin, NOAA/GFDL
  integer, intent(in):: i1, i2
+#ifdef SERIALIZE
+ integer:: km      !< vertical dimension
+#else
  integer, intent(in):: km      !< vertical dimension
+#endif
  integer, intent(in):: iv      !< iv =-1: winds iv = 0: positive definite scalars iv = 1: others
  integer, intent(in):: kord
  real, intent(in)   ::   qs(i1:i2)
@@ -2653,7 +2735,11 @@ endif        ! end last_step check
 ! Optimized vertical profile reconstruction:
 ! Latest: Apr 2008 S.-J. Lin, NOAA/GFDL
  integer, intent(in):: i1, i2
+#ifdef SERIALIZE
+ integer:: km      !< vertical dimension
+#else
  integer, intent(in):: km      !< vertical dimension
+#endif
  integer, intent(in):: iv      !< iv =-1: winds
                                !< iv = 0: positive definite scalars
                                !< iv = 1: others
@@ -3057,7 +3143,11 @@ endif        ! end last_step check
 
 
  subroutine cs_limiters(im, extm, a4, iv)
+#ifdef SERIALIZE
+ integer :: im
+#else
  integer, intent(in) :: im
+#endif
  integer, intent(in) :: iv
  logical, intent(in) :: extm(im)
  real , intent(inout) :: a4(4,im)   !< PPM array
@@ -3141,7 +3231,11 @@ endif        ! end last_step check
  integer, intent(in):: iv      !< iv =-1: winds iv = 0: positive definite scalars iv = 1: others iv = 2: temp (if remap_t) and w (iv=-2)
  integer, intent(in):: i1      !< Starting longitude
  integer, intent(in):: i2      !< Finishing longitude
+#ifdef SERIALIZE
+ integer:: km      !< Vertical dimension
+#else
  integer, intent(in):: km      !< Vertical dimension
+#endif
  integer, intent(in):: kord    !< Order (or more accurately method no.):
                                !
 #ifdef SERIALIZE
@@ -3477,7 +3571,11 @@ endif        ! end last_step check
 
 
  subroutine steepz(i1, i2, km, a4, df2, dm, dq, dp, d4)
+#ifdef SERIALIZE
+ integer :: km, i1, i2
+#else
  integer, intent(in) :: km, i1, i2
+#endif
    real , intent(in) ::  dp(i1:i2,km)       !< Grid size
    real , intent(in) ::  dq(i1:i2,km)       !< Backward diff of q
    real , intent(in) ::  d4(i1:i2,km)       !< Backward sum:  dp(k)+ dp(k-1)
@@ -3541,7 +3639,11 @@ endif        ! end last_step check
 ! Assuming hybrid sigma-P coordinate:
 !------------------------------------
 ! INPUT PARAMETERS:
+#ifdef SERIALIZE
+  integer:: km                    !< Restart z-dimension
+#else
   integer, intent(in):: km                    !< Restart z-dimension
+#endif
   integer, intent(in):: kn                    !< Run time dimension
 #ifdef SERIALIZE
   integer:: nq, ntp               !< Number of tracers (including H2O)
@@ -3827,7 +3929,11 @@ endif        ! end last_step check
 ! pe2: pressure at layer edges (from model top to bottom surface)
 !      in the new vertical coordinate
 
+#ifdef SERIALIZE
+ integer:: i1, i2, km, kn, kord, iv
+#else
  integer, intent(in):: i1, i2, km, kn, kord, iv
+#endif
  real, intent(in ):: pe1(i1:i2,km+1), pe2(i1:i2,kn+1) !< pe1: pressure at layer edges from model top to bottom
                                                       !!      surface in the ORIGINAL vertical coordinate
                                                       !< pe2: pressure at layer edges from model top to bottom
@@ -3951,7 +4057,11 @@ endif        ! end last_step check
 !>@details See \cite emanuel1994atmospheric for information on variable heat capacities.
  subroutine moist_cv(is,ie, isd,ied, jsd,jed, km, j, k, nwat, sphum, liq_wat, rainwat,    &
                      ice_wat, snowwat, graupel, q, qd, cvm, t1)
+#ifdef SERIALIZE
+  integer:: is, ie, isd,ied, jsd,jed, km, nwat, j, k
+#else
   integer, intent(in):: is, ie, isd,ied, jsd,jed, km, nwat, j, k
+#endif
   integer, intent(in):: sphum, liq_wat, rainwat, ice_wat, snowwat, graupel
   real, intent(in), dimension(isd:ied,jsd:jed,km,nwat):: q
   real, intent(out), dimension(is:ie):: cvm, qd
@@ -4036,7 +4146,11 @@ endif        ! end last_step check
  subroutine moist_cp(is,ie, isd,ied, jsd,jed, km, j, k, nwat, sphum, liq_wat, rainwat,    &
                      ice_wat, snowwat, graupel, q, qd, cpm, t1)
 
+#ifdef SERIALIZE
+  integer:: is, ie, isd,ied, jsd,jed, km, nwat, j, k
+#else
   integer, intent(in):: is, ie, isd,ied, jsd,jed, km, nwat, j, k
+#endif
   integer, intent(in):: sphum, liq_wat, rainwat, ice_wat, snowwat, graupel
   real, intent(in), dimension(isd:ied,jsd:jed,km,nwat):: q
   real, intent(out), dimension(is:ie):: cpm, qd
@@ -4132,7 +4246,11 @@ endif        ! end last_step check
       logical, intent(in) :: conserv
       integer, intent(in) :: j                 ! Current latitude
       integer, intent(in) :: ibeg, iend, jbeg, jend
+#ifdef SERIALIZE
+      integer :: km                ! Original vertical dimension
+#else
       integer, intent(in) :: km                ! Original vertical dimension
+#endif
       integer, intent(in) :: kn                ! Target vertical dimension
 
 #ifdef SERIALIZE
