@@ -24,7 +24,7 @@
 module fv_arrays_mod
 #include <fms_platform.h>
   use mpp_domains_mod,       only: domain2d
-  use fms_io_mod,            only: restart_file_type
+  use fms2_io_mod,           only: FmsNetcdfFile_t, FmsNetcdfDomainFile_t
   use time_manager_mod,      only: time_type
   use horiz_interp_type_mod, only: horiz_interp_type
   use mpp_domains_mod,       only: nest_domain_type
@@ -886,7 +886,7 @@ module fv_arrays_mod
                                 !<     1: GMAO linear
                                 !<     2: GMAO quadratic
                                 !<     3: GMAO cubic
- 
+
    logical :: gmao_top_bc = .false.  !< Optional upper BC in remapping of T or TE from GMAO (true or false)
 
    logical :: gmao_bot_bc = .false.  !< Optional lower BC in remapping of T or TE from GMAO (true or false)
@@ -1151,7 +1151,7 @@ module fv_arrays_mod
 
      !These are for tracer flux BCs
      logical :: do_flux_BCs, do_2way_flux_BCs !<For a parent grid; determine whether there is a need to send BCs
-     type(restart_file_type) :: BCfile_ne, BCfile_sw
+     type(FmsNetcdfFile_t) :: BCfile_ne, BCfile_sw
 
   end type fv_nest_type
 
@@ -1318,7 +1318,8 @@ module fv_arrays_mod
 !!!!!!!!!!!!!!
 ! From fv_io !
 !!!!!!!!!!!!!!
-     type(restart_file_type) :: Fv_restart, SST_restart, Fv_tile_restart, &
+     type(FmsNetcdfFile_t) :: Fv_restart
+     type(FmsNetcdfDomainFile_t) :: SST_restart, Fv_tile_restart, &
           Rsf_restart, Mg_restart, Lnd_restart, Tra_restart
 
      type(fv_nest_type) :: neststruct

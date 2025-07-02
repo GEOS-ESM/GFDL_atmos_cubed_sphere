@@ -89,6 +89,9 @@ target_compile_definitions (${this} PRIVATE MOIST_CAPPA USE_COND)
 ecbuild_info("This sets the INTERNAL_FILE_NML preprocessor variable")
 target_compile_definitions (${this} PRIVATE INTERNAL_FILE_NML)
 
+ecbuild_info("This sets the NO_GFDL_SHARED preprocessor variable")
+target_compile_definitions (${this} PRIVATE NO_GFDL_SHARED)
+
 esma_add_subdirectories(
   model/mapz-driver
   model/tp-core-driver)
