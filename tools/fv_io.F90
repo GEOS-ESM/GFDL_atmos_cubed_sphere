@@ -258,7 +258,7 @@ contains
     enddo
     if (file_exists('INPUT'//trim(fname))) then
       !call restore_state(Tra_restart_r)
-      call free_restart_type(Tra_restart_r)
+      !call free_restart_type(Tra_restart_r)
     else
       call mpp_error(NOTE,'==> Warning from fv_io_read_tracers: Expected file '//trim(fname)//' does not exist')
     endif
@@ -367,11 +367,11 @@ contains
                      !domain=fv_domain, tile_count=n)
        !call  register_restart_field(Fv_tile_restart_r, fname, 'phis', Atm(n)%phis, &
                      !domain=fv_domain, tile_count=n)
-       call restore_state(FV_tile_restart_r)
-       call free_restart_type(FV_tile_restart_r)
+       !call restore_state(FV_tile_restart_r)
+       !call free_restart_type(FV_tile_restart_r)
        fname = 'INPUT/fv_srf_wnd.res'//trim(stile_name)//'.nc'
        if (file_exists(fname)) then
-         call restore_state(Atm(n)%Rsf_restart)
+         !call restore_state(Atm(n)%Rsf_restart)
          Atm(n)%flagstruct%srf_init = .true.
        else
          call mpp_error(NOTE,'==> Warning from remap_restart: Expected file '//trim(fname)//' does not exist')
@@ -382,14 +382,14 @@ contains
 !--- restore data for mg_drag - if it exists
          fname = 'INPUT/mg_drag.res'//trim(stile_name)//'.nc'
          if (file_exists(fname)) then
-           call restore_state(Atm(n)%Mg_restart)
+           !call restore_state(Atm(n)%Mg_restart)
          else
            call mpp_error(NOTE,'==> Warning from remap_restart: Expected file '//trim(fname)//' does not exist')
          endif
 !--- restore data for fv_land - if it exists
          fname = 'INPUT/fv_land.res'//trim(stile_name)//'.nc'
          if (file_exists(fname)) then
-           call restore_state(Atm(n)%Lnd_restart)
+           !call restore_state(Atm(n)%Lnd_restart)
          else
            call mpp_error(NOTE,'==> Warning from remap_restart: Expected file '//trim(fname)//' does not exist')
          endif
@@ -409,8 +409,8 @@ contains
             !call register_restart_field(Tra_restart_r, fname, tracer_name, qdiag_r(:,:,:,nt), &
                          !domain=fv_domain, mandatory=.false., tile_count=n)
          enddo
-         call restore_state(Tra_restart_r)
-         call free_restart_type(Tra_restart_r)
+         !call restore_state(Tra_restart_r)
+         !call free_restart_type(Tra_restart_r)
        else
          call mpp_error(NOTE,'==> Warning from remap_restart: Expected file '//trim(fname)//' does not exist')
        endif
@@ -1004,8 +1004,8 @@ contains
   subroutine fv_io_read_BCs(Atm)
     type(fv_atmos_type), intent(inout) :: Atm
 
-    call restore_state_border(Atm%neststruct%BCfile_ne)
-    call restore_state_border(Atm%neststruct%BCfile_sw)
+    !call restore_state_border(Atm%neststruct%BCfile_ne)
+    !call restore_state_border(Atm%neststruct%BCfile_sw)
 
     return
   end subroutine fv_io_read_BCs

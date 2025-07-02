@@ -146,7 +146,7 @@ module fv_grid_tools_mod
                                SCALAR_PAIR,              &
                                CORNER, CENTER, XUPDATE
   use fms2_io_mod,      only: file_exists, get_global_attribute, get_variable_attribute, variable_exists, read_data, &
-                              get_mosaic_tile_grid, FmsNetcdfFile_t, open_file
+                              get_mosaic_tile_grid, FmsNetcdfFile_t, open_file, close_file
   use mosaic2_mod,       only : get_mosaic_ntiles
 
   implicit none
