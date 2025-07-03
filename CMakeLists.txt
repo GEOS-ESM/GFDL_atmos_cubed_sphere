@@ -89,8 +89,18 @@ target_compile_definitions (${this} PRIVATE MOIST_CAPPA USE_COND)
 ecbuild_info("This sets the INTERNAL_FILE_NML preprocessor variable")
 target_compile_definitions (${this} PRIVATE INTERNAL_FILE_NML)
 
-ecbuild_info("This sets the NO_GFDL_SHARED preprocessor variable")
-target_compile_definitions (${this} PRIVATE NO_GFDL_SHARED)
+include(check_fms1_io_support)
+check_fms1_io_support(FMS1_IO_SUPPORTED)
+if(FMS1_IO_SUPPORTED)
+  message(STATUS "Using deprecated FMS1 I/O for ${this}")
+  target_compile_definitions (${this} PRIVATE FMS1_IO)
+  target_compile_definitions (interp_restarts.x PRIVATE FMS1_IO)
+  target_compile_definitions (interp_restarts_bin.x PRIVATE FMS1_IO)
+else()
+  message(STATUS "Using FMS2 I/O for ${this}")
+  ecbuild_info("This sets the NO_GFDL_SHARED preprocessor variable")
+  target_compile_definitions (${this} PRIVATE NO_GFDL_SHARED)
+endif()
 
 esma_add_subdirectories(
   model/mapz-driver

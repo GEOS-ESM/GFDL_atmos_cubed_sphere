@@ -118,7 +118,12 @@ module fv_control_mod
    use field_manager_mod,   only: MODEL_ATMOS
    use fms_mod,             only: write_version_number, &
                                   check_nml_error
+#if defined (FMS1_IO)
+   use fms_mod,             only: open_namelist_file, &
+                                  close_file, file_exists => file_exist
+#else
    use fms2_io_mod,         only: file_exists, close_file
+#endif
    use mpp_mod,             only: FATAL, mpp_error, mpp_pe, stdlog, &
                                   mpp_npes, mpp_get_current_pelist, &
                                   input_nml_file, get_unit, WARNING, &

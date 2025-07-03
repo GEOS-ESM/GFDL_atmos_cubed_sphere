@@ -5,11 +5,19 @@ module external_ic_mod
 #endif
 
 #ifndef DYCORE_SOLO
+#if defined (FMS1_IO)
+   use amip_interp_mod,    only: i_sst, j_sst, sst_ncep
+#else
    use external_sst_mod,    only: i_sst, j_sst, sst_ncep
 #endif
+#endif
    use fv_arrays_mod,      only: REAL4, REAL8, FVPRC, R_GRID
+#if defined (FMS1_IO)
+   use fms_mod,            only: file_exists => file_exist, read_data, variable_exists => field_exist
+   use fms_io_mod,         only: get_tile_string, field_size
+#else
    use fms2_io_mod,        only: file_exists, variable_exists, read_data
-   !use fms_io_mod,         only: get_tile_string, field_size
+#endif
    use mpp_mod,            only: mpp_error, FATAL, NOTE, mpp_broadcast,mpp_npes
    use mpp_parameter_mod,  only: AGRID_PARAM=>AGRID
    use mpp_domains_mod,    only: mpp_get_tile_id, domain2d, mpp_update_domains, mpp_get_boundary, DGRID_NE
@@ -169,7 +177,9 @@ contains
 
       do n=1,ntileMe
 
-         !call get_tile_string(fname, 'INPUT/fv_core.res.tile', tile_id(n), '.nc' )
+#if defined (FMS1_IO)
+         call get_tile_string(fname, 'INPUT/fv_core.res.tile', tile_id(n), '.nc' )
+#endif
 
          if( file_exists(fname) ) then
             call read_data(fname, 'phis', Atm(n)%phis(is:ie,js:je),      &
@@ -1939,7 +1949,9 @@ contains
       fname = Atm(1)%res_latlon_dynamics
 
       if( file_exists(fname) ) then
-         !call field_size(fname, 'T', tsize, field_found=found)
+#if defined (FMS1_IO)
+         call field_size(fname, 'T', tsize, field_found=found)
+#endif
          if(is_master()) write(*,*) 'Using lat-lon FV restart:', fname
 
          if ( found ) then

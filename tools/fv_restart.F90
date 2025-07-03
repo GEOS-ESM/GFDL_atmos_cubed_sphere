@@ -48,7 +48,7 @@ module fv_restart_mod
 !   </tr>
 !   <tr>
 !     <td>fms_mod</td>
-!     <td>file_exists</td>
+!     <td>file_exist</td>
 !   </tr>
 !   <tr>
 !     <td>fv_arrays_mod</td>
@@ -162,7 +162,11 @@ module fv_restart_mod
   use boundary_mod,        only: fill_nested_grid, nested_grid_BC, update_coarse_grid
   use field_manager_mod,   only: MODEL_ATMOS
   use fv_timing_mod,       only: timing_on, timing_off
+#if defined (FMS1_IO)
+  use fms_mod,             only: file_exists => file_exist
+#else
   use fms2_io_mod,       only: file_exists
+#endif
   use fv_treat_da_inc_mod, only: read_da_inc
 
   implicit none
@@ -240,8 +244,10 @@ contains
              Atm(n)%flagstruct%warm_start = .false. !resetting warm_start flag to avoid FATAL error below
           else
              if (is_master()) print*, 'Searching for nested grid restart file ', trim(fname)
-             !cold_start_grids(n) = .not. file_exists(fname, Atm(n)%domain)
-             !Atm(n)%flagstruct%warm_start = file_exists(fname, Atm(n)%domain)!resetting warm_start flag to avoid FATAL error below
+#if defined (FMS1_IO)
+             cold_start_grids(n) = .not. file_exists(fname, Atm(n)%domain)
+             Atm(n)%flagstruct%warm_start = file_exists(fname, Atm(n)%domain)!resetting warm_start flag to avoid FATAL error below
+#endif
           endif
        endif
 
@@ -271,13 +277,15 @@ contains
                 if (is_master()) print*, 'Searching for nested grid BC files ', trim(fname_ne), ' ', trim (fname_sw)
 
                 !!!! PROBLEM: file_exists doesn't know to look for fv_BC_ne.res.nest02.nc instead of fv_BC_ne.res.nc on coarse grid
-                !if (file_exists(fname_ne, Atm(n)%domain) .and. file_exists(fname_sw, Atm(n)%domain)) then
-                !else
+#if defined (FMS1_IO)
+                if (file_exists(fname_ne, Atm(n)%domain) .and. file_exists(fname_sw, Atm(n)%domain)) then
+                else
                    if ( is_master() ) write(*,*) 'BC files not found, re-generating nested grid boundary conditions'
                    call fill_nested_grid_topo_halo(Atm(n), .false.)
                    call setup_nested_boundary_halo(Atm(n), .false.)
                    Atm(N)%neststruct%first_step = .true.
-                !endif
+                endif
+#endif                
              end if
 
              if (.not. Atm(n)%flagstruct%hydrostatic .and. Atm(n)%flagstruct%make_nh .and. &
@@ -377,14 +385,16 @@ contains
              else
                 !If BC file is found, then read them in. Otherwise we need to initialize the BCs.
                 if (is_master()) print*, 'Searching for nested grid BC files ', trim(fname_ne), ' ', trim (fname_sw)
-                !if (file_exists(fname_ne, Atm(n)%domain) .and. file_exists(fname_sw, Atm(n)%domain)) then
-                   !call fv_io_read_BCs(Atm(n))
-                !else
+#if defined (FMS1_IO)
+                if (file_exists(fname_ne, Atm(n)%domain) .and. file_exists(fname_sw, Atm(n)%domain)) then
+                   call fv_io_read_BCs(Atm(n))
+                else
                    if ( is_master() ) write(*,*) 'BC files not found, re-generating nested grid boundary conditions'
                    call fill_nested_grid_topo_halo(Atm(n), .true.)
                    call setup_nested_boundary_halo(Atm(n), .true.)
                    Atm(N)%neststruct%first_step = .true.
-                !endif
+                endif
+#endif
                 !Following line to make sure u and v are consistent across processor subdomains
                 call mpp_update_domains(Atm(n)%u, Atm(n)%v, Atm(n)%domain, gridtype=DGRID_NE, complete=.true.)
              endif

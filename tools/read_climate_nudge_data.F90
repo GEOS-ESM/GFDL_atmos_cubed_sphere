@@ -4,7 +4,11 @@ module read_climate_nudge_data_mod
 use fms_mod, only: check_nml_error, &
                    stdlog, mpp_pe, mpp_root_pe, write_version_number, &
                    string, error_mesg, FATAL, NOTE
+#if defined (FMS1_IO)
+use fms_mod, only: open_namelist_file, close_file, file_exists => file_exist
+#else
 use fms2_io_mod, only: file_exists, close_file
+#endif
 use mpp_mod, only: input_nml_file
 use mpp_io_mod,    only: mpp_open, MPP_NETCDF, MPP_RDONLY,MPP_MULTI, MPP_SINGLE
 use mpp_io_mod,    only: axistype, fieldtype, mpp_get_time_axis, mpp_get_atts

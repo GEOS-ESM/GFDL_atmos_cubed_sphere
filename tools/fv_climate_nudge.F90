@@ -5,7 +5,12 @@ use fms_mod,          only: check_nml_error,  &
                             stdlog, mpp_pe, mpp_root_pe, &
                             write_version_number, string, error_mesg, &
                             FATAL, WARNING, NOTE
+#if defined (FMS1_IO)
+use fms_mod,          only: open_namelist_file, close_file, &
+                            file_exists => file_exist
+#else
 use fms2_io_mod,      only: file_exists, close_file
+#endif
 use mpp_mod,          only: input_nml_file
 use diag_manager_mod, only: register_diag_field, send_data,   &
                             register_static_field

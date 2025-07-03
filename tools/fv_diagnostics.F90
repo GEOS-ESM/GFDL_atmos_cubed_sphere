@@ -115,6 +115,9 @@ module fv_diagnostics_mod
  use constants_mod,      only: grav, rdgas, rvgas, pi=>pi_8, radius, kappa, WTMAIR, WTMCO2, &
                                omega, hlv, cp_air, cp_vapor
  use fms_mod,            only: write_version_number
+#if defined (FMS1_IO)
+ use fms_io_mod,         only: set_domain, nullify_domain
+#endif
  use time_manager_mod,   only: time_type, get_date, get_time
  use mpp_domains_mod,    only: domain2d, mpp_update_domains, DGRID_NE
  use diag_manager_mod,   only: diag_axis_init, register_diag_field, &
@@ -230,6 +233,10 @@ contains
 
     ncnst = Atm(1)%ncnst
     m_calendar = Atm(1)%flagstruct%moist_phys
+
+#if defined (FMS1_IO)
+    call set_domain(Atm(1)%domain)  ! Set domain so that diag_manager can access tile information
+#endif
 
     sphum   = get_tracer_index (MODEL_ATMOS, 'sphum')
     liq_wat = get_tracer_index (MODEL_ATMOS, 'liq_wat')
@@ -997,6 +1004,10 @@ contains
                       Atm(n)%ps, Atm(n)%delp, Atm(n)%q, Atm(n)%gridstruct%area_64, Atm(n)%domain)
 #endif
 
+#if defined (FMS1_IO)
+    call nullify_domain()  ! Nullify  set_domain info
+#endif
+
     module_is_initialized=.true.
     istep = 0
  end subroutine fv_diag_init
@@ -1144,6 +1155,9 @@ contains
     endif
 
     fv_time = Time
+#if defined (FMS1_IO)
+    call set_domain(Atm(1)%domain)
+#endif
 
     if ( m_calendar ) then
          call get_date(fv_time, yr, mon, dd, hr, mn, seconds)
@@ -3005,7 +3019,9 @@ contains
     if (allocated(dmmr)) deallocate(dmmr)
     if (allocated(dvmr)) deallocate(dvmr)
 
-
+#if defined (FMS1_IO)
+    call nullify_domain()
+#endif
 
  end subroutine fv_diag
 

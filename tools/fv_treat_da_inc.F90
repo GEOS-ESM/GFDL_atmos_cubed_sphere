@@ -59,7 +59,7 @@ module fv_treat_da_inc_mod
 !   </tr>
 !   <tr>
 !     <td>fms_mod</td>
-!     <td>file_exists, open_namelist_file,close_file, error_mesg, FATAL,
+!     <td>file_exist, open_namelist_file,close_file, error_mesg, FATAL,
 !         check_nml_error, stdlog,write_version_number,set_domain,
 !         mpp_clock_id, mpp_clock_begin, mpp_clock_end, CLOCK_SUBCOMPONENT,
 !         clock_flag_default, nullify_domain</td>
@@ -80,7 +80,7 @@ module fv_treat_da_inc_mod
 !   </tr>
 !   <tr>
 !     <td>fms_mod</td>
-!     <td>file_exists, read_data, field_exist, write_version_number</td>
+!     <td>file_exist, read_data, field_exist, write_version_number</td>
 !   </tr>
 !   <tr>
 !     <td>fv_mp_mod</td>
@@ -106,7 +106,12 @@ module fv_treat_da_inc_mod
 ! </table>
 
   use fms_mod,           only: write_version_number
+#if defined (FMS1_IO)
+  use fms_mod,           only: file_exists => file_exist, read_data, &
+                               field_exist
+#else
   use fms2_io_mod,       only: file_exists, read_data
+#endif
   use mpp_mod,           only: mpp_error, FATAL, NOTE, mpp_pe
   use mpp_domains_mod,   only: mpp_get_tile_id, &
                                domain2d, &

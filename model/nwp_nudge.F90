@@ -15,7 +15,13 @@ module nwp_nudge_mod
  use mpp_mod,           only: mpp_error, FATAL, stdlog
  use fms_mod,           only: write_version_number, &
                               check_nml_error
+#if defined (FMS1_IO)
+ use fms_mod,           only: open_namelist_file, &
+                              file_exists => file_exist, &
+                              close_file, read_data, field_exist 
+#else
  use fms2_io_mod,       only: file_exists, close_file, variable_exists, read_data
+#endif
  use fms_io_mod,        only: field_size
  use mpp_domains_mod,   only: mpp_update_domains
 

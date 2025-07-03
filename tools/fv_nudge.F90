@@ -50,7 +50,7 @@ module fv_nwp_nudge_mod
 !   <tr>
 !     <td>fms_mod</td>
 !     <td>write_version_number, open_namelist_file, check_nml_error,
-!         file_exists, close_file</td>
+!         file_exist, close_file</td>
 !   </tr>
 !   <tr>
 !     <td>fv_arrays_mod</td>
@@ -105,7 +105,12 @@ module fv_nwp_nudge_mod
  use constants_mod,     only: pi=>pi_8, grav, rdgas, cp_air, kappa, cnst_radius =>radius
  use fms_mod,           only: write_version_number, &
                               check_nml_error
+#if defined (FMS1_IO)
+ use fms_mod,           only: open_namelist_file, &
+                              check_nml_error, file_exists => file_exist, close_file
+#else
  use fms2_io_mod,       only: file_exists, close_file
+#endif
 !use fms_io_mod,        only: field_size
  use mpp_mod,           only: mpp_error, FATAL, stdlog, get_unit, mpp_pe, input_nml_file
  use mpp_domains_mod,   only: mpp_update_domains, domain2d

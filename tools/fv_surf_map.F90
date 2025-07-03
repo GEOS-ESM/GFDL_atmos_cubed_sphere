@@ -32,7 +32,7 @@
 !   </tr>
 !   <tr>
 !     <td>fms_mod</td>
-!     <td>file_exists, check_nml_error,open_namelist_file, close_file,
+!     <td>file_exist, check_nml_error,open_namelist_file, close_file,
 !         stdlog, mpp_pe, mpp_root_pe, FATAL, error_mesg</td>
 !   </tr>
 !   <tr>
@@ -66,7 +66,12 @@
       use fms_mod,           only: check_nml_error,            &
                                    stdlog, &
                                    mpp_pe, mpp_root_pe, FATAL, error_mesg
+#if defined (FMS1_IO)
+      use fms_mod,           only: file_exists => file_exist, &
+                                   open_namelist_file, close_file
+#else
       use fms2_io_mod,       only: file_exists, close_file
+#endif
       use mpp_mod,           only: get_unit, input_nml_file, mpp_error
       use mpp_domains_mod,   only: mpp_update_domains, domain2d
       use constants_mod,     only: grav, radius, pi=>pi_8

@@ -136,7 +136,9 @@ module fv_grid_tools_mod
                                mpp_get_data_domain, mpp_get_compute_domain, &
                                mpp_get_global_domain, mpp_global_sum, mpp_global_max, mpp_global_min
  use mpp_domains_mod,    only: domain2d
-
+#if defined (FMS1_IO)
+  use mpp_io_mod,        only: mpp_get_att_value     
+#endif
   use mpp_parameter_mod, only: AGRID_PARAM=>AGRID,       &
                                DGRID_NE_PARAM=>DGRID_NE, &
                                CGRID_NE_PARAM=>CGRID_NE, &
@@ -145,9 +147,16 @@ module fv_grid_tools_mod
                                BGRID_SW_PARAM=>BGRID_SW, &
                                SCALAR_PAIR,              &
                                CORNER, CENTER, XUPDATE
+#if defined (FMS1_IO)
+  use fms_mod,           only: get_mosaic_tile_grid
+  use fms_io_mod,        only: file_exists => file_exist, field_exist, read_data, &
+                               get_global_att_value, get_var_att_value
+  use mosaic_mod,       only : get_mosaic_ntiles
+#else
   use fms2_io_mod,      only: file_exists, get_global_attribute, get_variable_attribute, variable_exists, read_data, &
                               get_mosaic_tile_grid, FmsNetcdfFile_t, open_file, close_file
   use mosaic2_mod,       only : get_mosaic_ntiles
+#endif
 
   implicit none
   private
@@ -182,7 +191,9 @@ contains
     integer,             intent(IN)    :: nregions
     integer,             intent(IN)    :: ng
 
+#if !defined (FMS1_IO)
     type(FmsNetcdfFile_t) :: Grid_input
+#endif
     real, allocatable, dimension(:,:)  :: tmpx, tmpy
     real(kind=R_GRID), pointer, dimension(:,:,:)    :: grid
     character(len=128)                 :: units = ""
@@ -208,8 +219,12 @@ contains
          trim(grid_file)//' does not exist')
 
     !--- make sure the grid file is mosaic file.
+#if defined(FMS1_IO)
+    if( field_exist(grid_file, 'atm_mosaic_file') .OR. field_exist(grid_file, 'gridfiles') ) then
+#else
     if ( open_file(Grid_input, grid_file, "read") ) then
       if( variable_exists(Grid_input, 'atm_mosaic_file') .OR. variable_exists(Grid_input, 'gridfiles') ) then
+#endif
          stdunit = stdout()
          write(stdunit,*) '==>Note from fv_grid_tools_mod(read_grid): read atmosphere grid from mosaic version grid'
       else
@@ -217,24 +232,42 @@ contains
                //trim(grid_file))
       endif
 
+#if defined (FMS1_IO)
+    if(field_exist(grid_file, 'atm_mosaic_file')) then
+       call read_data(grid_file, "atm_mosaic_file", atm_mosaic)
+#else
       if(variable_exists(Grid_input, 'atm_mosaic_file')) then
          call read_data(Grid_input, "atm_mosaic_file", atm_mosaic)
+#endif
          atm_mosaic = "INPUT/"//trim(atm_mosaic)
       else
          atm_mosaic = trim(grid_file)
       endif
+#if !defined (FMS1_IO)
       call close_file(Grid_input)
     endif
+#endif
 
     call get_mosaic_tile_grid(atm_hgrid, atm_mosaic, Atm%domain)
+#if defined (FMS1_IO)
+    !FIXME: Doesn't work for a nested grid
+    ntiles = get_mosaic_ntiles(atm_mosaic)
+#else
     if (open_file(Grid_input, atm_mosaic, "read")) then
        ntiles = get_mosaic_ntiles(Grid_input)
        call close_file(Grid_input)
     endif
+#endif
     grid_form = "none"
+#if defined (FMS1_IO)
+    if( get_global_att_value(atm_hgrid, "history", attvalue) ) then
+       if( index(attvalue, "gnomonic_ed") > 0) grid_form = "gnomonic_ed"
+    endif
+#else
     if (open_file(Grid_input, atm_hgrid, "read")) then
        call get_global_attribute(Grid_input, "history", attvalue)
        if( index(attvalue, "gnomonic_ed") > 0) grid_form = "gnomonic_ed"
+#endif
     if(grid_form .NE. "gnomonic_ed") call mpp_error(FATAL, &
          "fv_grid_tools(read_grid): the grid should be 'gnomonic_ed' when reading from grid file, contact developer")
 
@@ -243,7 +276,11 @@ contains
     if(nregions .NE. 6) call mpp_error(FATAL, &
        'fv_grid_tools(read_grid): nregions should be 6 when reading from mosaic file '//trim(grid_file) )
 
+#if defined (FMS1_IO)
+    call get_var_att_value(atm_hgrid, 'x', 'units', units)
+#else
     call get_variable_attribute(Grid_input, 'x', 'units', units)
+#endif
 
     !--- get the geographical coordinates of super-grid.
     isc2 = 2*is-1; iec2 = 2*ie+1
@@ -253,10 +290,15 @@ contains
     start = 1; nread = 1
     start(1) = isc2; nread(1) = iec2 - isc2 + 1
     start(2) = jsc2; nread(2) = jec2 - jsc2 + 1
+#if defined (FMS1_IO)
+    call read_data(atm_hgrid, 'x', tmpx, start, nread, no_domain=.TRUE.)
+    call read_data(atm_hgrid, 'y', tmpy, start, nread, no_domain=.TRUE.)
+#else
     call read_data(Grid_input, 'x', tmpx, corner=start, edge_lengths=nread)
     call read_data(Grid_input, 'y', tmpy, corner=start, edge_lengths=nread)
     call close_file(Grid_input)
     endif
+#endif
 
     !--- geographic grid at cell corner
     grid(isd: is-1, jsd:js-1,1:ndims)=0.

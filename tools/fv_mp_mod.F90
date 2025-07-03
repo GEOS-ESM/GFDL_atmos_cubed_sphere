@@ -93,6 +93,9 @@
       use mpp_domains_mod, only : group_halo_update_type => mpp_group_update_type
       use mpp_parameter_mod, only : WUPDATE, EUPDATE, SUPDATE, NUPDATE, XUPDATE, YUPDATE
       use fv_arrays_mod, only: fv_atmos_type
+#if defined (FMS1_IO)
+      use fms_io_mod, only: set_domain
+#endif
       use mpp_mod, only : mpp_get_current_pelist
       use mpp_domains_mod, only : mpp_define_domains
       use mpp_domains_mod, only : mpp_define_nest_domains, nest_domain_type
@@ -1001,6 +1004,9 @@ subroutine switch_current_domain(new_domain,new_domain_for_coupler)
 !  if (debug .AND. (gid==masterproc)) write(*,200) tile, is, ie, js, je
 !200 format('New domain: ', i4.4, ' ', i4.4, ' ', i4.4, ' ', i4.4, ' ', i4.4, ' ')
 
+#if defined (FMS1_IO)
+  call set_domain(new_domain)
+#endif
 
 end subroutine switch_current_domain
 
