@@ -44,13 +44,13 @@ module fv_io_mod
 !   </tr>
 !   <tr>
 !     <td>fms_mod</td>
-!     <td>file_exist</td>
+!     <td>file_exists</td>
 !   </tr>
 !   <tr>
 !     <td>fms_io_mod</td>
 !     <td>fms_io_exit, get_tile_string,restart_file_type,
 !         register_restart_field, save_restart, restore_state,
-!         set_domain, nullify_domain, set_filename_appendix, 
+!         nullify_domain, set_filename_appendix,
 !         get_mosaic_tile_file, get_instance_filename,
 !         save_restart_border, restore_state_border,
 !         free_restart_type,field_exist</td>
@@ -405,7 +405,8 @@ contains
 #if defined (FMS1_IO)
              id_restart =  register_restart_field(Fv_tile_restart_r, fname, 'ZE0', ze0_r, &
                            domain=fv_domain, mandatory=.false., tile_count=n)
-#endif          endif
+#endif
+          endif
        endif
 #if defined (FMS1_IO)
        id_restart =  register_restart_field(Fv_tile_restart_r, fname, 'T', pt_r, &
@@ -421,7 +422,7 @@ contains
        if (file_exists(fname)) then
 #if defined (FMS1_IO)
          call restore_state(Atm(n)%Rsf_restart)
-#endif         
+#endif
          Atm(n)%flagstruct%srf_init = .true.
        else
          call mpp_error(NOTE,'==> Warning from remap_restart: Expected file '//trim(fname)//' does not exist')
@@ -443,7 +444,8 @@ contains
          if (file_exists(fname)) then
 #if defined (FMS1_IO)
            call restore_state(Atm(n)%Lnd_restart)
-#endif         else
+#endif
+         else
            call mpp_error(NOTE,'==> Warning from remap_restart: Expected file '//trim(fname)//' does not exist')
          endif
        endif
