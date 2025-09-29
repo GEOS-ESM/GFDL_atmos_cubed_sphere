@@ -51,7 +51,7 @@ module fv_diagnostics_mod
 !   </tr>
 !   <tr>
 !     <td>fms_io_mod</td>
-!     <td>set_domain, nullify_domain, write_version_number</td>
+!     <td>set_domain, nullify_domain</td>
 !   </tr>
 !   <tr>
 !     <td>fv_arrays_mod</td>
@@ -91,10 +91,6 @@ module fv_diagnostics_mod
 !     <td>timing_on, timing_off</td>
 !   </tr>
 !   <tr>
-!     <td>gfdl_lin_cloud_microphys_mod</td>
-!     <td>wqs1, qsmith_init</td>
-!   </tr>
-!   <tr>
 !     <td>mpp_mod</td>
 !     <td>mpp_error, FATAL, stdlog, mpp_pe, mpp_root_pe, mpp_sum, mpp_max, NOTE</td>
 !   </tr>
@@ -119,7 +115,7 @@ module fv_diagnostics_mod
  use constants_mod,      only: grav, rdgas, rvgas, pi=>pi_8, radius, kappa, WTMAIR, WTMCO2, &
                                omega, hlv, cp_air, cp_vapor
  use fms_mod,            only: write_version_number
- use fms_io_mod,         only: set_domain, nullify_domain, write_version_number
+ use fms_io_mod,         only: set_domain, nullify_domain
  use time_manager_mod,   only: time_type, get_date, get_time
  use mpp_domains_mod,    only: domain2d, mpp_update_domains, DGRID_NE
  use diag_manager_mod,   only: diag_axis_init, register_diag_field, &
@@ -141,7 +137,8 @@ module fv_diagnostics_mod
  use sat_vapor_pres_mod, only: compute_qs, lookup_es
 
  use fv_arrays_mod, only: max_step 
- use gfdl_lin_cloud_microphys_mod, only: wqs1, qsmith_init
+
+ use ieee_arithmetic
 
  implicit none
  private
@@ -1007,9 +1004,6 @@ contains
 
     module_is_initialized=.true.
     istep = 0
-#ifndef GFS_PHYS
-    if(idiag%id_theta_e >0 ) call qsmith_init
-#endif
  end subroutine fv_diag_init
 
 
@@ -2069,7 +2063,7 @@ contains
           enddo
           used = send_data(idiag%id_mq, a2, Time)
           if( prt_minmax ) then
-              tot_mq  = g_sum( Atm(n)%domain, a2, isc, iec, jsc, jec, ngc, Atm(n)%gridstruct%area_64, 0) 
+              tot_mq  = g_sum( Atm(n)%domain, a2, isc, iec, jsc, jec, ngc, Atm(n)%gridstruct%area_64, 0, quicksum=.true.) 
               idiag%mtq_sum = idiag%mtq_sum + tot_mq
               if ( idiag%steps <= max_step ) idiag%mtq(idiag%steps) = tot_mq
               if(master) write(*,*) 'Total (global) mountain torque (Hadleys)=', tot_mq
@@ -2412,7 +2406,7 @@ contains
           enddo
           used=send_data(idiag%id_ke, a2, Time)
           if(prt_minmax) then
-             tot_mq  = g_sum( Atm(n)%domain, a2, isc, iec, jsc, jec, ngc, Atm(n)%gridstruct%area_64, 1) 
+             tot_mq  = g_sum( Atm(n)%domain, a2, isc, iec, jsc, jec, ngc, Atm(n)%gridstruct%area_64, 1, quicksum=.true.) 
              if (master) write(*,*) 'SQRT(2.*KE; m/s)=', sqrt(2.*tot_mq)  
           endif
        endif
@@ -3140,6 +3134,11 @@ contains
       integer i,j,k
 
       if ( present(bad_range) ) bad_range = .false. 
+      if (any(.not.ieee_is_finite(q))) then
+         qmax = huge(1.0)
+         qmin = -qmax
+      else
+
       qmin = q(is,js,1)
       qmax = qmin
 
@@ -3154,14 +3153,16 @@ contains
           enddo
       enddo
       enddo
+      endif
 
       call mp_reduce_min(qmin)
       call mp_reduce_max(qmax)
 
       if( qmin<q_low .or. qmax>q_hi ) then
-          if(master) write(*,*) 'Range_check Warning:', qname, ' max = ', qmax, ' min = ', qmin
           if ( present(bad_range) ) then
                bad_range = .true. 
+          else
+               if(master) write(*,*) 'Range_check Warning:', qname, ' max = ', qmax, ' min = ', qmin
           endif
       endif
 
@@ -3171,11 +3172,8 @@ contains
          do k=1,km
             do j=js,je
                do i=is,ie
-                  if( q(i,j,k)<q_low .or. q(i,j,k)>q_hi ) then
-                      write(6,106) qname, i, j, k, q(i,j,k), pos(i,j,1)*rad2deg, pos(i,j,2)*rad2deg
-                    ! write(*,*) 'Warn_K=',k,'(i,j)=',i,j, pos(i,j,1)*rad2deg, pos(i,j,2)*rad2deg, q(i,j,k)
-                    ! if ( k/= 1 ) write(*,*) k-1, q(i,j,k-1)
-                    ! if ( k/=km ) write(*,*) k+1, q(i,j,k+1)
+                  if( q(i,j,k)<q_low .or. q(i,j,k)>q_hi .or. .not.ieee_is_finite(q(i,j,k))) then
+                     write(6,106) qname, i, j, k, q(i,j,k), pos(i,j,1)*rad2deg, pos(i,j,2)*rad2deg
                   endif
                enddo
             enddo
@@ -3261,11 +3259,9 @@ contains
       call mp_reduce_min(qmin)
       call mp_reduce_max(qmax)
 
-! SJL: BUG!!!
-!     gmean = g_sum(domain, q(is,js,km), is, ie, js, je, 3, area, 1) 
-      gmean = g_sum(domain, q(is:ie,js:je,km), is, ie, js, je, 3, area, 1) 
+      gmean = g_sum(domain, q(is:ie,js:je,km), is, ie, js, je, 3, area, 1, quicksum=.true.) 
 
-      if(master) write(6,*) qname, gn, qmax*fac, qmin*fac, gmean*fac
+      if(master) write(6,*) qname//trim(gn), qmax*fac, qmin*fac, gmean*fac
 
  end subroutine prt_mxm
 
@@ -3296,7 +3292,7 @@ contains
     graupel = get_tracer_index (MODEL_ATMOS, 'graupel')
 
  if ( nwat==0 ) then
-      psmo = g_sum(domain, ps(is:ie,js:je), is, ie, js, je, n_g, area, 1) 
+      psmo = g_sum(domain, ps(is:ie,js:je), is, ie, js, je, n_g, area, 1, quicksum=.true.)
       if( master ) write(*,*) 'Total surface pressure (mb)', trim(gn), ' = ',  0.01*psmo
       call z_sum(is, ie, js, je, km, n_g, delp, q(is-n_g,js-n_g,1,1  ), psqv(is,js)) 
       return
@@ -3329,7 +3325,7 @@ contains
     kstrat = k
  enddo
  call z_sum(is, ie, js, je, kstrat, n_g, delp, q(is-n_g,js-n_g,1,sphum), q_strat(is,js)) 
- psmo = g_sum(domain, q_strat(is,js), is, ie, js, je, n_g, area, 1) * 1.e6           &
+ psmo = g_sum(domain, q_strat, is, ie, js, je, n_g, area, 1, quicksum=.true.) * 1.e6 &
       / p_sum(is, ie, js, je, kstrat, n_g, delp, area, domain)
  if(master) write(*,*) 'Mean specific humidity (mg/kg) above 75 mb', trim(gn), '=', psmo
  endif
@@ -3338,10 +3334,10 @@ contains
 !-------------------
 ! Check global means
 !-------------------
- psmo = g_sum(domain, ps(is:ie,js:je), is, ie, js, je, n_g, area, 1) 
+ psmo = g_sum(domain, ps(is:ie,js:je), is, ie, js, je, n_g, area, 1, quicksum=.true.) 
 
  do n=1,nwat
-    qtot(n) = g_sum(domain, psq(is,js,n), is, ie, js, je, n_g, area, 1) 
+    qtot(n) = g_sum(domain, psq(is:ie,js:je,n), is, ie, js, je, n_g, area, 1, quicksum=.true.) 
  enddo
 
  totw  = sum(qtot(1:nwat))
@@ -3412,7 +3408,7 @@ contains
        enddo
     enddo
  enddo
- p_sum = g_sum(domain, sum2, is, ie, js, je, n_g, area, 1)
+ p_sum = g_sum(domain, sum2, is, ie, js, je, n_g, area, 1, quicksum=.true.)
 
  end function p_sum
 
@@ -4657,7 +4653,7 @@ end subroutine eqv_pot
      enddo
   enddo
 
-  psm = g_sum(domain, te, is, ie, js, je, 3, area_l, 1) 
+  psm = g_sum(domain, te, is, ie, js, je, 3, area_l, 1, quicksum=.true.) 
   if( master ) write(*,*) 'TE ( Joule/m^2 * E9) =',  psm * 1.E-9
 
   end subroutine nh_total_energy

@@ -2,7 +2,6 @@ esma_set_this ()
 
 set (srcs
   tools/fv_treat_da_inc.F90
-  model/lin_cloud_microphys.F90
   model/fv_cmp.F90
   geos_utils/fill_corner.F90
   geos_utils/flow_proj.F90
@@ -51,28 +50,28 @@ esma_add_library (${this}
 
 if (FV_PRECISION STREQUAL R4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
-   get_target_property (extra_incs fms_r4 INTERFACE_INCLUDE_DIRECTORIES)
-   target_include_directories(${this} PRIVATE
-   $<BUILD_INTERFACE:${extra_incs}>
-   )
+  get_target_property (extra_incs FMS::fms_r4 INTERFACE_INCLUDE_DIRECTORIES)
+  target_include_directories(${this} PRIVATE $<BUILD_INTERFACE:${extra_incs}>)
 elseif (FV_PRECISION STREQUAL R8)
 endif ()
 
 if (FV_PRECISION STREQUAL R4)
-   target_compile_definitions (${this} PRIVATE -DSINGLE_FV -DOVERLOAD_R4)
-   target_link_libraries (${this} PUBLIC fms_r4)
+  target_compile_definitions (${this} PRIVATE -DSINGLE_FV -DOVERLOAD_R4)
+  target_link_libraries (${this} PUBLIC FMS::fms_r4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
-   target_compile_definitions (${this} PRIVATE -DSINGLE_FV -DOVERLOAD_R4)
-   target_link_libraries (${this} PUBLIC fms_r8)
+  target_compile_definitions (${this} PRIVATE -DSINGLE_FV -DOVERLOAD_R4)
+  target_link_libraries (${this} PUBLIC FMS::fms_r8)
 elseif (FV_PRECISION STREQUAL R8)
-   target_link_libraries (${this} PUBLIC fms_r8)
-   string(REPLACE " " ";" tmp ${FREAL8})
-   foreach(flag ${tmp})
-     target_compile_options (${this} PRIVATE $<$<COMPILE_LANGUAGE:Fortran>:${flag}>)
-   endforeach()
+  target_link_libraries (${this} PUBLIC FMS::fms_r8)
+  string(REPLACE " " ";" tmp ${FREAL8})
+  foreach(flag ${tmp})
+    target_compile_options (${this} PRIVATE $<$<COMPILE_LANGUAGE:Fortran>:${flag}>)
+  endforeach()
 endif ()
 
-#set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_VECT}")
+#if (CMAKE_Fortran_COMPILER_ID MATCHES Intel AND CMAKE_BUILD_TYPE MATCHES Release)
+#set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_AGGRESSIVE}")
+#endif ()
 
 if (CRAY_POINTER)
   set_target_properties (${this} PROPERTIES COMPILE_FLAGS ${CRAY_POINTER})

@@ -222,7 +222,6 @@ module fv_arrays_mod
      integer :: npx_g, npy_g, ntiles_g ! global domain
 
      real(kind=R_GRID) :: global_area
-     logical :: g_sum_initialized = .false. !< Not currently used but can be useful
      logical:: sw_corner, se_corner, ne_corner, nw_corner
 
      real(kind=R_GRID) :: da_min, da_max, da_min_c, da_max_c
@@ -357,11 +356,17 @@ module fv_arrays_mod
                          !< This option remains active even if nord is nonzero. The default
                          !< value is 0.0. The proper range is 0 to 0.02.
 
-   real :: d4_bg = 0.16   !< Dimensionless coefficient for background higher-order divergence damping.
-                          !< 0.0 by default. If no second-order divergence damping is used, then values
-                          !< between 0.1 and 0.16 are recommended. Requires 'nord' > 0. Note that the
-                          !< scaling for 'd4_bg' differs from that of 'd2_bg'; 'nord' >= 1 and
-                          !< 'd4_bg' = 0.16 will be less diffusive than 'nord' = 0 and 'd2_bg' = 0.02.
+   real :: d4_bg_top = 0.16   !< Dimensionless coefficient for background higher-order divergence damping.
+                              !< 0.0 by default. If no second-order divergence damping is used, then values
+                              !< between 0.1 and 0.16 are recommended. Requires 'nord' > 0. Note that the
+                              !< scaling for 'd4_bg' differs from that of 'd2_bg'; 'nord' >= 1 and
+                              !< 'd4_bg' = 0.16 will be less diffusive than 'nord' = 0 and 'd2_bg' = 0.02.
+
+   real :: d4_bg_bot = 0.16   !< Dimensionless coefficient for background higher-order divergence damping.
+                              !< 0.0 by default. If no second-order divergence damping is used, then values
+                              !< between 0.1 and 0.16 are recommended. Requires 'nord' > 0. Note that the
+                              !< scaling for 'd4_bg' differs from that of 'd2_bg'; 'nord' >= 1 and
+                              !< 'd4_bg' = 0.16 will be less diffusive than 'nord' = 0 and 'd2_bg' = 0.02.
 
    real :: vtdm4 = 0.0   !< Coefficient for background other-variable damping. The value of 'vtdm4'
                          !< should be less than that of 'd4_bg'. A good first guess for 'vtdm4' is
@@ -807,6 +812,11 @@ module fv_arrays_mod
                                      !< adds computational, overhead so we only recommend using
                                      !< this when debugging.
 
+!  integer :: exact_sum = 0    !< NON_BITWISE_EXACT_SUM=0
+   integer :: exact_sum = 1    !< BITWISE_EXACT_SUM=1
+!  integer :: exact_sum = 2    !< BITWISE_EFP_SUM=2
+
+
    logical :: fill = .false.   !< Fills in negative tracer values by taking positive tracers from
                                !< the cells above and below. This option is useful when the physical
                                !< parameterizations produced negatives. The default is .false.
@@ -827,12 +837,6 @@ module fv_arrays_mod
                                          !< effect if not running solo_core.
    logical :: do_reed_physics = .false.
    logical :: reed_cond_only = .false.
-   logical :: reproduce_sum = .true.   !< uses an exactly-reproducible global sum operation performed
-                                       !< when computing the global energy for consv_te. This is used
-                                       !< because the FMS routine mpp_sum() is not bit-wise reproducible
-                                       !< due to its handling of floating-point arithmetic, and so can
-                                       !< return different answers for (say) different processor layouts.
-                                       !< The default is .true.
 
    logical :: adjust_dry_mass = .false.    !< Whether to adjust the global dry-air mass to the
                                            !< value set by dry_mass. This is only done in an initialization step,
@@ -882,6 +886,10 @@ module fv_arrays_mod
                                 !<     1: GMAO linear
                                 !<     2: GMAO quadratic
                                 !<     3: GMAO cubic
+ 
+   logical :: gmao_top_bc = .false.  !< Optional upper BC in remapping of T or TE from GMAO (true or false)
+
+   logical :: gmao_bot_bc = .false.  !< Optional lower BC in remapping of T or TE from GMAO (true or false)
 
    logical :: z_tracer = .false.   !< Whether to transport sub-cycled tracers layer-by-layer,
                                    !< each with its own computed sub-cycling time step (if q_split = 0).
@@ -1255,11 +1263,11 @@ module fv_arrays_mod
    integer :: ks
 
 ! Accumulated Mass flux arrays
-    real, _ALLOCATABLE ::  mfx(:,:,:)  _NULL
-    real, _ALLOCATABLE ::  mfy(:,:,:)  _NULL
+    real(kind=REAL8), _ALLOCATABLE ::  mfx(:,:,:)  _NULL
+    real(kind=REAL8), _ALLOCATABLE ::  mfy(:,:,:)  _NULL
 ! Accumulated Courant number arrays
-    real, _ALLOCATABLE ::  cx(:,:,:)  _NULL
-    real, _ALLOCATABLE ::  cy(:,:,:)  _NULL
+    real(kind=REAL8), _ALLOCATABLE ::  cx(:,:,:)  _NULL
+    real(kind=REAL8), _ALLOCATABLE ::  cy(:,:,:)  _NULL
 
     type(fv_flags_type) :: flagstruct
 
