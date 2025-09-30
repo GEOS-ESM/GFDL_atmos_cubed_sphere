@@ -829,6 +829,9 @@ contains
 
     if( flagstruct%fill_dp ) call mix_dp(hydrostatic, w, delp, pt, npz, ak, bk, .false., flagstruct%fv_debug, bd)
 
+    if ( flagstruct%fv_debug ) &
+    call prt_mxm('W_mix ', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
+
                                                              call timing_on('COMM_TOTAL')
                                                              call timing_on('COMM_DSW')
 #ifdef USE_COND
@@ -897,6 +900,10 @@ contains
         call update_dz_d(nord_v, damp_vt, flagstruct%hord_tm, is, ie, js, je, npz, ng, npx, npy, gridstruct%area,  &
                          gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, flagstruct%dz_min, gridstruct, bd, flagstruct%lim_fac)
                                             call timing_off('UPDATE_DZ')
+
+        if ( flagstruct%fv_debug ) &
+        call prt_mxm('WS_dzd', ws, is, ie  , js, je  , 0, 1, 1., gridstruct%area_64, domain)
+
 
         if (idiag%id_ws>0 .and. last_step) then
             used=send_data(idiag%id_ws, ws, fv_time)
