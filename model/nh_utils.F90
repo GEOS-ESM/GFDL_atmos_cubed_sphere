@@ -194,13 +194,13 @@ CONTAINS
 ! Enforce monotonicity of height to prevent blowup
 !$OMP parallel do default(none) shared(is1,ie1,js1,je1,ws,zs,gz,rdt,dz_min,km)
   do j=js1, je1
-     do k=2, km+1
-        do i=is1, ie1
-           gz(i,j,k) = min( gz(i,j,k), gz(i,j,k-1) - dz_min )
-        enddo
-     enddo
      do i=is1, ie1
         ws(i,j) = ( zs(i,j) - gz(i,j,km+1) ) * rdt
+     enddo
+     do k=km, 1, -1
+        do i=is1, ie1
+           gz(i,j,k) = max( gz(i,j,k), gz(i,j,k+1) + dz_min )
+        enddo
      enddo
   enddo
 
@@ -309,14 +309,14 @@ CONTAINS
 
 !$OMP parallel do default(none) shared(is,ie,js,je,km,ws,zs,zh,rdt,dz_min)
   do j=js, je
-     do k=2, km+1
-        do i=is, ie
-! Enforce monotonicity of height to prevent blowup
-           zh(i,j,k) = min( zh(i,j,k), zh(i,j,k-1) - dz_min )
-        enddo
-     enddo
      do i=is,ie
         ws(i,j) = ( zs(i,j) - zh(i,j,km+1) ) * rdt
+     enddo 
+     do k=km, 1, -1
+        do i=is, ie
+! Enforce monotonicity of height to prevent blowup
+           zh(i,j,k) = max( zh(i,j,k), zh(i,j,k+1) + dz_min )
+        enddo
      enddo
   enddo
 
@@ -1271,7 +1271,7 @@ CONTAINS
     do k=2, km
        do i=is, ie
 #ifdef MOIST_CAPPA
-          aa(i,k) = t1g*0.5*(gm2(i,k-1)+gm2(i,k))/(dz2(i,k-1)+dz2(i,k)) * (pem(i,k)+pp(i,k))
+          aa(i,k) = t1g*0.5*(gm2(i,k-1)+gm2(i,k))/(dz2(i,k-1)+dz2(i,k)) * (pem(i,k))
 #else
           aa(i,k) = t1g/(dz2(i,k-1)+dz2(i,k)) * (pem(i,k)+pp(i,k))
 #endif
@@ -1290,7 +1290,7 @@ CONTAINS
     enddo
     do i=is, ie
 #ifdef MOIST_CAPPA
-           p1(i) = t1g*gm2(i,km)/dz2(i,km)*(pem(i,km+1)+pp(i,km+1))
+       p1(i) = t1g*gm2(i,km)/dz2(i,km)*(pem(i,km+1))
 #else
            p1(i) = t1g/dz2(i,km)*(pem(i,km+1)+pp(i,km+1))
 #endif
@@ -1406,8 +1406,7 @@ CONTAINS
 
     do k=1, km+1
        do i=is, ie
-! pe2 is Full p
-          pe2(i,k) = pem(i,k) + pp(i,k)
+          pe2(i,k) = pem(i,k)
        enddo
     enddo
 
