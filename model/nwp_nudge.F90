@@ -10,7 +10,12 @@ module nwp_nudge_mod
  use fv_mapz_mod,       only: mappm
  use fv_mp_mod,         only: is,js,ie,je, isd,jsd,ied,jed, gid, masterproc, domain, mp_reduce_sum
  use fv_timing_mod,     only: timing_on, timing_off
- use constants_mod,     only: pi, grav, rdgas, cp_air, kappa, radius
+ #if defined (SINGLE_FV)
+ use constantsr4_mod,    &
+#else
+ use constants_mod,      &
+#endif
+                        only: pi, grav, rdgas, cp_air, kappa, radius
  use time_manager_mod,  only: time_type,  get_time, get_date
  use mpp_mod,           only: mpp_error, FATAL, stdlog
  use fms_mod,           only: write_version_number, &
@@ -18,7 +23,7 @@ module nwp_nudge_mod
 #if defined (FMS1_IO)
  use fms_mod,           only: open_namelist_file, &
                               file_exists => file_exist, &
-                              close_file, read_data, field_exist 
+                              close_file, read_data, field_exist
 #else
  use fms2_io_mod,       only: file_exists, close_file, variable_exists, read_data
 #endif

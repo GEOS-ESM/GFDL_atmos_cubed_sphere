@@ -114,7 +114,12 @@ module fv_control_mod
 !   </tr>
 ! </table>
 
-   use constants_mod,       only: pi=>pi_8, kappa, radius, grav, rdgas
+#if defined (SINGLE_FV)
+   use constantsr4_mod,     &
+#else
+   use constants_mod,       &
+#endif
+      only: pi=>pi_8, kappa, radius, grav, rdgas
    use field_manager_mod,   only: MODEL_ATMOS
    use fms_mod,             only: write_version_number, &
                                   check_nml_error

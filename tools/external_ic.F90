@@ -23,8 +23,12 @@ module external_ic_mod
    use mpp_domains_mod,    only: mpp_get_tile_id, domain2d, mpp_update_domains, mpp_get_boundary, DGRID_NE
    use tracer_manager_mod, only: get_tracer_names, get_number_tracers, get_tracer_index
    use field_manager_mod,  only: MODEL_ATMOS
-
-   use constants_mod,     only: pi=>pi_8, omega, grav, kappa, rdgas, rvgas, cp_air
+#if defined (SINGLE_FV)
+   use constantsr4_mod,    &
+#else
+   use constants_mod,      &
+#endif
+                          only: pi=>pi_8, omega, grav, kappa, rdgas, rvgas, cp_air
 #ifdef MAPL_MODE
    use MAPL
 #endif

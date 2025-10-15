@@ -102,7 +102,12 @@ module fv_nwp_nudge_mod
 
  use external_sst_mod,  only: i_sst, j_sst, sst_ncep, sst_anom, forecast_mode
  use diag_manager_mod,  only: register_diag_field, send_data
- use constants_mod,     only: pi=>pi_8, grav, rdgas, cp_air, kappa, cnst_radius =>radius
+#if defined (SINGLE_FV)
+ use constantsr4_mod,    &
+#else
+ use constants_mod,      &
+#endif
+                        only: pi=>pi_8, grav, rdgas, cp_air, kappa, cnst_radius =>radius
  use fms_mod,           only: write_version_number, &
                               check_nml_error
 #if defined (FMS1_IO)

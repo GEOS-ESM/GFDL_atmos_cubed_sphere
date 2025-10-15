@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -116,7 +116,12 @@ module fv_dynamics_mod
 !   </tr>
 ! </table>
 
-   use constants_mod,       only: grav, pi=>pi_8, radius, hlv, rdgas, omega, rvgas, cp_vapor
+#if defined (SINGLE_FV)
+   use constantsr4_mod,    &
+#else
+   use constants_mod,      &
+#endif
+                            only: grav, pi=>pi_8, radius, hlv, rdgas, omega, rvgas, cp_vapor
    use dyn_core_mod,        only: dyn_core, del2_cubed, init_ijk_mem
    use fv_mapz_mod,         only: compute_total_energy, Lagrangian_to_Eulerian, moist_cv, moist_cp
    use fv_tracer2d_mod,     only: tracer_2d, tracer_2d_1L, tracer_2d_nested
@@ -158,7 +163,7 @@ contains
 !-----------------------------------------------------------------------
 !     fv_dynamics :: FV dynamical core driver
 !-----------------------------------------------------------------------
- 
+
   subroutine fv_dynamics(npx, npy, npz, nq_tot,  ng, bdt, consv_te, fill,    &
                         kappa, cp_air, zvir, ptop, ks, ncnst, &
                         k_split, n_split,                                    &
@@ -207,7 +212,7 @@ contains
     real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dtdt_rf ! Temp   tendency from Rayleigh friction
 
 !-----------------------------------------------------------------------
-! Auxilliary pressure arrays:    
+! Auxilliary pressure arrays:
 ! The 5 vars below can be re-computed from delp and ptop.
 !-----------------------------------------------------------------------
 ! dyn_aux:
@@ -217,7 +222,7 @@ contains
     real, intent(inout) :: peln(bd%is:bd%ie,npz+1,bd%js:bd%je)           !< ln(pe)
     real, intent(inout) :: pkz (bd%is:bd%ie,bd%js:bd%je,npz)             !< finite-volume mean pk
     real, intent(inout):: q_con(bd%isd:, bd%jsd:, 1:)
-    
+
 !-----------------------------------------------------------------------
 ! Others:
 !-----------------------------------------------------------------------
@@ -259,7 +264,7 @@ contains
 ! Local Courant number arrays
       real         ::  cxL(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
       real         ::  cyL(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
-! More Local arrays 
+! More Local arrays
       real:: ws(bd%is:bd%ie,bd%js:bd%je)
       real(kind=8):: te_2d(bd%is:bd%ie,bd%js:bd%je)
       real::   aam(bd%is:bd%ie,bd%js:bd%je)
@@ -312,7 +317,7 @@ contains
       nq = nq_tot - flagstruct%dnats
       rdg = -rdgas * agrav
       allocate ( dp1(isd:ied, jsd:jed, 1:npz) )
-      
+
 #ifdef MOIST_CAPPA
       allocate ( cappa(isd:ied,jsd:jed,npz) )
       call init_ijk_mem(isd,ied, jsd,jed, npz, cappa, 0.)
@@ -320,7 +325,7 @@ contains
       allocate ( cappa(isd:isd,jsd:jsd,1) )
       cappa = 0.
 #endif
-      !We call this BEFORE converting pt to virtual potential temperature, 
+      !We call this BEFORE converting pt to virtual potential temperature,
       !since we interpolate on (regular) temperature rather than theta.
       if (gridstruct%nested .or. ANY(neststruct%child_grids)) then
                                            call timing_on('NEST_BCs')
@@ -340,11 +345,11 @@ contains
 #ifdef USE_COND
             call nested_grid_BC_apply_intT(q_con, &
                  0, 0, npx, npy, npz, bd, 1., 1., &
-                 neststruct%q_con_BC, bctype=neststruct%nestbctype  )            
+                 neststruct%q_con_BC, bctype=neststruct%nestbctype  )
 #ifdef MOIST_CAPPA
             call nested_grid_BC_apply_intT(cappa, &
                  0, 0, npx, npy, npz, bd, 1., 1., &
-                 neststruct%cappa_BC, bctype=neststruct%nestbctype  )            
+                 neststruct%cappa_BC, bctype=neststruct%nestbctype  )
 #endif
 #endif
          endif
@@ -438,7 +443,7 @@ contains
       enddo
     else
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,zvir,q,q_con,sphum,liq_wat, &
-!$OMP                                  rainwat,ice_wat,snowwat,graupel,pkz,flagstruct, & 
+!$OMP                                  rainwat,ice_wat,snowwat,graupel,pkz,flagstruct, &
 !$OMP                                  cappa,kappa,rdg,delp,pt,delz,nwat)              &
 !$OMP                          private(cvm)
        do k=1,npz
@@ -643,7 +648,7 @@ contains
 
                                            call timing_on('DYN_CORE')
       call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
-                    u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va,           & 
+                    u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va,           &
                     dudt_rf, dvdt_rf, dwdt_rf, uc, vc, &
 #ifdef SINGLE_FV
                     mfxR8, mfyR8, cxR8, cyR8, &
@@ -660,7 +665,7 @@ contains
       mfxL=mfxR8
       mfyL=mfyR8
        cxL= cxR8
-       cyL= cyR8 
+       cyL= cyR8
 #endif
 !     if ( flagstruct%range_warn ) then
 !        call range_check('CX_dyn', cxL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
@@ -716,7 +721,7 @@ contains
          enddo
       enddo
 #else
-      if( .not. flagstruct%inline_q .and. nq /= 0 ) then    
+      if( .not. flagstruct%inline_q .and. nq /= 0 ) then
 !--------------------------------------------------------
 ! Perform large-time-step scalar transport using the accumulated CFL and
 ! mass fluxes
@@ -758,7 +763,7 @@ contains
 #endif
 
          if( last_step .and. idiag%id_divg>0 ) then
-             used = send_data(idiag%id_divg, dp1, fv_time) 
+             used = send_data(idiag%id_divg, dp1, fv_time)
              if(flagstruct%fv_debug) call prt_mxm('divg',  dp1, is, ie, js, je, 0, npz, 1.,gridstruct%area_64, domain)
          endif
       endif
@@ -909,14 +914,14 @@ contains
       if( idiag%id_aam>0 ) then
           used = send_data(idiag%id_aam, aam, fv_time)
           if ( prt_minmax ) then
-             gam = g_sum( domain, aam, is, ie, js, je, ng, gridstruct%area_64, 0) 
+             gam = g_sum( domain, aam, is, ie, js, je, ng, gridstruct%area_64, 0)
              if( is_master() ) write(6,*) 'Total AAM =', gam
           endif
       endif
   endif
 
   if( (flagstruct%consv_am.or.idiag%id_amdt>0) .and. (.not.do_adiabatic_init)  ) then
-!$OMP parallel do default(none) shared(is,ie,js,je,aam,teq,dt2,ps2,ps,idiag) 
+!$OMP parallel do default(none) shared(is,ie,js,je,aam,teq,dt2,ps2,ps,idiag)
       do j=js,je
          do i=is,ie
 ! Note: the mountain torque computation contains also numerical error
@@ -927,7 +932,7 @@ contains
       if( idiag%id_amdt>0 ) used = send_data(idiag%id_amdt, aam/bdt, fv_time)
 
       if ( flagstruct%consv_am .or. prt_minmax ) then
-         amdt = g_sum( domain, aam, is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=flagstruct%exact_sum) 
+         amdt = g_sum( domain, aam, is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=flagstruct%exact_sum)
          u0 = -radius*amdt/g_sum( domain, m_fac, is, ie, js, je, ng, gridstruct%area_64, 0, reproduce=flagstruct%exact_sum)
          if(is_master() .and. prt_minmax)         &
          write(6,*) 'Dynamic AM tendency (Hadleys)=', amdt/(bdt*1.e18), 'del-u (per day)=', u0*86400./bdt
@@ -1146,8 +1151,8 @@ contains
     real, intent(inout):: v(bd%isd:bd%ied+1,bd%jsd:bd%jed,npz) !< D grid meridional wind (m/s)
     real, intent(inout)::  w(bd%isd:      ,bd%jsd:      ,1: ) !< cell center vertical wind (m/s)
     real, intent(inout):: pt(bd%isd:bd%ied,bd%jsd:bd%jed,npz) !< temp
-    real, intent(inout):: ua(bd%isd:bd%ied,bd%jsd:bd%jed,npz) ! 
-    real, intent(inout):: va(bd%isd:bd%ied,bd%jsd:bd%jed,npz) ! 
+    real, intent(inout):: ua(bd%isd:bd%ied,bd%jsd:bd%jed,npz) !
+    real, intent(inout):: va(bd%isd:bd%ied,bd%jsd:bd%jed,npz) !
     real, intent(inout):: delz(bd%isd:    ,bd%jsd:      ,1: ) !< delta-height (m); non-hydrostatic only
     real,   intent(in) :: agrid(bd%isd:bd%ied,  bd%jsd:bd%jed,2)
     real, intent(in) :: phis(bd%isd:bd%ied,bd%jsd:bd%jed)     !< Surface geopotential (g*Z_surf)
@@ -1317,8 +1322,8 @@ contains
     real, intent(inout):: v(bd%isd:bd%ied+1,bd%jsd:bd%jed,npz) !< D grid meridional wind (m/s)
     real, intent(inout)::  w(bd%isd:      ,bd%jsd:      ,1: ) !< cell center vertical wind (m/s)
     real, intent(inout):: pt(bd%isd:bd%ied,bd%jsd:bd%jed,npz) !< temp
-    real, intent(inout):: ua(bd%isd:bd%ied,bd%jsd:bd%jed,npz) ! 
-    real, intent(inout):: va(bd%isd:bd%ied,bd%jsd:bd%jed,npz) ! 
+    real, intent(inout):: ua(bd%isd:bd%ied,bd%jsd:bd%jed,npz) !
+    real, intent(inout):: va(bd%isd:bd%ied,bd%jsd:bd%jed,npz) !
     real, intent(inout):: delz(bd%isd:    ,bd%jsd:      ,1: ) !< delta-height (m); non-hydrostatic only
     type(fv_grid_type), intent(IN) :: gridstruct
     type(domain2d), intent(INOUT) :: domain
@@ -1332,7 +1337,7 @@ contains
     integer :: is,  ie,  js,  je
     integer :: isd, ied, jsd, jed
 
-    
+
     is  = bd%is
     ie  = bd%ie
     js  = bd%js
@@ -1462,7 +1467,7 @@ contains
     integer i, j, k
 
     call c2l_ord2(u, v, ua, va, gridstruct, npz, gridstruct%grid_type, bd, gridstruct%nested)
-    
+
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,gridstruct,aam,m_fac,ps,ptop,delp,agrav,ua) &
 !$OMP                          private(r1, r2, dm)
   do j=js,je

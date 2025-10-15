@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -50,7 +50,12 @@ module nh_utils_mod
 !   </tr>
 ! </table>
 
-   use constants_mod,     only: rdgas, cp_air, grav
+#if defined (SINGLE_FV)
+   use constantsr4_mod,    &
+#else
+   use constants_mod,      &
+#endif
+                          only: rdgas, cp_air, grav
    use tp_core_mod,       only: fv_tp_2d
    use sw_core_mod,       only: fill_4corners, del6_vt_flux
    use fv_arrays_mod,     only: fv_grid_bounds_type, fv_grid_type
@@ -65,7 +70,7 @@ module nh_utils_mod
 
    real, parameter:: r3 = 1./3.
 
-CONTAINS 
+CONTAINS
 
   subroutine update_dz_c(is, ie, js, je, km, ng, dt, dz_min, dp0, zs, area, ut, vt, gz, ws, &
        npx, npy, sw_corner, se_corner, ne_corner, nw_corner, bd, grid_type)
@@ -246,7 +251,7 @@ CONTAINS
 
   damp(km+1) = damp(km)
   ndif(km+1) = ndif(km)
-  
+
   isd = is - ng;  ied = ie + ng
   jsd = js - ng;  jed = je + ng
 
@@ -311,7 +316,7 @@ CONTAINS
   do j=js, je
      do i=is,ie
         ws(i,j) = ( zs(i,j) - zh(i,j,km+1) ) * rdt
-     enddo 
+     enddo
      do k=km, 1, -1
         do i=is, ie
 ! Enforce monotonicity of height to prevent blowup
@@ -334,7 +339,7 @@ CONTAINS
    real, intent(in), dimension(is-ng:,js-ng:,1:):: q_con, cappa
    real, intent(in)::   hs(is-ng:ie+ng,js-ng:je+ng)
    real, intent(in), dimension(is-ng:ie+ng,js-ng:je+ng,km):: w3
-! OUTPUT PARAMETERS 
+! OUTPUT PARAMETERS
    real, intent(inout), dimension(is-ng:ie+ng,js-ng:je+ng,km+1):: gz
    real, intent(  out), dimension(is-ng:ie+ng,js-ng:je+ng,km+1):: pef
 ! Local:
@@ -648,7 +653,7 @@ CONTAINS
          wt(i,km) = (w(i,km) + 2.*ws(i)*cd/delz(i,km)**2                        &
                   +  a*wt(i,km-1))/(1. + a + (cd+cd)/delz(i,km)**2 + a*gam(i,km))
      enddo
- 
+
      do k=km-1,1,-1
         do i=is,ie
            wt(i,k) = wt(i,k) - gam(i,k+1)*wt(i,k+1)
@@ -687,7 +692,7 @@ CONTAINS
   integer:: i, k, n, ke, kt1, ktop
   integer:: ks0, ks1
 
-  grg = gama * rgas  
+  grg = gama * rgas
   rdt = 1. / bdt
   dt = bdt / real(ms)
 
@@ -724,7 +729,7 @@ CONTAINS
             dts(k) = -dz(k)/sqrt(grg*pf1(k)/rden)
 #endif
             if ( bdt > dts(k) ) then
-                 ks0 = k-1 
+                 ks0 = k-1
                  goto 222
             endif
          enddo
@@ -833,7 +838,7 @@ CONTAINS
             m_top(ke) = m_top(ke) + z_frac*dm(k)
             r_top(ke) = r_top(ke) + z_frac*r_hi(k)
             go to 444     ! next level
-        endif 
+        endif
      enddo
 444 continue
 
@@ -849,7 +854,7 @@ CONTAINS
              time_left = time_left -  dts(k)
              m_bot(ke) = m_bot(ke) +   dm(k)
              r_bot(ke) = r_bot(ke) + r_lo(k)
-        else 
+        else
                 z_frac = time_left/dts(k)
              m_bot(ke) = m_bot(ke) + z_frac*  dm(k)
              r_bot(ke) = r_bot(ke) + z_frac*r_lo(k)
@@ -1501,7 +1506,7 @@ CONTAINS
  real, intent(out), dimension(i1:i2,km+1):: qe
 !-----------------------------------------------------------------------
  real, parameter:: r2o3 = 2./3.
- real, parameter:: r4o3 = 4./3. 
+ real, parameter:: r4o3 = 4./3.
  real  gak(km)
  real  bet
  integer i, k
@@ -1611,7 +1616,7 @@ CONTAINS
         gam(i,k) = gk / bet
      enddo
   enddo
- 
+
   a_bot = 1. + gk*(gk+1.5)
     xt1 =   2.*gk*(gk+1.)
   do i=i1,i2

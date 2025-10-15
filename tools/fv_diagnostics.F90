@@ -112,7 +112,12 @@ module fv_diagnostics_mod
 !   </tr>
 ! </table>
 
- use constants_mod,      only: grav, rdgas, rvgas, pi=>pi_8, radius, kappa, WTMAIR, WTMCO2, &
+#if defined (SINGLE_FV)
+ use constantsr4_mod,    &
+#else
+ use constants_mod,      &
+#endif
+    only: grav, rdgas, rvgas, pi=>pi_8, radius, kappa, WTMAIR, WTMCO2, &
                                omega, hlv, cp_air, cp_vapor
  use fms_mod,            only: write_version_number
 #if defined (FMS1_IO)

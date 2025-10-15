@@ -114,8 +114,12 @@ module fv_grid_tools_mod
 !   </tr>
 ! </table>
 
-
-  use constants_mod, only: grav, omega, pi=>pi_8, cnst_radius=>radius
+#if defined (SINGLE_FV)
+  use constantsr4_mod,    &
+#else
+  use constants_mod,      &
+#endif
+                     only: grav, omega, pi=>pi_8, cnst_radius=>radius
   use fv_arrays_mod, only: fv_atmos_type, fv_grid_type, fv_grid_bounds_type, R_GRID
   use fv_grid_utils_mod, only: gnomonic_grids, gnomonic_grids_local, great_circle_dist,  &
                            mid_pt_sphere, spherical_angle,     &
@@ -137,7 +141,7 @@ module fv_grid_tools_mod
                                mpp_get_global_domain, mpp_global_sum, mpp_global_max, mpp_global_min
  use mpp_domains_mod,    only: domain2d
 #if defined (FMS1_IO)
-  use mpp_io_mod,        only: mpp_get_att_value     
+  use mpp_io_mod,        only: mpp_get_att_value
 #endif
   use mpp_parameter_mod, only: AGRID_PARAM=>AGRID,       &
                                DGRID_NE_PARAM=>DGRID_NE, &

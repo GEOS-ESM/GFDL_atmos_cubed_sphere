@@ -132,8 +132,12 @@ module fv_restart_mod
 !   </tr>
 ! </table>
 
-
-  use constants_mod,       only: kappa, pi=>pi_8, omega, rdgas, grav, rvgas, cp_air, radius
+#if defined (SINGLE_FV)
+  use constantsr4_mod,    &
+#else
+  use constants_mod,      &
+#endif
+                           only: kappa, pi=>pi_8, omega, rdgas, grav, rvgas, cp_air, radius
   use fv_arrays_mod,       only: fv_atmos_type, fv_nest_type, fv_grid_bounds_type, R_GRID
   use fv_io_mod,           only: fv_io_init, fv_io_read_restart, fv_io_write_restart, &
                                  remap_restart, fv_io_register_restart, fv_io_register_nudge_restart, &
@@ -285,7 +289,7 @@ contains
                    call setup_nested_boundary_halo(Atm(n), .false.)
                    Atm(N)%neststruct%first_step = .true.
                 endif
-#endif                
+#endif
              end if
 
              if (.not. Atm(n)%flagstruct%hydrostatic .and. Atm(n)%flagstruct%make_nh .and. &

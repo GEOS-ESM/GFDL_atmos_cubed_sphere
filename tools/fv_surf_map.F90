@@ -74,7 +74,12 @@
 #endif
       use mpp_mod,           only: get_unit, input_nml_file, mpp_error
       use mpp_domains_mod,   only: mpp_update_domains, domain2d
-      use constants_mod,     only: grav, radius, pi=>pi_8
+#if defined (SINGLE_FV)
+      use constantsr4_mod,    &
+#else
+      use constants_mod,      &
+#endif
+                             only: grav, radius, pi=>pi_8
 
       use fv_grid_utils_mod, only: great_circle_dist, latlon2xyz, v_prod, normalize_vect
       use fv_grid_utils_mod, only: g_sum, global_mx, vect_cross

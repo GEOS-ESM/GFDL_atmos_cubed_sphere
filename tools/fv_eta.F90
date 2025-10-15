@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -43,7 +43,12 @@ module fv_eta_mod
 !   </tr>
 ! </table>
 
- use constants_mod,  only: kappa, grav, cp_air, rdgas
+#if defined (SINGLE_FV)
+ use constantsr4_mod,    &
+#else
+ use constants_mod,      &
+#endif
+                     only: kappa, grav, cp_air, rdgas
  use fv_mp_mod,      only: is_master
  use mpp_mod,        only: FATAL, mpp_error
  implicit none
@@ -228,7 +233,7 @@ module fv_eta_mod
              stretch_fac = 1.035
 ! Hi-top:
         case (63)               ! N = 8, M=4
-             ptop = 1.        
+             ptop = 1.
                                 ! c360 or c384
              stretch_fac = 1.035
         case (71)               ! N = 9
@@ -253,7 +258,7 @@ module fv_eta_mod
       call mount_waves(km, ak, bk, ptop, ks, pint)
 #else
       if (s_rate > 0.) then
-           call var_les(km, ak, bk, ptop, ks, pint, s_rate)         
+           call var_les(km, ak, bk, ptop, ks, pint, s_rate)
       else
          if ( km > 79 ) then
             call var_hi2(km, ak, bk, ptop, ks, pint, stretch_fac)
@@ -262,7 +267,7 @@ module fv_eta_mod
             ptop = 500.e2
             ks = 0
             do k=1,km+1
-               bk(k) = real(k-1) / real (km) 
+               bk(k) = real(k-1) / real (km)
                ak(k) = ptop*(1.-bk(k))
             enddo
          else
@@ -378,8 +383,8 @@ module fv_eta_mod
       do k=1,km+1
          eta(k) = pe1(k) / pe1(km+1)
       enddo
-      ep =  eta(ks+1) 
-      es =  eta(km) 
+      ep =  eta(ks+1)
+      es =  eta(km)
 !     es =  1.
       alpha = (ep**2-2.*ep*es) / (es-ep)**2
       beta  = 2.*ep*es**2 / (es-ep)**2
@@ -397,7 +402,7 @@ module fv_eta_mod
       enddo
          ak(km+1) = 0.
 
-      do k=ks+2, km 
+      do k=ks+2, km
          bk(k) = (pe1(k) - ak(k))/pe1(km+1)
       enddo
          bk(km+1) = 1.
@@ -538,7 +543,7 @@ module fv_eta_mod
 ! Wilson's 32L settings:
 !---------------------
 ! Top changed to 0.01 mb
-      data a32w/  1.00,       26.6378,     84.5529,     228.8592,   & 
+      data a32w/  1.00,       26.6378,     84.5529,     228.8592,   &
                 539.9597,   1131.7087,   2141.8082,    3712.0454,   &
                5963.5317,   8974.1873,  12764.5388,   17294.5911,   &
               20857.7007,  22221.8651,  22892.7202,   22891.1641,   &
@@ -547,7 +552,7 @@ module fv_eta_mod
                8073.9717,   6458.0824,   5027.9893,    3784.6104,   &
                2722.0093,   1828.9741,   1090.2397,     487.4575,   &
                0.0000 /
-         
+
       data b32w/ 0.0000,   0.0000,   0.0000,   0.0000,       &
                 0.0000,   0.0000,   0.0000,    0.0000,       &
                 0.0000,   0.0000,   0.0000,    0.0000,       &
@@ -773,7 +778,7 @@ module fv_eta_mod
                  7.7938009300e+03,   6.1769062800e+03,   4.7874276000e+03, &
                  3.6050497500e+03,   2.6059860700e+03,   1.7668328200e+03, &
                  1.0656131200e+03,   4.8226201000e+02,   0.0000000000e+00, &
-                 0.0000000000e+00 /  
+                 0.0000000000e+00 /
 
 
       data b60/ 0.0000000000e+00,   0.0000000000e+00,   0.0000000000e+00, &
@@ -803,7 +808,7 @@ module fv_eta_mod
 ! 3 layers
       data a63/64.247,       137.790,       221.958,      &
               318.266,       428.434,       554.424,      &
-              698.457,       863.05803,    1051.07995,    &  
+              698.457,       863.05803,    1051.07995,    &
              1265.75194,    1510.71101,    1790.05098,    &
              2108.36604,    2470.78817,    2883.03811,    &
              3351.46002,    3883.05187,    4485.49315,    &
@@ -1161,7 +1166,7 @@ module fv_eta_mod
   1.1164595563e+04,   9.4227665517e+03,   7.7259097899e+03, &
   6.1538244381e+03,   4.7808126007e+03,   3.5967415552e+03, &
   2.5886394104e+03,   1.7415964865e+03,   1.0393721271e+03, &
-  4.6478852032e+02,   7.0308342481e-13,   0.0000000000e+00    / 
+  4.6478852032e+02,   7.0308342481e-13,   0.0000000000e+00    /
 
 
       data b104/           &
@@ -1251,18 +1256,18 @@ module fv_eta_mod
 
        case (24)
 
-          ks = 5     
+          ks = 5
           do k=1,km+1
             ak(k) = a24(k)
             bk(k) = b24(k)
           enddo
 
        case (26)
-                
+
           ks = 7
           do k=1,km+1
-            ak(k) = a26(k)     
-            bk(k) = b26(k)     
+            ak(k) = a26(k)
+            bk(k) = b26(k)
           enddo
 
         case (32)
@@ -1392,17 +1397,17 @@ module fv_eta_mod
             do k=1,ks
                ak(k) = press(k)
                bk(k) = 0.
-            enddo                                                
-          endif                                                
+            enddo
+          endif
 
              pint = press(ks+1)
-          do k=ks+1,km                                        
-             ak(k) =  pint*(press(km)-press(k))/(press(km)-pint)               
-             bk(k) = (press(k) - ak(k)) / press(km+1)          
-          enddo                                                
-             ak(km+1) = 0. 
-             bk(km+1) = 1.                                     
-                                                              
+          do k=ks+1,km
+             ak(k) =  pint*(press(km)-press(k))/(press(km)-pint)
+             bk(k) = (press(k) - ak(k)) / press(km+1)
+          enddo
+             ak(km+1) = 0.
+             bk(km+1) = 1.
+
 !         do k=2,km
 !            bk(k) = real(k-1) / real(km)
 !            ak(k) = pt * ( 1. - bk(k) )
@@ -1495,7 +1500,7 @@ module fv_eta_mod
          bk(1) = 0.
          ak(2) = pint
          bk(2) = 0.
- 
+
           do k=3,km+1
              bk(k) = real(k-2) / real(km-1)
              ak(k) = pint - bk(k)*pint
@@ -1510,7 +1515,7 @@ module fv_eta_mod
  end subroutine set_eta
 #endif
 
-!>@brief The subroutine 'set_external_eta' sets 'ptop' (model top) and 
+!>@brief The subroutine 'set_external_eta' sets 'ptop' (model top) and
 !! 'ks' (first level of pure pressure coordinates given the coefficients
 !! 'ak' and 'bk'
  subroutine set_external_eta(ak, bk, ptop, ks)
@@ -1526,12 +1531,12 @@ module fv_eta_mod
    ptop = ak(1)
    ks = 1
    do k = 1, size(bk(:))
-     if (bk(k).lt.eps) ks = k 
+     if (bk(k).lt.eps) ks = k
    enddo
    !--- change ks to layers from levels
    ks = ks - 1
    if (is_master()) write(6,*) ' ptop & ks ', ptop, ks
-  
+
  end subroutine set_external_eta
 
 
@@ -1573,7 +1578,7 @@ module fv_eta_mod
       enddo
 
       s_fac(km-k_inc-1) = 0.5*(s_fac(km-k_inc) + s_rate)
-          
+
       do k=km-k_inc-2, 5, -1
          s_fac(k) = s_rate * s_fac(k+1)
       enddo
@@ -1648,8 +1653,8 @@ module fv_eta_mod
          eta(k) = pe1(k) / pe1(km+1)
       enddo
 
-      ep =  eta(ks+1) 
-      es =  eta(km) 
+      ep =  eta(ks+1)
+      es =  eta(km)
 !     es =  1.
       alpha = (ep**2-2.*ep*es) / (es-ep)**2
       beta  = 2.*ep*es**2 / (es-ep)**2
@@ -1667,7 +1672,7 @@ module fv_eta_mod
       enddo
          ak(km+1) = 0.
 
-      do k=ks+2, km 
+      do k=ks+2, km
          bk(k) = (pe1(k) - ak(k))/pe1(km+1)
       enddo
          bk(km+1) = 1.
@@ -1675,7 +1680,7 @@ module fv_eta_mod
       if ( is_master() ) then
  !         write(*,*) 'KS=', ks, 'PINT (mb)=', pint/100.
  !         do k=1,km
- !            pm(k) = 0.5*(pe1(k)+pe1(k+1))/100.  
+ !            pm(k) = 0.5*(pe1(k)+pe1(k+1))/100.
  !            write(*,*) k, pm(k), dz(k)
  !         enddo
           tmp1 = ak(ks+1)
@@ -1721,7 +1726,7 @@ module fv_eta_mod
      peln(1) = log(pe1(1))
      pe1(km+1) = p00
      peln(km+1) = log(pe1(km+1))
-       
+
      t0 = 270.
      ztop = rdgas/grav*t0*(peln(km+1) - peln(1))
 
@@ -1822,8 +1827,8 @@ module fv_eta_mod
          eta(k) = pe1(k) / pe1(km+1)
       enddo
 
-      ep =  eta(ks+1) 
-      es =  eta(km) 
+      ep =  eta(ks+1)
+      es =  eta(km)
 !     es =  1.
       alpha = (ep**2-2.*ep*es) / (es-ep)**2
       beta  = 2.*ep*es**2 / (es-ep)**2
@@ -1841,7 +1846,7 @@ module fv_eta_mod
       enddo
          ak(km+1) = 0.
 
-      do k=ks+2, km 
+      do k=ks+2, km
          bk(k) = (pe1(k) - ak(k))/pe1(km+1)
       enddo
          bk(km+1) = 1.
@@ -1885,7 +1890,7 @@ module fv_eta_mod
      peln(1) = log(pe1(1))
      pe1(km+1) = p00
      peln(km+1) = log(pe1(km+1))
-       
+
      t0 = 270.
      ztop = rdgas/grav*t0*(peln(km+1) - peln(1))
 
@@ -1897,7 +1902,7 @@ module fv_eta_mod
       enddo
 
       s_fac(km-k_inc-1) = 0.5*(s_fac(km-k_inc) + s_rate)
-          
+
 #ifdef HIWPP
       do k=km-k_inc-2, 4, -1
          s_fac(k) = s_rate * s_fac(k+1)
@@ -1998,8 +2003,8 @@ module fv_eta_mod
          eta(k) = pe1(k) / pe1(km+1)
       enddo
 
-      ep =  eta(ks+1) 
-      es =  eta(km) 
+      ep =  eta(ks+1)
+      es =  eta(km)
 !     es =  1.
       alpha = (ep**2-2.*ep*es) / (es-ep)**2
       beta  = 2.*ep*es**2 / (es-ep)**2
@@ -2017,7 +2022,7 @@ module fv_eta_mod
       enddo
          ak(km+1) = 0.
 
-      do k=ks+2, km 
+      do k=ks+2, km
          bk(k) = (pe1(k) - ak(k))/pe1(km+1)
       enddo
          bk(km+1) = 1.
@@ -2056,7 +2061,7 @@ module fv_eta_mod
      peln(1) = log(pe1(1))
      pe1(km+1) = p00
      peln(km+1) = log(pe1(km+1))
-       
+
      t0 = 270.
      ztop = rdgas/grav*t0*(peln(km+1) - peln(1))
 
@@ -2065,13 +2070,13 @@ module fv_eta_mod
       s_fac(km-2) = 0.30
       s_fac(km-3) = 0.40
       s_fac(km-4) = 0.50
-      s_fac(km-5) = 0.60 
-      s_fac(km-6) = 0.70 
+      s_fac(km-5) = 0.60
+      s_fac(km-6) = 0.70
       s_fac(km-7) = 0.80
       s_fac(km-8) = 0.90
       s_fac(km-9) = 0.95
       s_fac(km-10) = 0.5*(s_fac(km-9) + s_rate)
-          
+
       do k=km-11, 8, -1
          s_fac(k) = s_rate * s_fac(k+1)
       enddo
@@ -2155,8 +2160,8 @@ module fv_eta_mod
          eta(k) = pe1(k) / pe1(km+1)
       enddo
 
-      ep =  eta(ks+1) 
-      es =  eta(km) 
+      ep =  eta(ks+1)
+      es =  eta(km)
 !     es =  1.
       alpha = (ep**2-2.*ep*es) / (es-ep)**2
       beta  = 2.*ep*es**2 / (es-ep)**2
@@ -2174,7 +2179,7 @@ module fv_eta_mod
       enddo
          ak(km+1) = 0.
 
-      do k=ks+2, km 
+      do k=ks+2, km
          bk(k) = (pe1(k) - ak(k))/pe1(km+1)
       enddo
          bk(km+1) = 1.
@@ -2215,7 +2220,7 @@ module fv_eta_mod
      peln(1) = log(pe1(1))
      pe1(km+1) = p00
      peln(km+1) = log(pe1(km+1))
-       
+
      t0 = 270.
      ztop = rdgas/grav*t0*(peln(km+1) - peln(1))
 
@@ -2224,13 +2229,13 @@ module fv_eta_mod
       s_fac(km-2) = 0.30
       s_fac(km-3) = 0.40
       s_fac(km-4) = 0.50
-      s_fac(km-5) = 0.60 
-      s_fac(km-6) = 0.70 
+      s_fac(km-5) = 0.60
+      s_fac(km-6) = 0.70
       s_fac(km-7) = 0.80
       s_fac(km-8) = 0.90
       s_fac(km-9) = 0.95
       s_fac(km-10) = 0.5*(s_fac(km-9) + s_rate)
-          
+
       do k=km-11, 9, -1
          s_fac(k) = min(10.0, s_rate * s_fac(k+1) )
       enddo
@@ -2316,8 +2321,8 @@ module fv_eta_mod
          eta(k) = pe1(k) / pe1(km+1)
       enddo
 
-      ep =  eta(ks+1) 
-      es =  eta(km) 
+      ep =  eta(ks+1)
+      es =  eta(km)
 !     es =  1.
       alpha = (ep**2-2.*ep*es) / (es-ep)**2
       beta  = 2.*ep*es**2 / (es-ep)**2
@@ -2335,7 +2340,7 @@ module fv_eta_mod
       enddo
          ak(km+1) = 0.
 
-      do k=ks+2, km 
+      do k=ks+2, km
          bk(k) = (pe1(k) - ak(k))/pe1(km+1)
       enddo
          bk(km+1) = 1.
@@ -2376,7 +2381,7 @@ module fv_eta_mod
      peln(1) = log(pe1(1))
      pe1(km+1) = p00
      peln(km+1) = log(pe1(km+1))
-       
+
      t0 = 270.
      ztop = rdgas/grav*t0*(peln(km+1) - peln(1))
 
@@ -2479,8 +2484,8 @@ module fv_eta_mod
          eta(k) = pe1(k) / pe1(km+1)
       enddo
 
-      ep =  eta(ks+1) 
-      es =  eta(km) 
+      ep =  eta(ks+1)
+      es =  eta(km)
 !     es =  1.
       alpha = (ep**2-2.*ep*es) / (es-ep)**2
       beta  = 2.*ep*es**2 / (es-ep)**2
@@ -2498,7 +2503,7 @@ module fv_eta_mod
       enddo
          ak(km+1) = 0.
 
-      do k=ks+2, km 
+      do k=ks+2, km
          bk(k) = (pe1(k) - ak(k))/pe1(km+1)
       enddo
          bk(km+1) = 1.
@@ -2557,35 +2562,35 @@ module fv_eta_mod
        s_fac(1) = 1.6 *s_fac(2)
 
        sum1 = 0.
-       do k=1,km                                                                                                        
-          sum1 = sum1 + s_fac(k)                                                                                        
-       enddo                                                                                                            
-                                                                                                                        
-       dz0 = ztop / sum1                                                                                                
-                                                                                                                        
-       do k=1,km                                                                                                        
-          dz(k) = s_fac(k) * dz0                                                                                        
-       enddo                                                                                                            
-                                                                                                                        
-       ze(km+1) = 0.                                                                                                    
-       do k=km,1,-1                                                                                                     
-          ze(k) = ze(k+1) + dz(k)                                                                                       
-       enddo                                                                                                            
-                                                                                                                        
-       ze(1) = ztop                                                                                                     
-                                                                                                                        
-       call sm1_edge(1, 1, 1, 1, km, 1, 1, ze, 2)
-                                                                                                                        
-       do k=1,km                                                                                                        
-            dz(k) = ze(k) - ze(k+1)                                                                                     
-       enddo                                                                                                            
+       do k=1,km
+          sum1 = sum1 + s_fac(k)
+       enddo
 
- end subroutine hybrid_z_dz                                   
+       dz0 = ztop / sum1
+
+       do k=1,km
+          dz(k) = s_fac(k) * dz0
+       enddo
+
+       ze(km+1) = 0.
+       do k=km,1,-1
+          ze(k) = ze(k+1) + dz(k)
+       enddo
+
+       ze(1) = ztop
+
+       call sm1_edge(1, 1, 1, 1, km, 1, 1, ze, 2)
+
+       do k=1,km
+            dz(k) = ze(k) - ze(k+1)
+       enddo
+
+ end subroutine hybrid_z_dz
 
 !>@brief The subroutine 'get_eta_level' returns the interface and
 !! layer-mean pressures for reference.
  subroutine get_eta_level(npz, p_s, pf, ph, ak, bk, pscale)
-  integer, intent(in) :: npz    
+  integer, intent(in) :: npz
   real, intent(in)  :: p_s            !< unit: pascal
   real, intent(in)  :: ak(npz+1)
   real, intent(in)  :: bk(npz+1)
@@ -2594,18 +2599,18 @@ module fv_eta_mod
   real, intent(out) :: ph(npz+1)
   integer k
 
-  ph(1) = ak(1)               
+  ph(1) = ak(1)
   do k=2,npz+1
      ph(k) = ak(k) + bk(k)*p_s
-  enddo                           
-   
+  enddo
+
   if ( present(pscale) ) then
       do k=1,npz+1
          ph(k) = pscale*ph(k)
       enddo
-  endif 
+  endif
 
-  if( ak(1) > 1.E-8 ) then   
+  if( ak(1) > 1.E-8 ) then
      pf(1) = (ph(2) - ph(1)) / log(ph(2)/ph(1))
   else
      pf(1) = (ph(2) - ph(1)) * kappa/(kappa+1.)
@@ -2630,7 +2635,7 @@ module fv_eta_mod
 
 
 ! ztop = 30.E3
-  dz(1) = ztop / real(km) 
+  dz(1) = ztop / real(km)
   dz(km) = 0.5*dz(1)
 
   do k=2,km-1
@@ -2671,12 +2676,12 @@ module fv_eta_mod
       s_fac(km-1) = 0.20
       s_fac(km-2) = 0.30
       s_fac(km-3) = 0.40
-      s_fac(km-4) = 0.50 
-      s_fac(km-5) = 0.60 
-      s_fac(km-6) = 0.70 
-      s_fac(km-7) = 0.80 
+      s_fac(km-4) = 0.50
+      s_fac(km-5) = 0.60
+      s_fac(km-6) = 0.70
+      s_fac(km-7) = 0.80
       s_fac(km-8) = 0.90
-      s_fac(km-9) = 1.   
+      s_fac(km-9) = 1.
 
       do k=km-10, 9, -1
          s_fac(k) = s_rate * s_fac(k+1)
@@ -2754,7 +2759,7 @@ module fv_eta_mod
 
         ze(2) = dz(1)
           dz0 = 1.5*dz0
-        dz(2) = dz0     
+        dz(2) = dz0
 
         ze(3) = ze(2) + dz(2)
 
@@ -2862,8 +2867,8 @@ module fv_eta_mod
 
   do j=js,je
      do i=is,ie
-        ze(i,j,   1) = ztop 
-        ze(i,j,km+1) = hs(i,j) * rgrav 
+        ze(i,j,   1) = ztop
+        ze(i,j,km+1) = hs(i,j) * rgrav
      enddo
   enddo
 
@@ -3034,7 +3039,7 @@ module fv_eta_mod
             n2 = 0.0001
        endif
 
-       s0 = grav*grav / (cp_air*n2) 
+       s0 = grav*grav / (cp_air*n2)
 
        ze(km+1) = 0.
        do k=km,1,-1
@@ -3047,16 +3052,16 @@ module fv_eta_mod
           pe1(k) = p0*( (1.-s0/t0) + s0/t0*exp(-n2*ze(k)/grav) )**(1./kappa)
        enddo
 
-       ptop = pe1(1) 
+       ptop = pe1(1)
 !      if ( is_master() ) write(*,*) 'GW_1D: computed model top (pa)=', ptop
 
-! Set up "sigma" coordinate 
+! Set up "sigma" coordinate
        ak(1) = pe1(1)
        bk(1) = 0.
        do k=2,km
           bk(k) = (pe1(k) - pe1(1)) / (pe1(km+1)-pe1(1))  ! bk == sigma
-          ak(k) =  pe1(1)*(1.-bk(k)) 
-       enddo                                                
+          ak(k) =  pe1(1)*(1.-bk(k))
+       enddo
        ak(km+1) = 0.
        bk(km+1) = 1.
 
@@ -3085,9 +3090,9 @@ module fv_eta_mod
           qtmp = q(i,k)
           q(i,k) = q(i,km+1-k)
           q(i,km+1-k) = qtmp
-       end do                                              
-    end do                                                
-                                                              
-  end subroutine zflip   
+       end do
+    end do
+
+  end subroutine zflip
 
 end module fv_eta_mod

@@ -126,7 +126,12 @@ module fv_treat_da_inc_mod
 #ifdef MAPL_MODE
   use MAPL
 #else
-  use constants_mod,     only: pi=>pi_8, omega, grav, kappa, &
+#if defined (SINGLE_FV)
+ use constantsr4_mod,    &
+#else
+ use constants_mod,      &
+#endif
+                         only: pi=>pi_8, omega, grav, kappa, &
                                rdgas, rvgas, cp_air
 #endif
 

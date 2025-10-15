@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -88,7 +88,12 @@ module fv_update_phys_mod
 !   </tr>
 ! </table>
 
-  use constants_mod,      only: kappa, rdgas, rvgas, grav, cp_air, cp_vapor, pi=>pi_8, radius
+#if defined (SINGLE_FV)
+  use constantsr4_mod,    &
+#else
+  use constants_mod,      &
+#endif
+                          only: kappa, rdgas, rvgas, grav, cp_air, cp_vapor, pi=>pi_8, radius
   use field_manager_mod,  only: MODEL_ATMOS
   use mpp_domains_mod,    only: mpp_update_domains, domain2d
   use mpp_parameter_mod,  only: AGRID_PARAM=>AGRID
@@ -137,7 +142,7 @@ module fv_update_phys_mod
     real, intent(in)   :: dt, ptop
     integer, intent(in):: is,  ie,  js,  je, ng
     integer, intent(in):: isd, ied, jsd, jed
-    integer, intent(in):: nq            ! tracers modified by physics 
+    integer, intent(in):: nq            ! tracers modified by physics
                                         ! ncnst is the total nmber of tracers
     logical, intent(in):: moist_phys
     logical, intent(in):: hydrostatic
@@ -176,7 +181,7 @@ module fv_update_phys_mod
     real, intent(inout):: qdiag(isd:ied,jsd:jed,npz,nq+1:flagstruct%ncnst) !< diagnostic tracers
 
 !-----------------------------------------------------------------------
-! Auxilliary pressure arrays:    
+! Auxilliary pressure arrays:
 ! The 5 vars below can be re-computed from delp and ptop.
 !-----------------------------------------------------------------------
 ! dyn_aux:
@@ -216,8 +221,8 @@ module fv_update_phys_mod
 
     real, dimension(1,1,1) :: parent_u_dt, parent_v_dt ! dummy variables for nesting
 
-!f1p                                                                                                                                                                                                                                        
-!account for change in air molecular weight because of H2O change                                                                                                                                                                            
+!f1p
+!account for change in air molecular weight because of H2O change
     logical, dimension(nq) :: conv_vmr_mmr
     real                   :: adj_vmr(is:ie,js:je,npz)
     character(len=32)      :: tracer_units, tracer_name
@@ -276,7 +281,7 @@ module fv_update_phys_mod
         end if
       end do
     end if
-    
+
     sphum   = get_tracer_index (MODEL_ATMOS, 'sphum')
     liq_wat = get_tracer_index (MODEL_ATMOS, 'liq_wat')
     ice_wat = get_tracer_index (MODEL_ATMOS, 'ice_wat')
@@ -367,7 +372,7 @@ module fv_update_phys_mod
 ! Update tracers:
 !----------------
         do m=1,nq
-          if( m /= w_diff ) then 
+          if( m /= w_diff ) then
             do j=js,je
               do i=is,ie
                 q(i,j,k,m) = q(i,j,k,m) + dt*q_dt(i,j,k,m)
@@ -392,12 +397,12 @@ module fv_update_phys_mod
         enddo
 
 !-----------------------------------------
-! Adjust mass mixing ratio of all tracers 
+! Adjust mass mixing ratio of all tracers
 !-----------------------------------------
         if ( nwat /=0 ) then
           do m=1,flagstruct%ncnst
 !-- check to query field_table to determine if tracer needs mass adjustment
-            if( m /= cld_amt .and. m /= w_diff .and. adjust_mass(MODEL_ATMOS,m)) then 
+            if( m /= cld_amt .and. m /= w_diff .and. adjust_mass(MODEL_ATMOS,m)) then
               if (m <= nq)  then
                 q(is:ie,js:je,k,m) = q(is:ie,js:je,k,m) / ps_dt(is:ie,js:je)
                 if (conv_vmr_mmr(m)) &
@@ -478,7 +483,7 @@ module fv_update_phys_mod
         call get_atmos_nudge ( Time, dt, is, ie, js, je,    &
              npz, ng, ps(is:ie,js:je), ua(is:ie, js:je,:),  &
              va(is:ie,js:je,:), pt(is:ie,js:je,:),          &
-             q(is:ie,js:je,:,:), ps_dt(is:ie,js:je), u_dt(is:ie,js:je,:),  & 
+             q(is:ie,js:je,:,:), ps_dt(is:ie,js:je), u_dt(is:ie,js:je,:),  &
              v_dt(is:ie,js:je,:), t_dt(is:ie,js:je,:),      &
              q_dt(is:ie,js:je,:,:) )
 
@@ -543,7 +548,7 @@ module fv_update_phys_mod
 ! All fields will be updated except winds; wind tendencies added
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,pe,delp,ps)
         do j=js,je
-          do k=2,npz+1                                                                             
+          do k=2,npz+1
             do i=is,ie
               pe(i,k,j) = pe(i,k-1,j) + delp(i,j,k-1)
             enddo
@@ -556,18 +561,18 @@ module fv_update_phys_mod
                             zvir, ptop, ak, bk, ts, ps, delp, ua, va, pt,    &
                             nwat, q,  phis, gridstruct, bd, domain )
 #endif
-  endif         ! end nudging       
+  endif         ! end nudging
 
   if ( .not.flagstruct%dwind_2d ) then
 
                                                             call timing_on('COMM_TOTAL')
-      if ( gridstruct%square_domain ) then                  
+      if ( gridstruct%square_domain ) then
            call start_group_halo_update(i_pack(1), u_dt, domain, whalo=1, ehalo=1, shalo=1, nhalo=1, complete=.false.)
            call start_group_halo_update(i_pack(1), v_dt, domain, whalo=1, ehalo=1, shalo=1, nhalo=1, complete=.true.)
       else
            call start_group_halo_update(i_pack(1), u_dt, domain, complete=.false.)
            call start_group_halo_update(i_pack(1), v_dt, domain, complete=.true.)
-      endif                
+      endif
                                                            call timing_off('COMM_TOTAL')
   endif
 
@@ -582,7 +587,7 @@ module fv_update_phys_mod
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,pe,delp,peln,pk,ps,u_srf,v_srf, &
 !$OMP                                  ua,va,pkz,hydrostatic)
    do j=js,je
-      do k=2,npz+1                                                                             
+      do k=2,npz+1
          do i=is,ie
               pe(i,k,j) = pe(i,k-1,j) + delp(i,j,k-1)
             peln(i,k,j) = log( pe(i,k,j) )
@@ -658,7 +663,7 @@ module fv_update_phys_mod
    real, intent(inout):: qdt(is-ngc:ie+ngc,js-ngc:je+ngc,km)
    type(fv_grid_type), intent(IN), target :: gridstruct
    type(domain2d), intent(INOUT) :: domain
-   
+
    real, pointer, dimension(:,:) :: rarea, dx, dy, sina_u, sina_v, rdxc, rdyc
    real, pointer, dimension(:,:,:) :: sin_sg
 !
@@ -724,7 +729,7 @@ module fv_update_phys_mod
               (mask(is,j)+mask(is,j+1))*dy(is,j)*(q(is-1,j,k)-q(is,j,k))*rdxc(is,j)* &
             0.5*(sin_sg(1,j,1) + sin_sg(0,j,3))
          if (ie+1==npx .and. .not. gridstruct%nested) fx(i,j) = &
-              (mask(ie+1,j)+mask(ie+1,j+1))*dy(ie+1,j)*(q(ie,j,k)-q(ie+1,j,k))*rdxc(ie+1,j)* & 
+              (mask(ie+1,j)+mask(ie+1,j+1))*dy(ie+1,j)*(q(ie,j,k)-q(ie+1,j,k))*rdxc(ie+1,j)* &
             0.5*(sin_sg(npx,j,1) + sin_sg(npx-1,j,3))
       enddo
       do j=js,je+1
@@ -750,12 +755,12 @@ module fv_update_phys_mod
 
   end subroutine del2_phys
 
-!>@brief The subroutine 'update_dwinds_phys' transforms the wind tendencies from 
+!>@brief The subroutine 'update_dwinds_phys' transforms the wind tendencies from
 !! the A grid to the D grid for the final update.
   subroutine update_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, dt, u_dt, v_dt, u, v, gridstruct, npx, npy, npz, domain)
 
 ! Purpose; Transform wind tendencies on A grid to D grid for the final update
- 
+
   integer, intent(in) :: is,  ie,  js,  je
   integer, intent(in) :: isd, ied, jsd, jed
   integer, intent(IN) :: npx,npy, npz
@@ -933,12 +938,12 @@ module fv_update_phys_mod
         enddo
 ! Update:
       endif   ! end grid_type
- 
+
     enddo         ! k-loop
 
-  end subroutine update_dwinds_phys 
+  end subroutine update_dwinds_phys
 
-!>@brief The subroutine 'update2d_dwinds_phys' transforms the wind tendencies from 
+!>@brief The subroutine 'update2d_dwinds_phys' transforms the wind tendencies from
 !! the A grid to the D grid for the final update.
   subroutine update2d_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, dt, u_dt, v_dt, u, v, gridstruct, npx, npy, npz, domain)
 
