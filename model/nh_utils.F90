@@ -1276,7 +1276,7 @@ CONTAINS
     do k=2, km
        do i=is, ie
 #ifdef MOIST_CAPPA
-          aa(i,k) = t1g*0.5*(gm2(i,k-1)+gm2(i,k))/(dz2(i,k-1)+dz2(i,k)) * (pem(i,k))
+          aa(i,k) = t1g*0.5*(gm2(i,k-1)+gm2(i,k))/(dz2(i,k-1)+dz2(i,k)) * (pem(i,k)+pp(i,k))
 #else
           aa(i,k) = t1g/(dz2(i,k-1)+dz2(i,k)) * (pem(i,k)+pp(i,k))
 #endif
@@ -1295,7 +1295,7 @@ CONTAINS
     enddo
     do i=is, ie
 #ifdef MOIST_CAPPA
-       p1(i) = t1g*gm2(i,km)/dz2(i,km)*(pem(i,km+1))
+           p1(i) = t1g*gm2(i,km)/dz2(i,km)*(pem(i,km+1)+pp(i,km+1))
 #else
            p1(i) = t1g/dz2(i,km)*(pem(i,km+1)+pp(i,km+1))
 #endif
@@ -1411,7 +1411,8 @@ CONTAINS
 
     do k=1, km+1
        do i=is, ie
-          pe2(i,k) = pem(i,k)
+! pe2 is Full p
+          pe2(i,k) = pem(i,k) + pp(i,k)
        enddo
     enddo
 
