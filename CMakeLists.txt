@@ -50,7 +50,7 @@ esma_add_library (${this}
 
 if (FV_PRECISION STREQUAL R4)
   target_link_libraries (${this} PUBLIC FMS::fms_r4)
-  target_compile_definitions (${this} PRIVATE SINGLE_FV OVERLOAD_R4
+  target_compile_definitions (${this} PRIVATE SINGLE_FV OVERLOAD_R4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
   # fvdycore needs r4 .mod interfaces
   get_target_property(inc_r4 FMS::fms_r4 INTERFACE_INCLUDE_DIRECTORIES)
