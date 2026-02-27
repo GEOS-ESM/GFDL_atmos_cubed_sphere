@@ -356,11 +356,17 @@ module fv_arrays_mod
                          !< This option remains active even if nord is nonzero. The default
                          !< value is 0.0. The proper range is 0 to 0.02.
 
-   real :: d4_bg = 0.16   !< Dimensionless coefficient for background higher-order divergence damping.
-                          !< 0.0 by default. If no second-order divergence damping is used, then values
-                          !< between 0.1 and 0.16 are recommended. Requires 'nord' > 0. Note that the
-                          !< scaling for 'd4_bg' differs from that of 'd2_bg'; 'nord' >= 1 and
-                          !< 'd4_bg' = 0.16 will be less diffusive than 'nord' = 0 and 'd2_bg' = 0.02.
+   real :: d4_bg_top = 0.16   !< Dimensionless coefficient for background higher-order divergence damping.
+                              !< 0.0 by default. If no second-order divergence damping is used, then values
+                              !< between 0.1 and 0.16 are recommended. Requires 'nord' > 0. Note that the
+                              !< scaling for 'd4_bg' differs from that of 'd2_bg'; 'nord' >= 1 and
+                              !< 'd4_bg' = 0.16 will be less diffusive than 'nord' = 0 and 'd2_bg' = 0.02.
+
+   real :: d4_bg_bot = 0.16   !< Dimensionless coefficient for background higher-order divergence damping.
+                              !< 0.0 by default. If no second-order divergence damping is used, then values
+                              !< between 0.1 and 0.16 are recommended. Requires 'nord' > 0. Note that the
+                              !< scaling for 'd4_bg' differs from that of 'd2_bg'; 'nord' >= 1 and
+                              !< 'd4_bg' = 0.16 will be less diffusive than 'nord' = 0 and 'd2_bg' = 0.02.
 
    real :: vtdm4 = 0.0   !< Coefficient for background other-variable damping. The value of 'vtdm4'
                          !< should be less than that of 'd4_bg'. A good first guess for 'vtdm4' is
@@ -880,6 +886,10 @@ module fv_arrays_mod
                                 !<     1: GMAO linear
                                 !<     2: GMAO quadratic
                                 !<     3: GMAO cubic
+ 
+   logical :: gmao_top_bc = .false.  !< Optional upper BC in remapping of T or TE from GMAO (true or false)
+
+   logical :: gmao_bot_bc = .false.  !< Optional lower BC in remapping of T or TE from GMAO (true or false)
 
    logical :: z_tracer = .false.   !< Whether to transport sub-cycled tracers layer-by-layer,
                                    !< each with its own computed sub-cycling time step (if q_split = 0).
