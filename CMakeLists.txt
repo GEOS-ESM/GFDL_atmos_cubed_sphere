@@ -20,6 +20,7 @@ set (srcs
   model/a2b_edge.F90
   model/fv_fill.F90
   tools/init_hydro.F90
+  model/calc_gas_specific_heat_MLT.F90
   model/fv_mapz.F90
   tools/fv_surf_map.F90
   model/fv_update_phys.F90
@@ -43,6 +44,15 @@ set (srcs
   tools/external_sst.F90
   tools/fv_nudge.F90
   model/fv_nesting.F90
+  NRL_MSIS/msis_constants.F90
+  NRL_MSIS/msis_utils.F90
+  NRL_MSIS/msis_init.F90
+  NRL_MSIS/msis_gfn.F90
+  NRL_MSIS/msis_tfn.F90
+  NRL_MSIS/msis_dfn.F90
+  NRL_MSIS/msis_calc.F90
+  NRL_MSIS/msis_gtd8d.F90
+  NRL_MSIS/msis_wrapper.F90
   )
 
 esma_add_library (${this}
