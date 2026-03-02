@@ -129,6 +129,8 @@ module dyn_core_mod
 
   use boundary_mod,         only: extrapolation_BC,  nested_grid_BC_apply_intT
 
+  use calc_gas_specific_heat_mlt_mod, only: calc_gas_specific_heat_mlt
+
 #ifdef SW_DYNAMICS
   use test_cases_mod,      only: test_case, case9_forcing1, case9_forcing2
 #endif
@@ -157,7 +159,7 @@ contains
 !     dyn_core :: FV Lagrangian dynamics driver
 !-----------------------------------------------------------------------
  
- subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, k_split, n_split, zvir, cp, akap, cappa, grav, hydrostatic,  &
+ subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, k_split, n_split, zvir, cp, akap, cappa, grav, hydrostatic, GEOS_MLT, &
                      u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
                      uc, vc, mfx, mfy, cx, cy, pkz, peln, q_con, ak, bk, dpx, &
                      ks, gridstruct, flagstruct, neststruct, idiag, bd, domain, &
@@ -172,6 +174,7 @@ contains
     real   , intent(IN) :: zvir, cp, akap, grav
     real   , intent(IN) :: ptop
     logical, intent(IN) :: hydrostatic
+    logical, intent(IN) :: GEOS_MLT
     logical, intent(IN) :: init_step, end_step
     real, intent(in) :: pfull(npz)
     real, intent(in),     dimension(npz+1) :: ak, bk
@@ -527,7 +530,7 @@ contains
       endif
       if ( hydrostatic ) then
            call geopk(ptop, pe, peln, delpc, pkc, gz, phis, ptc, q_con, pkz, npz, akap, .true., &
-                      gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd)
+                      gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, gridstruct)
       else
 #ifndef SW_DYNAMICS
            if ( it == 1 ) then
@@ -746,7 +749,7 @@ contains
                   q_con(isd:,jsd:,1),  z_rat(isd,jsd),  &
 #endif
                   kgb, heat_s, diss_e, dpx(is,js,k), zvir, sphum, nq,  q,  k,  npz, flagstruct%inline_q,  dt,  &
-                  flagstruct%hord_tr, hord_m, hord_v, hord_t, hord_p,    &
+                  flagstruct%hord_tr, hord_m, hord_v, hord_t, hord_p,  &
                   nord_k, nord_v(k), nord_w, nord_t, flagstruct%dddmp, d2_divg, flagstruct%d4_bg,  &
                   damp_vt(k), damp_w, damp_t, d_con_k, hydrostatic, gridstruct, flagstruct, bd)
 
@@ -840,7 +843,7 @@ contains
 
      if ( hydrostatic ) then
         call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
-                   gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd)
+                   gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, gridstruct)
      else
 #ifndef SW_DYNAMICS
                                             call timing_on('UPDATE_DZ')
@@ -2034,16 +2037,20 @@ do 1000 j=jfirst,jlast
 
  end subroutine  mix_dp
 
+
 !>@brief The subroutine 'geopk' calculates geopotential and pressure to the kappa.
- subroutine geopk(ptop, pe, peln, delp, pk, gz, hs, pt, q_con, pkz, km, akap, CG, nested, computehalo, npx, npy, a2b_ord, bd)
+ subroutine geopk(ptop, pe, peln, delp, pk, gz, hs, pt, q_con, pkz, km, akap, CG, nested, computehalo, npx, npy, a2b_ord, bd, &
+         GEOS_MLT, gridstruct)
 
    integer, intent(IN) :: km, npx, npy, a2b_ord
    real   , intent(IN) :: akap, ptop
    type(fv_grid_bounds_type), intent(IN) :: bd
+   type(fv_grid_type),  intent(INOUT), target :: gridstruct
    real   , intent(IN) :: hs(bd%isd:bd%ied,bd%jsd:bd%jed)
    real, intent(IN), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,km):: pt, delp
    real, intent(IN), dimension(bd%isd:,bd%jsd:,1:):: q_con
    logical, intent(IN) :: CG, nested, computehalo
+   logical, intent(IN) :: GEOS_MLT
    ! !OUTPUT PARAMETERS
    real, intent(OUT), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,km+1):: gz, pk
    real, intent(OUT) :: pe(bd%is-1:bd%ie+1,km+1,bd%js-1:bd%je+1)
@@ -2052,6 +2059,8 @@ do 1000 j=jfirst,jlast
    ! !DESCRIPTION:
    !    Calculates geopotential and pressure to the kappa.
    ! Local:
+   real Cp_MLT(bd%isd:bd%ied, bd%jsd:bd%jed, km)
+   real Kappa_MLT(bd%isd:bd%ied, bd%jsd:bd%jed, km) 
    real peg(bd%isd:bd%ied,km+1)
    real pkg(bd%isd:bd%ied,km+1)
    real(kind=8) p1d(bd%isd:bd%ied)
@@ -2088,8 +2097,10 @@ do 1000 j=jfirst,jlast
       if (je == npy-1) jlast  = jed
    end if
 
+   call calc_gas_specific_heat_MLT(is, ie, js, je, isd, ied, jsd, jed, km, gridstruct, Cp_MLT, Kappa_MLT)
+
 !$OMP parallel do default(none) shared(jfirst,jlast,ifirst,ilast,pk,km,gz,hs,ptop,ptk, &
-!$OMP                                  js,je,is,ie,peln,peln1,pe,delp,akap,pt,CG,pkz,q_con) &
+!$OMP                                  js,je,is,ie,peln,peln1,pe,delp,akap,pt,CG,pkz,q_con,Cp_MLT,Kappa_MLT,GEOS_MLT) &
 !$OMP                          private(peg, pkg, p1d, g1d, logp)
    do 2000 j=jfirst,jlast
 
@@ -2143,28 +2154,61 @@ do 1000 j=jfirst,jlast
 
       enddo
 
-      ! Bottom up
-      do k=km,1,-1
-         do i=ifirst, ilast
+      if ( GEOS_MLT ) then
+
+         ! Bottom up
+         do k=km,1,-1
+            do i=ifirst, ilast
 #ifdef SW_DYNAMICS
-            g1d(i) = g1d(i) + pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+               g1d(i) = g1d(i) + pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
 #else
 #ifdef USE_COND
-            g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pkg(i,k+1)-pkg(i,k))
+               ! Use composition-correct Cp for MLT, replacing fixed cp_air
+               g1d(i) = g1d(i) + Cp_MLT(i,j,k)*pt(i,j,k)*(pkg(i,k+1)-pkg(i,k))
 #else
-            g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+               ! Use composition-correct Cp for MLT, replacing fixed cp_air
+               g1d(i) = g1d(i) + Cp_MLT(i,j,k)*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
 #endif
 #endif
-            gz(i,j,k) = g1d(i)
-         enddo
-      enddo
-
-      if ( .not. CG .and. j .ge. js .and. j .le. je ) then
-         do k=1,km
-            do i=is,ie
-               pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
+               gz(i,j,k) = g1d(i)
             enddo
          enddo
+
+         if ( .not. CG .and. j .ge. js .and. j .le. je ) then
+            do k=1,km
+               do i=is,ie
+                  ! Use local kappa in place of constant akap
+                  pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k)) / &
+                             (Kappa_MLT(i,j,k) * (peln(i,k+1,j)-peln(i,k,j)))
+               enddo
+            enddo
+         endif
+
+      else   
+         
+         ! Bottom up
+         do k=km,1,-1
+            do i=ifirst, ilast
+#ifdef SW_DYNAMICS
+               g1d(i) = g1d(i) + pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+#else
+#ifdef USE_COND
+               g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pkg(i,k+1)-pkg(i,k))
+#else
+               g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+#endif
+#endif
+               gz(i,j,k) = g1d(i)
+            enddo
+         enddo
+
+         if ( .not. CG .and. j .ge. js .and. j .le. je ) then
+            do k=1,km
+               do i=is,ie
+                  pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
+               enddo
+            enddo
+         endif
       endif
 
 2000  continue

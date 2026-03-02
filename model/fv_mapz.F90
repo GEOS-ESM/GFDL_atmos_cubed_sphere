@@ -92,6 +92,8 @@ module fv_mapz_mod
   use fv_timing_mod,     only: timing_on, timing_off
   use fv_mp_mod,         only: is_master
   use fv_cmp_mod,        only: qs_init, fv_sat_adj
+  use calc_gas_specific_heat_mlt_mod, only: calc_gas_specific_heat_mlt
+
 
   implicit none
   real, parameter:: consv_min= 0.001         !< below which no correction applies
@@ -124,6 +126,7 @@ module fv_mapz_mod
 
 contains
 
+
 !>@brief The subroutine 'Lagrangian_to_Eulerian' remaps deformed Lagrangian layers back to the reference Eulerian coordinate.
 !>@details It also includes the entry point for calling fast microphysical processes. This is typically calle on the k_split loop.
  subroutine Lagrangian_to_Eulerian(last_step, consv, ps, pe, delp, pkz, pk,   &
@@ -132,7 +135,7 @@ contains
                       akap, cappa, kord_mt, kord_wz, kord_tr, kord_tm,  peln, te0_2d,        &
                       ng, ua, va, omga, te, ws, fill, reproduce_sum, out_dt, dtdt,      &
                       ptop, ak, bk, pfull, flagstruct, gridstruct, domain, do_sat_adj, &
-                      hydrostatic, hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
+                      hydrostatic, GEOS_MLT, hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
                       mfx, mfy, cx, cy, remap_option, gmao_remap)
   logical, intent(in):: last_step
   real,    intent(in):: mdt                    !< remap time step
@@ -184,6 +187,7 @@ contains
                                                      !< as input; output: temperature
   real, intent(inout), dimension(isd:,jsd:,1:)::delz, q_con, cappa
   logical, intent(in):: hydrostatic
+  logical, intent(in):: GEOS_MLT
   logical, intent(in):: hybrid_z
   logical, intent(in):: out_dt
 
@@ -202,6 +206,10 @@ contains
   real, optional, intent(inout)::  cy(isd:ied ,js:je+1,km)
 
   integer, intent(in):: remap_option, gmao_remap
+
+! GEOS_MLT
+  real Cp_MLT(isd:ied, jsd:jed, km)
+  real Kappa_MLT(isd:ied, jsd:jed, km)
 
 ! !DESCRIPTION:
 !
@@ -327,14 +335,16 @@ contains
             enddo
             call qs_init(kmp)
        endif
-
+ 
+  call calc_gas_specific_heat_MLT(is,ie,js,je,isd,ied,jsd,jed,km,gridstruct,Cp_MLT,Kappa_MLT)
+       
 !$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,kord_tm,remap_t, &
-!$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic, &
+!$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic,GEOS_MLT, &
 !$OMP                                  pt,pk,rg,peln,q,nwat,liq_wat,rainwat,ice_wat,snowwat,    &
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, adiabatic, &
-!$OMP                                  hs,w,ws,kord_wz,rrg,kord_mt,consv,remap_option,gmao_remap)    &
+!$OMP                                  hs,w,ws,kord_wz,rrg,kord_mt,consv,remap_option,gmao_remap,Cp_MLT,Kappa_MLT)    &
 !$OMP                          private(gz,cvm,bkh,dp2,   &
 !$OMP                                  pe0,pe1,pe2,pe3,pk1,pk2,pn1,pn2,phis,q2,w2,dpln,dlnp)
   do 1000 j=js,je+1
@@ -385,32 +395,65 @@ contains
       elseif (remap_te) then
        ! Remap TE in logP
        ! Transform virtual pt to total energy
-           if ( hydrostatic ) then
-               call pkez(km, is, ie, js, je, j, pe, pk, akap, peln, pkz, ptop)
-               do i=is,ie
-                  phis(i,km+1) = hs(i,j)
-               enddo
-               do k=km,1,-1
-                 do i=is,ie
-                    phis(i,k) = phis(i,k+1) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
-                 enddo
-              enddo
-              do k=1,km+1
-                 do i=is,ie
-                    phis(i,k) = phis(i,k) * pe(i,k,j)
-                 enddo
-              enddo
-              ! Compute cp*T + KE
-               do k=1,km
-                  do i=is,ie
-                     te(i,j,k) = 0.25*gridstruct%rsin2(i,j)*(u(i,j,k)**2+u(i,j+1,k)**2 +  &
-                                                             v(i,j,k)**2+v(i+1,j,k)**2 -  &
-                                (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j))  &
-                              + cp_air*pt(i,j,k)*pkz(i,j,k) &
-                              + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j))
+            
+                       
+            if ( hydrostatic ) then
+                
+               if ( GEOS_MLT ) then
+
+                  call pkez(km, is, ie, js, je, j, pe, pk, akap, peln, pkz, ptop)
+                  do k=km,1,-1
+                     do i=is,ie
+                        phis(i,k) = phis(i,k+1) + Cp_MLT(i,j,k)*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+                     enddo
                   enddo
-               enddo
-           else
+                  do k=1,km+1
+                     do i=is,ie
+                        phis(i,k) = phis(i,k) * pe1(i,k)
+                     enddo
+                  enddo
+                  do k=1,km
+                     do i=is,ie
+                        te(i,j,k) = 0.25*gridstruct%rsin2(i,j)*(u(i,j,k)**2+u(i,j+1,k)**2 +  &
+                             v(i,j,k)**2+v(i+1,j,k)**2 -  &
+                             (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j))  &
+                             + Cp_MLT(i,j,k)*pt(i,j,k)*pkz(i,j,k) +  (phis(i,k+1)-phis(i,k))/(pe1(i,k+1)-pe1(i,k))
+                     enddo
+                  enddo
+                 
+                  ! ******
+                  ! End GEOS_MLT Modification
+                  ! ******
+               
+               else
+
+                  call pkez(km, is, ie, js, je, j, pe, pk, akap, peln, pkz, ptop)
+                  do i=is,ie
+                     phis(i,km+1) = hs(i,j)
+                  enddo
+                  do k=km,1,-1
+                     do i=is,ie
+                        phis(i,k) = phis(i,k+1) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+                     enddo
+                  enddo
+                  do k=1,km+1
+                     do i=is,ie
+                        phis(i,k) = phis(i,k) * pe(i,k,j)
+                     enddo
+                  enddo
+                  ! Compute cp*T + KE
+                  do k=1,km
+                     do i=is,ie
+                        te(i,j,k) = 0.25*gridstruct%rsin2(i,j)*(u(i,j,k)**2+u(i,j+1,k)**2 +  &
+                                                             v(i,j,k)**2+v(i+1,j,k)**2 -  &
+                                   (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j))  &
+                                 + cp_air*pt(i,j,k)*pkz(i,j,k) &
+                                 + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j))
+                     enddo
+                  enddo  
+               endif                  
+            else     
+               
 ! TE using 3D winds (pt is virtual potential temperature):
                do i=is,ie
                   phis(i,km+1) = hs(i,j)
@@ -428,31 +471,31 @@ contains
                do k=1,km
 #ifdef MOIST_CAPPA
                   call moist_cv(is,ie,isd,ied,jsd,jed, km, j, k, nwat, sphum, liq_wat, rainwat,    &
-                                ice_wat, snowwat, graupel, q, gz, cvm)
+                             ice_wat, snowwat, graupel, q, gz, cvm)
                   do i=is,ie
                      cappa(i,j,k) = rdgas / ( rdgas + cvm(i)/(1.+r_vir*q(i,j,k,sphum)) )
                      pkz(i,j,k) = exp(cappa(i,j,k)/(1.-cappa(i,j,k))*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)))
-                    ! TE = KE + Cv*T_v + PE
+                     ! TE = KE + Cv*T_v + PE
                      te(i,j,k) = 0.5*w(i,j,k)**2 + 0.25*gridstruct%rsin2(i,j)*( &
-                                     u(i,j,k)**2+u(i,j+1,k)**2 + v(i,j,k)**2+v(i+1,j,k)**2 -  &
-                                    (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j)) &
-                                  + cvm(i)*pt(i,j,k)*pkz(i,j,k) &
-                                  + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j))
+                                  u(i,j,k)**2+u(i,j+1,k)**2 + v(i,j,k)**2+v(i+1,j,k)**2 -  &
+                                 (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j)) &
+                               + cvm(i)*pt(i,j,k)*pkz(i,j,k) &
+                               + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j))
                   enddo
 #else
                   do i=is,ie
                      pkz(i,j,k) = exp(k1k*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)))
-                    ! TE = KE + Cv*T_v + PE
+                     ! TE = KE + Cv*T_v + PE
                      te(i,j,k) = 0.5*w(i,j,k)**2 + 0.25*gridstruct%rsin2(i,j)*( &
-                                     u(i,j,k)**2+u(i,j+1,k)**2 + v(i,j,k)**2+v(i+1,j,k)**2 -  &
-                                    (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j)) &
-                                  + cv_air*pt(i,j,k)*pkz(i,j,k) &
-                                  + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j))
+                                  u(i,j,k)**2+u(i,j+1,k)**2 + v(i,j,k)**2+v(i+1,j,k)**2 -  &
+                                 (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j)) &
+                               + cv_air*pt(i,j,k)*pkz(i,j,k) &
+                               + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j))
                   enddo
 #endif
                enddo
-           endif ! hydro test
-       endif
+            endif ! hydro test
+      endif
 
 ! update ps
    do i=is,ie
@@ -694,12 +737,12 @@ contains
 ! Update pressure variables and get new pkz, T_v, and omega
 
 !$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,kord_tm,remap_t, &
-!$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic, &
+!$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic,GEOS_MLT, &
 !$OMP                                  pt,pk,rg,peln,q,nwat,liq_wat,rainwat,ice_wat,snowwat,    &
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, &
-!$OMP                                  hs,w,ws,kord_wz,do_omega,omga,rrg,kord_mt)    &
+!$OMP                                  hs,w,ws,kord_wz,do_omega,omga,rrg,kord_mt,Cp_MLT,Kappa_MLT)    &
 !$OMP                          private(gz,cvm,kp,k_next,bkh,dp2,   &
 !$OMP                                  pe2,pe3,pk2,pn2,phis,tpe,dlnp,tmp)
   do 2000 j=js,je
@@ -765,37 +808,87 @@ contains
 ! Compute pkz and T_v
 !---------------------
    if ( hydrostatic ) then
-      do k=1,km
-         do i=is,ie
-            pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
-         enddo
-      enddo
-      if (.not.remap_t) then
-         if (remap_te) then
-           ! Get updated T_v (store in pt)
+
+      ! *****
+      ! GEOS_MLT Modification
+      ! *****     
+      if ( GEOS_MLT ) then     
+         
+         do k=1,km    
             do i=is,ie
-              gz(i) = hs(i,j)
-            enddo
-            do k=km,1,-1
+               pkz(i,j,k) = (pk(i,j,k)/Kappa_MLT(i,j,k)*peln(i,k+1,j)-peln(i,k,j))
+            enddo 
+         enddo
+
+         if (.not.remap_t) then
+            if (remap_te) then
+               ! Get updated T_v (store in pt)
                do i=is,ie
-                  tpe = te(i,j,k) - gz(i) - 0.25*gridstruct%rsin2(i,j)*(    &
+                 gz(i) = hs(i,j)
+               enddo
+
+               do k=km,1,-1
+                  do i=is,ie
+                     tpe = te(i,j,k) - phis(i,k+1) - 0.25*gridstruct%rsin2(i,j)*(    &
                         u(i,j,k)**2+u(i,j+1,k)**2 + v(i,j,k)**2+v(i+1,j,k)**2 -  &
-                       (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j) )
-                  dlnp = rg*(peln(i,k+1,j) - peln(i,k,j))
-                  tmp = tpe / (cp - pe(i,k,j)*dlnp/delp(i,j,k))
-                  pt(i,j,k) = tmp
-                  gz(i) = gz(i) + dlnp*tmp
-               enddo
-            enddo           ! end k-loop
-         else
-           ! Make pt T_v
-            do k=1,km
-               do i=is,ie
-                  pt(i,j,k) = pt(i,j,k)*pkz(i,j,k)
-               enddo
+                        (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j) )
+                     dlnp = rg*(peln(i,k+1,j) - peln(i,k,j))
+
+                     ! Use local Cp and κ from GEOS_MLT
+                     tmp = tpe / (Cp_MLT(i,j,k) - pe2(i,k)*dlnp/delp(i,j,k))
+                     pt(i,j,k) = tmp
+                     gz(i) = gz(i) + dlnp*tmp
+                  enddo
+               enddo           ! end k-loop
+            else
+            
+               ! Make pt T_v
+               do k=1,km
+                  do i=is,ie
+                     pt(i,j,k) = pt(i,j,k)*pkz(i,j,k)
+                  enddo
+               enddo         
+            endif
+         endif  
+      ! *****
+      ! End GEOS-MLT Mod
+      ! *****
+
+      else   
+              
+         do k=1,km
+            do i=is,ie
+               pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
             enddo
+         enddo
+      
+         if (.not.remap_t) then
+            if (remap_te) then
+               ! Get updated T_v (store in pt)
+               do i=is,ie
+                  gz(i) = hs(i,j)
+               enddo
+               do k=km,1,-1
+                  do i=is,ie
+                     tpe = te(i,j,k) - gz(i) - 0.25*gridstruct%rsin2(i,j)*(    &
+                           u(i,j,k)**2+u(i,j+1,k)**2 + v(i,j,k)**2+v(i+1,j,k)**2 -  &
+                          (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j) )
+                     dlnp = rg*(peln(i,k+1,j) - peln(i,k,j))
+                     tmp = tpe / (cp - pe(i,k,j)*dlnp/delp(i,j,k))
+                     pt(i,j,k) = tmp
+                     gz(i) = gz(i) + dlnp*tmp
+                  enddo
+               enddo           ! end k-loop
+            else
+              ! Make pt T_v
+               do k=1,km
+                  do i=is,ie
+                     pt(i,j,k) = pt(i,j,k)*pkz(i,j,k)
+                  enddo
+               enddo
+            endif
          endif
-      endif
+      endif   
    else
       if (remap_te) then
 ! Invert TE using 3D winds to get pt (virtual temperature) and pkz:
@@ -906,13 +999,13 @@ contains
 
 !$OMP parallel default(none) shared(is,ie,js,je,km,kmp,ptop,u,v,pe,isd,ied,jsd,jed,kord_mt, &
 !$OMP                               remap_t,remap_pt,remap_te, &
-!$OMP                               te_2d,te,delp,hydrostatic,hs,rg,pt,peln, adiabatic, &
+!$OMP                               te_2d,te,delp,hydrostatic,GEOS_MLT,hs,rg,pt,peln, adiabatic, &
 !$OMP                               cp,delz,nwat,rainwat,liq_wat,ice_wat,snowwat,       &
 !$OMP                               graupel,q_con,r_vir,sphum,w,pk,pkz,last_step,consv, &
 !$OMP                               do_adiabatic_init,zsum1,zsum0,te0_2d,domain,        &
 !$OMP                               ng,gridstruct,E_Flux,pdt,dtmp,reproduce_sum,q,      &
 !$OMP                               mdt,cld_amt,cappa,dtdt,out_dt,rrg,akap,do_sat_adj,  &
-!$OMP                               fast_mp_consv,kord_tm) &
+!$OMP                               fast_mp_consv,kord_tm,Cp_MLT,Kappa_MLT) &
 !$OMP                       private(pe0,pe1,pe2,pe3,cvm,gz,phis,tesum,zsum,dpln,dlnp,tmp)
 
 dtmp = 0.
@@ -1059,7 +1152,7 @@ endif        ! end last_step check
                  do j=js,je
                     do i=is,ie
 #ifdef MOIST_CAPPA
-                       pkz(i,j,k) = exp(cappa(i,j,k)*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)))
+          !GEOS_MLT             pkz(i,j,k) = exp(cappa(i,j,k)*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)))
 #else
                        pkz(i,j,k) = exp(akap*log(rrg*delp(i,j,k)/delz(i,j,k)*pt(i,j,k)))
 #endif
