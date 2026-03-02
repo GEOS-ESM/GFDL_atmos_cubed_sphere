@@ -969,17 +969,17 @@ module sw_core_mod
 
         if ( .not. hydrostatic ) then
             if ( damp_w>1.E-5 ) then
-                dd8 = kgb*abs(dt)
-                damp4 = (damp_w*gridstruct%da_min_c)**(nord_w+1)
-                call del6_vt_flux(nord_w, npx, npy, damp4, w, wk, fx2, fy2, gridstruct, bd)
+                 dd8 = kgb*abs(dt)
+                 damp4 = (damp_w*gridstruct%da_min_c)**(nord_w+1)
+                 call del6_vt_flux(nord_w, npx, npy, damp4, w, wk, fx2, fy2, gridstruct, bd)
                 do j=js,je
                    do i=is,ie
                       dw(i,j) = (fx2(i,j)-fx2(i+1,j)+fy2(i,j)-fy2(i,j+1))*rarea(i,j)
-                                                   ! 0.5 * [ (w+dw)**2 - w**2 ] = w*dw + 0.5*dw*dw
+! 0.5 * [ (w+dw)**2 - w**2 ] = w*dw + 0.5*dw*dw
                       heat_source(i,j) = dd8 - d_con*dw(i,j)*(w(i,j)+0.5*dw(i,j))
-                      if ( flagstruct%do_skeb ) then
-                         diss_est(i,j) = heat_source(i,j)
-                      endif
+                    if ( flagstruct%do_skeb ) then
+                       diss_est(i,j) = heat_source(i,j)
+                    endif
                    enddo
                 enddo
             endif
@@ -990,6 +990,8 @@ module sw_core_mod
                   w(i,j) = delp(i,j)*w(i,j) + (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
                enddo
             enddo
+        endif
+
 #ifdef USE_COND
            call fv_tp_2d(q_con, crx_adv,cry_adv, npx, npy, hord_dp, gx, gy,  &
                 xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
@@ -999,7 +1001,6 @@ module sw_core_mod
                enddo
             enddo
 #endif
-        endif
 
         call fv_tp_2d(pt, crx_adv,cry_adv, npx, npy, hord_tm, gx, gy,  &
                       xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
@@ -1260,14 +1261,15 @@ module sw_core_mod
              enddo
           enddo
         endif
-#ifdef USE_COND
-        do j=js,je
-           do i=is,ie
-              q_con(i,j) = q_con(i,j)/delp(i,j)
-           enddo
-        enddo
-#endif
+
      endif
+#ifdef USE_COND
+     do j=js,je
+        do i=is,ie
+           q_con(i,j) = q_con(i,j)/delp(i,j)
+        enddo
+     enddo
+#endif
 
 !-----------------------------
 ! Compute divergence damping
