@@ -302,6 +302,9 @@ module fv_control_mod
    logical , pointer :: hydrostatic 
    logical , pointer :: phys_hydrostatic
    logical , pointer :: use_hydro_pressure
+   
+   logical , pointer :: GEOS_MLT
+   
    logical , pointer :: do_uni_zfull !miz
    logical , pointer :: adj_mass_vmr ! f1p
    logical , pointer :: hybrid_z    
@@ -669,7 +672,7 @@ module fv_control_mod
                          dry_mass, grid_type, do_Held_Suarez, do_reed_physics, reed_cond_only, &
                          consv_te, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, Beljaars_TOFD, &
                          range_warn, dwind_2d, inline_q, z_tracer, reproduce_sum, adiabatic, do_vort_damp, no_dycore,   &
-                         tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, fv_sg_adj, breed_vortex_inline,  &
+                         tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, GEOS_MLT, fv_sg_adj, breed_vortex_inline,  &
                          na_init, nudge_dz, hybrid_z, Make_NH, n_zs_filter, nord_zs_filter, full_zs_filter, reset_eta,         &
                          pnats, dnats, a2b_ord, remap_option, gmao_remap, p_ref, d2_bg_k1, d2_bg_k2,  &
                          c2l_ord, dx_const, dy_const, umax, deglat,      &
@@ -1301,6 +1304,9 @@ module fv_control_mod
      hydrostatic                   => Atm%flagstruct%hydrostatic
      phys_hydrostatic              => Atm%flagstruct%phys_hydrostatic
      use_hydro_pressure            => Atm%flagstruct%use_hydro_pressure
+     
+     GEOS_MLT                      => Atm%flagstruct%GEOS_MLT
+     
      do_uni_zfull                  => Atm%flagstruct%do_uni_zfull !miz
      adj_mass_vmr                  => Atm%flagstruct%adj_mass_vmr !f1p
      hybrid_z                      => Atm%flagstruct%hybrid_z
