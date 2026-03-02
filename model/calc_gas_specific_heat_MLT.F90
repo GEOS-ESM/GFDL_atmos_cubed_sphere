@@ -51,12 +51,12 @@ contains
         real, parameter :: dof_diatomic = 7.0/2.0 ! N2, O2
         real, parameter :: dof_atomic   = 5.0/2.0 ! O, N
 
-        ! Set date/time for MSIS (you'll need to get these from your model)
+        ! --- Set date/time for MSIS (This needs to be pulled from the model, this is just a test day) ---
         year  = 2015
-        month = 5    ! May (day 150 of year)
+        month = 5   
         day   = 30
         hour  = 12
-        stl   = 12.0 ! Solar local time - you may want to compute this from lon
+        stl   = 12.0 ! Solar local time (compute from longitude)
 
         do j = js, je
            do i = is, ie
@@ -66,18 +66,16 @@ contains
 
               ! Loop over each vertical level
               do k = 1, km
-                 ! Get altitude for this level (you need to compute this from your model)
-                 ! This is a placeholder - replace with actual altitude calculation
-                 alt_km = real(k * 2.0, 4)  ! Example: 2 km spacing
+                 !This is a placeholder - replace with actual altitude calculation
+                 !alt_km = real(k * 2.0, 4)  ! Example: 2 km spacing
 
                  ! Call MSIS for THIS level only
-                 call msis_point(year, month, day, hour, alt_km, &
+                 call msis_point(year, month, day, hour, km, &
                                  real(lat_deg, 4), real(lon_deg, 4), stl, &
                                  Om_k, N2m_k, O2m_k, T_k)
 
                  ! Gas constant for this composition
-                 ! Note: MSIS doesn't return atomic N directly
-                 ! You may need to derive it or assume negligible
+                 ! Neglecting atomic nitrogen for now
                  Rg_MLT_k = Rstar / ((N2m_k * N2molar) + &
                                       (Om_k  * Omolar)  + &
                                       (O2m_k * O2molar))
@@ -86,7 +84,7 @@ contains
                  Cp_MLT_k = Rg_MLT_k * ((dof_diatomic * (N2m_k + O2m_k)) + &
                                          (dof_atomic   * Om_k))
 
-                 ! Store outputs
+                 ! Outputs needed
                  Cp_MLT(i, j, k)    = Cp_MLT_k
                  Kappa_MLT(i, j, k) = Rg_MLT_k / Cp_MLT_k
 
