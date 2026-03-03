@@ -103,3 +103,6 @@ target_compile_definitions (${this} PRIVATE INTERNAL_FILE_NML)
 esma_add_subdirectories(
   model/mapz-driver
   model/tp-core-driver)
+
+file(GLOB resource_files CONFIGURE_DEPENDS NRL_MSIS/*.txt NRL_MSIS/*.parm)
+install(FILES ${resource_files} DESTINATION etc)
