@@ -39,7 +39,7 @@ contains
   subroutine msis_wrapper_init()
     ! Initialize MSIS and load f107_ap_appended.txt
     if (.not. msis_inited) then
-      call msisinit(parmpath='/discover/nobackup/jmpettit/GEOS_MLT_v7/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/NRL_MSIS', parmfile='msis21.parm')
+      call msisinit(parmpath='./', parmfile='msis21.parm')
       msis_inited = .true.
     end if
     call load_f107_file()

@@ -179,7 +179,7 @@ contains
     if (present(parmpath)) then
       parmpath1 = parmpath
     else
-      parmpath1 = '/discover/nobackup/jmpettit/GEOS_MLT_v7/src/Components/@GEOSgcm_GridComp/GEOSagcm_GridComp/GEOSsuperdyn_GridComp/@FVdycoreCubed_GridComp/@fvdycore/NRL_MSIS/'
+      parmpath1 = './'
     endif
 
     ! Parameter file name
