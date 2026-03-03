@@ -67,10 +67,10 @@ contains
               ! Loop over each vertical level
               do k = 1, km
                  !This is a placeholder - replace with actual altitude calculation
-                 !alt_km = real(k * 2.0, 4)  ! Example: 2 km spacing
+                 alt_km = real(k * 2.0, 4)  ! Example: 2 km spacing
 
                  ! Call MSIS for THIS level only
-                 call msis_point(year, month, day, hour, km, &
+                 call msis_point(year, month, day, hour, alt_km, &
                                  real(lat_deg, 4), real(lon_deg, 4), stl, &
                                  Om_k, N2m_k, O2m_k, T_k)
 
