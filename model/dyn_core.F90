@@ -130,6 +130,7 @@ module dyn_core_mod
   use boundary_mod,         only: extrapolation_BC,  nested_grid_BC_apply_intT
 
   use calc_gas_specific_heat_mlt_mod, only: calc_gas_specific_heat_mlt
+  use ESMF, only: ESMF_Clock, ESMF_Time, ESMF_ClockGet, ESMF_TimeGet
 
 #ifdef SW_DYNAMICS
   use test_cases_mod,      only: test_case, case9_forcing1, case9_forcing2
@@ -160,7 +161,7 @@ contains
 !-----------------------------------------------------------------------
  
  subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, k_split, n_split, zvir, cp, akap, cappa, grav, hydrostatic, GEOS_MLT, &
-                     u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
+                     year, month, day, hour, minute, second, u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
                      uc, vc, mfx, mfy, cx, cy, pkz, peln, q_con, ak, bk, dpx, &
                      ks, gridstruct, flagstruct, neststruct, idiag, bd, domain, &
                      init_step, i_pack, end_step, diss_est,time_total)
@@ -174,7 +175,10 @@ contains
     real   , intent(IN) :: zvir, cp, akap, grav
     real   , intent(IN) :: ptop
     logical, intent(IN) :: hydrostatic
-    logical, intent(IN) :: GEOS_MLT
+    
+    logical, intent(IN) :: GEOS_MLT                                        ! Needed for GEOS_MLT
+    integer, intent(IN) :: year, month, day, hour, minute, second          ! Needed for GEOS_MLT MSIS call
+    
     logical, intent(IN) :: init_step, end_step
     real, intent(in) :: pfull(npz)
     real, intent(in),     dimension(npz+1) :: ak, bk
@@ -530,7 +534,8 @@ contains
       endif
       if ( hydrostatic ) then
            call geopk(ptop, pe, peln, delpc, pkc, gz, phis, ptc, q_con, pkz, npz, akap, .true., &
-                      gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, gridstruct)
+                      gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                      year, month, day, hour, minute, second, gridstruct)
       else
 #ifndef SW_DYNAMICS
            if ( it == 1 ) then
@@ -843,7 +848,8 @@ contains
 
      if ( hydrostatic ) then
         call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
-                   gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, gridstruct)
+                   gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                   year, month, day, hour, minute, second, gridstruct)
      else
 #ifndef SW_DYNAMICS
                                             call timing_on('UPDATE_DZ')
@@ -2040,7 +2046,7 @@ do 1000 j=jfirst,jlast
 
 !>@brief The subroutine 'geopk' calculates geopotential and pressure to the kappa.
  subroutine geopk(ptop, pe, peln, delp, pk, gz, hs, pt, q_con, pkz, km, akap, CG, nested, computehalo, npx, npy, a2b_ord, bd, &
-         GEOS_MLT, gridstruct)
+         GEOS_MLT, pfull, year, month, day, hour, minute, second, gridstruct)
 
    integer, intent(IN) :: km, npx, npy, a2b_ord
    real   , intent(IN) :: akap, ptop
@@ -2050,7 +2056,11 @@ do 1000 j=jfirst,jlast
    real, intent(IN), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,km):: pt, delp
    real, intent(IN), dimension(bd%isd:,bd%jsd:,1:):: q_con
    logical, intent(IN) :: CG, nested, computehalo
-   logical, intent(IN) :: GEOS_MLT
+  
+   logical, intent(IN) :: GEOS_MLT                                ! GEOS_MLT 
+   integer, intent(IN) :: year, month, day, hour, minute, second  ! GEOS_MLT
+   real, intent(IN),  dimension(km):: pfull                       ! GEOS_MLT
+
    ! !OUTPUT PARAMETERS
    real, intent(OUT), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,km+1):: gz, pk
    real, intent(OUT) :: pe(bd%is-1:bd%ie+1,km+1,bd%js-1:bd%je+1)
@@ -2097,7 +2107,8 @@ do 1000 j=jfirst,jlast
       if (je == npy-1) jlast  = jed
    end if
 
-   call calc_gas_specific_heat_MLT(is, ie, js, je, isd, ied, jsd, jed, km, gridstruct, Cp_MLT, Kappa_MLT)
+   call calc_gas_specific_heat_MLT(is, ie, js, je, isd, ied, jsd, jed, km, pfull, gridstruct, Cp_MLT, Kappa_MLT, &
+                                   year, month, day, hour, minute, second)
 
 !$OMP parallel do default(none) shared(jfirst,jlast,ifirst,ilast,pk,km,gz,hs,ptop,ptk, &
 !$OMP                                  js,je,is,ie,peln,peln1,pe,delp,akap,pt,CG,pkz,q_con,Cp_MLT,Kappa_MLT,GEOS_MLT) &

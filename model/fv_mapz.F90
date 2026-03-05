@@ -93,7 +93,7 @@ module fv_mapz_mod
   use fv_mp_mod,         only: is_master
   use fv_cmp_mod,        only: qs_init, fv_sat_adj
   use calc_gas_specific_heat_mlt_mod, only: calc_gas_specific_heat_mlt
-
+  use ESMF, only: ESMF_Clock, ESMF_Time, ESMF_ClockGet, ESMF_TimeGet
 
   implicit none
   real, parameter:: consv_min= 0.001         !< below which no correction applies
@@ -135,7 +135,7 @@ contains
                       akap, cappa, kord_mt, kord_wz, kord_tr, kord_tm,  peln, te0_2d,        &
                       ng, ua, va, omga, te, ws, fill, reproduce_sum, out_dt, dtdt,      &
                       ptop, ak, bk, pfull, flagstruct, gridstruct, domain, do_sat_adj, &
-                      hydrostatic, GEOS_MLT, hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
+                      hydrostatic, GEOS_MLT, year, month, day, minute, hour, second, hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
                       mfx, mfy, cx, cy, remap_option, gmao_remap)
   logical, intent(in):: last_step
   real,    intent(in):: mdt                    !< remap time step
@@ -171,6 +171,8 @@ contains
   type(fv_grid_type), intent(IN), target :: gridstruct
   type(fv_flags_type), intent(INOUT) :: flagstruct
   type(domain2d), intent(INOUT) :: domain
+
+  integer, intent(in) :: year, month, day, hour, minute, second    ! Need for GEOS_MLT
 
 ! INPUT/OUTPUT
   real, intent(inout):: pk(is:ie,js:je,km+1)          !< pe to the kappa
@@ -336,7 +338,7 @@ contains
             call qs_init(kmp)
        endif
  
-  call calc_gas_specific_heat_MLT(is,ie,js,je,isd,ied,jsd,jed,km,gridstruct,Cp_MLT,Kappa_MLT)
+  call calc_gas_specific_heat_MLT(is,ie,js,je,isd,ied,jsd,jed,km,pfull,gridstruct,Cp_MLT,Kappa_MLT,year,month,day,hour,minute,second)
        
 !$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,kord_tm,remap_t, &
 !$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic,GEOS_MLT, &

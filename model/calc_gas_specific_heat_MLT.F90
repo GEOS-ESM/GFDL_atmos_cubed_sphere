@@ -2,6 +2,7 @@ module calc_gas_specific_heat_mlt_mod
 
     use fv_arrays_mod, only: fv_grid_type
     use msis_wrapper, only: msis_point
+!    use time_manager_mod, only: time_type, get_date, get_time
 
     implicit none
     private
@@ -10,8 +11,8 @@ module calc_gas_specific_heat_mlt_mod
 
 contains
 
-    subroutine calc_gas_specific_heat_MLT(is, ie, js, je, isd, ied, jsd, jed, km, &
-                                           gridstruct, Cp_MLT, Kappa_MLT)
+    subroutine calc_gas_specific_heat_MLT(is, ie, js, je, isd, ied, jsd, jed, km, pfull, &
+                                           gridstruct, Cp_MLT, Kappa_MLT, year, month, day, hour, minute, second)
 
         implicit none
 
@@ -19,8 +20,9 @@ contains
         integer, intent(in) :: is, ie, js, je
         integer, intent(in) :: isd, ied, jsd, jed
         integer, intent(in) :: km
+        real, intent(in) :: pfull(km)  
         type(fv_grid_type), intent(in), target :: gridstruct
-
+        
         ! --- Intent OUT ---
         real, intent(out) :: Cp_MLT(isd:ied, jsd:jed, km)      ! Variable specific heat [J/(kg·K)]
         real, intent(out) :: Kappa_MLT(isd:ied, jsd:jed, km)   ! Variable kappa = Rg/Cp [-]
@@ -28,8 +30,11 @@ contains
         ! --- Local scalars ---
         real :: lon_deg, lat_deg
         real :: Rg_MLT_k, Cp_MLT_k
-        real :: alt_km  ! altitude in km for MSIS call
-        real :: stl     ! solar local time (you'll need to compute this)
+        real :: estz  ! altitude in km for MSIS call
+        real :: stl
+
+        ! --- Local array --- 
+        real :: z_approx(km)
 
         ! --- Single-level MSIS outputs (scalars, not arrays) ---
         real(4) :: Om_k    ! Atomic oxygen    at level k
@@ -39,10 +44,12 @@ contains
 
         ! --- Loop indices ---
         integer :: i, j, k
-        integer :: year, month, day, hour
+        
+        ! --- Time indices ---
+        integer, intent(in) :: year, month, day, hour, minute, second
 
         ! --- Constants ---
-        real, parameter :: rad2deg     = 180.0 / 3.14159265358979
+        real, parameter :: rad2deg     = 180.0 / 3.1415926535
         real, parameter :: Rstar       = 8314.47  ! Universal gas constant [J/(kmol·K)]
         real, parameter :: Nmolar      = 14.0     ! Molar mass of N  [g/mol]
         real, parameter :: N2molar     = 28.0     ! Molar mass of N2 [g/mol]
@@ -51,38 +58,61 @@ contains
         real, parameter :: dof_diatomic = 7.0/2.0 ! N2, O2
         real, parameter :: dof_atomic   = 5.0/2.0 ! O, N
 
-        ! --- Set date/time for MSIS (This needs to be pulled from the model, this is just a test day) ---
-        year  = 2015
-        month = 5   
-        day   = 30
-        hour  = 12
-        stl   = 12.0 ! Solar local time (compute from longitude)
+
+        ! --- Hacky way to calculate altitude grid. Should be fixed. ---
+
+        real, parameter :: z_scale = 7.0  ! scale height in km (approximate)
+        real, parameter :: p_ref = 1000.0  ! reference pressure (hPa)
+
+        do k=1,km
+           z_approx(k) = -z_scale * log(pfull(k)*0.01 / p_ref)  ! Convert Pa to hPa
+        enddo
+
+        ! --- Get year, month, day, and hour from the model ---
+
+        !call get_date(Time, year, month, day, hour, minute, second)
+            
 
         do j = js, je
            do i = is, ie
 
               lon_deg = gridstruct%agrid(i, j, 1) * rad2deg
               lat_deg = gridstruct%agrid(i, j, 2) * rad2deg
+            
+              ! Calculate solar local time in hours (0-24)
+              stl = real(hour) + real(minute)/60.0 + real(second)/3600.0 + lon_deg/15.0
+              
+              ! Normalize to 0-24 range
+              if (stl < 0.0) stl = stl + 24.0
+              if (stl >= 24.0) stl = stl - 24.0
 
               ! Loop over each vertical level
               do k = 1, km
-                 !This is a placeholder - replace with actual altitude calculation
-                 alt_km = real(k * 2.0, 4)  ! Example: 2 km spacing
+                  
+                 estz = z_approx(k)
 
-                 ! Call MSIS for THIS level only
-                 call msis_point(year, month, day, hour, alt_km, &
-                                 real(lat_deg, 4), real(lon_deg, 4), stl, &
-                                 Om_k, N2m_k, O2m_k, T_k)
+!                 print *, 'About to call msis_point'
+!                 print *, 'year, month, day, hour:', year, month, day, hour
+!                 print *, 'estz:', estz
+!                 print *, 'lat_deg, lon_deg:', lat_deg, lon_deg
+!                 print *, 'stl:', stl
+!                 print *, 'i, j, k:', i, j, k
+
+                 call msis_point(year, month, day, hour, estz, &
+                        real(lat_deg, 4), real(lon_deg, 4), stl, &
+                        Om_k, N2m_k, O2m_k, T_k)
+                
+!                 print *, 'msis_point returned successfully'
 
                  ! Gas constant for this composition
                  ! Neglecting atomic nitrogen for now
                  Rg_MLT_k = Rstar / ((N2m_k * N2molar) + &
-                                      (Om_k  * Omolar)  + &
+                                      (Om_k * Omolar)  + &
                                       (O2m_k * O2molar))
 
                  ! Specific heat for this composition
                  Cp_MLT_k = Rg_MLT_k * ((dof_diatomic * (N2m_k + O2m_k)) + &
-                                         (dof_atomic   * Om_k))
+                                         (dof_atomic * Om_k))
 
                  ! Outputs needed
                  Cp_MLT(i, j, k)    = Cp_MLT_k
