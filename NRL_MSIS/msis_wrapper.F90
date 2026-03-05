@@ -2,13 +2,17 @@ module msis_wrapper
   ! Simple MSIS wrapper:
   ! - reads F10.7/AP from file 'F107_ap_appended.txt'
   ! - initialize MSIS via msisinit('msis21.parm')
-  ! - call msis_point(year,month,day,hour,alt,lat,lon,slt, O,N2,O2,T)
+  ! - call msis_point(year,month,doy,alt,lat,lon,slt, O,N2,O2,T)
 
   use msis_init, only : msisinit
+
   implicit none
+  
   private
+  
   public :: msis_wrapper_init, msis_point
 
+  ! --- Local Variables ---
   integer, allocatable :: r_iyd(:)    ! stored as year*1000 + doy
   integer, allocatable :: r_hour(:)
   real(4), allocatable :: r_ap(:), r_f107(:), r_f107a(:)
@@ -16,12 +20,12 @@ module msis_wrapper
   logical :: loaded = .false.
   logical :: msis_inited = .false.
 
-  ! Hard-coded values in case of issues reading the file in or no dates
+  ! --- Hard-coded values in case of issues reading the file in or no dates ---
   real(4), parameter :: DEFAULT_AP   = 10.0_4
   real(4), parameter :: DEFAULT_F107 = 150.0_4
   real(4), parameter :: DEFAULT_F107A= 150.0_4
 
-  ! Explicit interface for external MSIS routine (must be in module spec part)
+  ! --- Explicit interface for external MSIS routine (must be in module spec part) ---
   interface
     subroutine gtd8d(iyd,ut,alt,glat,glong,stl,f107a,f107,ap,mass,d,t)
       integer, intent(in)      :: iyd
@@ -42,10 +46,12 @@ contains
       call msisinit(parmpath='./', parmfile='msis21.parm')
       msis_inited = .true.
     end if
+
     call load_f107_file()
+    
     if (.not. loaded) then
       print *, 'Warning: F107/AP not loaded; using hard-coded defaults (ap=10,f107=150,f107a=150).'
-    end if
+    end if  
   end subroutine msis_wrapper_init
 
   subroutine msis_point(year, month, day, hour, alt, glat, glong, stl, &
@@ -59,7 +65,7 @@ contains
     integer :: mass, i
     real(4) :: apv, f107v, f107av
 
-    ! Compute day-of-year / iyd even if file not loaded (avoid uninitialized iyd)
+    ! Compute day-of-year / iyd even if file not loaded 
     doy = day_of_year(year, month, day)
     iyd = year*1000 + doy
 
@@ -99,7 +105,7 @@ contains
   end subroutine msis_point
 
   subroutine load_f107_file()
-    ! Read fixed file: columns expected: year doy hour ap f107 f107a
+    ! Read inpute file (F107_ap_appended.txt): columns: year doy hour ap f107 f107a
     character(len=*), parameter :: fname = 'F107_ap_appended.txt'
     integer :: unit, ios, count
     character(len=256) :: line
@@ -167,6 +173,8 @@ contains
     loaded = .true.
   end subroutine load_f107_file
 
+
+  ! I used AI to help write this subroutine. It should save on memory rather than hold entire file in memory (~6mb).
   subroutine shrink_arrays(new_n)
     integer, intent(in) :: new_n
     integer, allocatable :: tmpi(:)
@@ -191,7 +199,7 @@ contains
       return
     end if
 
-    ! try exact match first
+    ! Find exact day of year and record
     do i = 1, nrec
       if (r_iyd(i) == iyd .and. r_hour(i) == hour) then
         find_record = i
@@ -199,7 +207,7 @@ contains
       end if
     end do
 
-    ! otherwise nearest in time (comparing iyd*24 + hour)
+    ! Otherwise nearest in time (comparing iyd*24 + hour)
     target = int(iyd, kind=8) * 24_8 + int(hour, kind=8)
     best_diff = huge(0_8)
     best_idx = -1
@@ -213,7 +221,9 @@ contains
     find_record = best_idx
   end function find_record
 
-  integer function day_of_year(year, month, day) result(doy)
+  function day_of_year(year, month, day) result(doy)
+    
+    integer :: doy
     integer, intent(in) :: year, month, day
     integer :: mdays(12), m
     logical :: leap
