@@ -1577,7 +1577,7 @@ module fv_eta_mod
          s_fac(k)  = s_fac(k+1) + s_inc
       enddo
 
-      s_fac(km-k_inc-1) = 0.5*(s_fac(km-k_inc) + s_rate)
+      s_fac(km-nint(k_inc)-1) = 0.5*(s_fac(km-nint(k_inc)) + s_rate)
 
       do k=km-k_inc-2, 5, -1
          s_fac(k) = s_rate * s_fac(k+1)
