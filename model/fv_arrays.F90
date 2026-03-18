@@ -1541,6 +1541,7 @@ contains
 #else
       allocate ( Atm%q_con(isd:isd,jsd:jsd,1) )
 #endif
+      Atm%q_con = 0.
 
 #ifndef NO_TOUCH_MEM
 ! Notes by SJL
