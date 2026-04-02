@@ -46,7 +46,7 @@ set (srcs
 
 esma_add_library (${this}
   SRCS ${srcs}
-  DEPENDENCIES MAPL GFTL_SHARED::gftl-shared-v2 esmf)
+  DEPENDENCIES MAPL2 MAPL GFTL_SHARED::gftl-shared-v2 esmf)
 
 if (FV_PRECISION STREQUAL R4)
   target_link_libraries (${this} PUBLIC FMS::fms_r4)
