@@ -233,6 +233,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
   do k=1,npz
      n=nq*npz + k
      cmax(k) = qmax(n)
+     if ( is_master() .and. (cmax(k) > 3.0) )  write(*,*) 'tracer_2d_1L: k, nsplt =', k, int(1. + cmax(k))
   enddo  ! k-loop
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
@@ -903,6 +904,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real ::  dpL(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  ! Pressure Thickness
       real ::  dpA(bd%is :bd%ie   ,bd%js :bd%je   ,npz)  ! Pressure Thickness
 ! Local Tracer Arrays
+      real ::   m1(bd%isd:bd%ied,npz,nq)
       real ::   q3(bd%isd:bd%ied,bd%jsd:bd%jed, npz,nq)! Ghosted 3D Tracers
       real ::   q2(bd%is :bd%ie ,               npz   )! 2D Tmp
       integer :: kord_tracers(nq)
@@ -914,7 +916,6 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
 ! Local Remap Arrays
       real  pe1(bd%is:bd%ie,npz+1)
       real  pe2(bd%is:bd%ie,npz+1)
-      real  dp1(bd%is:bd%ie,npz)
       real  dp2(bd%is:bd%ie,npz)
 
 ! Local indices
@@ -962,9 +963,13 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     mfxL(is:ie+1,js:je,:) = xL(is:ie+1,js:je,:)
     mfyL(is:ie,js:je+1,:) = yL(is:ie,js:je+1,:)
 
-! Fill local tracers and pressure thickness
-    dpL(bd%is:bd%ie,bd%js:bd%je,:) = pleB(:,:,2:npz+1) - pleB(:,:,1:npz)
-    q3(is:ie,js:je,:,:) = q(is:ie,js:je,:,:)
+! Fill local tracer mass and pressure thickness
+    dpL(is:ie,js:je,:) = max(pleB(:,:,2:npz+1) - pleB(:,:,1:npz), 1.0)
+    do iq=1,nq
+       do k=1,npz
+          q3(is:ie,js:je,k,iq) = q(is:ie,js:je,k,iq) * dpL(is:ie,js:je,k)
+       enddo
+    enddo
     call start_group_halo_update(i_pack, q3, domain)
 
     if ( flagstruct%z_tracer .and. q_split==0 ) then
@@ -984,20 +989,23 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
        kord_tracers = flagstruct%kord_tr
 !$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,npz,nq, &
 !$OMP                                  pleB,dpA,pleA,q3,flagstruct,kord_tracers) &
-!$OMP                          private(i,j,k,pe1,dp1,pe2,dp2)
+!$OMP                          private(i,j,k,iq,pe1,pe2,dp2,m1)
        do j=js,je
         ! pressures mapping from (dpA is new delp after tracer_2d)
           pe1(:,1) = pleB(:,j,1)
           do k=2,npz+1
             pe1(:,k) = pe1(:,k-1) + dpA(:,j,k-1)
           enddo
-          do k=1,npz
-             dp1(:,k) = pe1(:,k+1) - pe1(:,k)
-          enddo
         ! pressures mapping to
           pe2 = pleA(:,j,:)
           do k=1,npz
-             dp2(:,k) = pe2(:,k+1) - pe2(:,k)
+             dp2(:,k) = max(pe2(:,k+1) - pe2(:,k), 1.0)
+          enddo
+        ! convert mass back to mixing ratio on the deformed grid
+          do iq=1,nq
+             do k=1,npz
+                q3(is:ie,j,k,iq) = q3(is:ie,j,k,iq) / dpA(is:ie,j,k)
+             enddo
           enddo
           call mapn_tracer(nq, npz, pe1, pe2, q3, dp2, kord_tracers, j,     &
                            is, ie, isd, ied, jsd, jed, 0., flagstruct%fill)
@@ -1008,9 +1016,10 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
        do iq=1,nq
             ! Scale tracers
             !---------------
-            scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), pleB, pleA, &
-                              npz, domain, gridstruct, flagstruct, bd)
-            q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+           !scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), pleB, pleA, &
+           !                  npz, domain, gridstruct, flagstruct, bd)
+           !q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+            q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq)
        enddo
 
 end subroutine offline_tracer_advection
