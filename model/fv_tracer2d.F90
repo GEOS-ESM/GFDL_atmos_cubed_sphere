@@ -127,7 +127,6 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
       real :: c2d(bd%is:bd%ie,bd%js:bd%je)
       real :: cmax(npz), cmin(npz)
-      real :: qmax(npz*(nq+1)), qmin(npz*(nq+1))
       integer :: icount(npz,nq)
       real :: frac
       integer :: nsplt
@@ -136,6 +135,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real, pointer, dimension(:,:) :: area, rarea
       real, pointer, dimension(:,:,:) :: sin_sg
       real, pointer, dimension(:,:) :: dxa, dya, dx, dy
+
+      real, parameter :: TRACER_EPS = epsilon(1.0) ! Adjust threshold as needed
 
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
@@ -187,52 +188,25 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                         call timing_off('COMM_TRACER')
                               call timing_off('COMM_TOTAL')
 
-! Check for levels where Q does not need to be advected
-!$OMP parallel do default(none) shared(nq,npz,is,ie,js,je,q,qmax) private(iq,i,j,k,n)
-   do iq=1,nq
-      do k=1,npz
-         n=(iq-1)*npz + k
-         qmax(n) = 0.0
-         do j=js,je
-            do i=is,ie
-               qmax(n) = max(qmax(n),q(i,j,k,iq))
-            enddo
-         enddo
-      enddo
-   enddo
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,nq,&
-!$OMP                                  sin_sg,cx,cy,cmax,qmax) private(i,j,k,n)
+!$OMP                                  sin_sg,cx,cy,cmax) private(i,j,k,n)
    do k=1,npz
-      cmax(k) = 0.
-      if ( k < npz/6 ) then
-           do j=js,je
-              do i=is,ie
-                cmax(k) = max( cmax(k), abs(cx(i,j,k)), abs(cy(i,j,k)) )
-              enddo
-           enddo
-      else
-           do j=js,je
-              do i=is,ie
-                cmax(k) = max( cmax(k), max(abs(cx(i,j,k)),abs(cy(i,j,k)))+1.-sin_sg(i,j,5) )
-              enddo
-           enddo
-      endif
- !!!  if ( is_master() )  write(*,*) 'tracer_2d_1L: k, nsplt, cmax =', k, int(1. + cmax(k)), cmax(k)
-    ! add to qmax for allreduce
-     n=nq*npz + k
-     qmax(n) = cmax(k)
+     cmax(k) = 0.
+     do j=js,je
+        do i=is,ie
+          cmax(k) = max( cmax(k), max(abs(cx(i,j,k)),abs(cy(i,j,k)))+1.-sin_sg(i,j,5) )
+        enddo
+     enddo
    enddo  ! k-loop
 
                         call timing_on('COMM_TOTAL')
                             call timing_on('COMM_TRACER_MAX')
-  call mp_reduce_max(qmax,(nq+1)*npz)
+  call mp_reduce_max(cmax,npz)
                            call timing_off('COMM_TRACER_MAX')
                        call timing_off('COMM_TOTAL')
 
   ! get cmax from allreduce array
   do k=1,npz
-     n=nq*npz + k
-     cmax(k) = qmax(n)
      if ( is_master() .and. (cmax(k) > 3.0) )  write(*,*) 'tracer_2d_1L: k, nsplt =', k, int(1. + cmax(k))
   enddo  ! k-loop
 
