@@ -136,7 +136,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real, pointer, dimension(:,:,:) :: sin_sg
       real, pointer, dimension(:,:) :: dxa, dya, dx, dy
 
-      real, parameter :: TRACER_EPS = epsilon(1.0) ! Adjust threshold as needed
+      real, parameter :: TRACER_EPS = tiny(1.0) ! Adjust threshold as needed
 
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
