@@ -127,7 +127,6 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
       real :: c2d(bd%is:bd%ie,bd%js:bd%je)
       real :: cmax(npz), cmin(npz)
-      real :: qmax(npz*(nq+1)), qmin(npz*(nq+1))
       integer :: icount(npz,nq)
       real :: frac
       integer :: nsplt
@@ -136,6 +135,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real, pointer, dimension(:,:) :: area, rarea
       real, pointer, dimension(:,:,:) :: sin_sg
       real, pointer, dimension(:,:) :: dxa, dya, dx, dy
+
+      real, parameter :: TRACER_EPS = tiny(1.0) ! Adjust threshold as needed
 
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
@@ -187,52 +188,26 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                         call timing_off('COMM_TRACER')
                               call timing_off('COMM_TOTAL')
 
-! Check for levels where Q does not need to be advected
-!$OMP parallel do default(none) shared(nq,npz,is,ie,js,je,q,qmax) private(iq,i,j,k,n)
-   do iq=1,nq
-      do k=1,npz
-         n=(iq-1)*npz + k
-         qmax(n) = 0.0
-         do j=js,je
-            do i=is,ie
-               qmax(n) = max(qmax(n),q(i,j,k,iq))
-            enddo
-         enddo
-      enddo
-   enddo
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,nq,&
-!$OMP                                  sin_sg,cx,cy,cmax,qmax) private(i,j,k,n)
+!$OMP                                  sin_sg,cx,cy,cmax) private(i,j,k,n)
    do k=1,npz
-      cmax(k) = 0.
-      if ( k < npz/6 ) then
-           do j=js,je
-              do i=is,ie
-                cmax(k) = max( cmax(k), abs(cx(i,j,k)), abs(cy(i,j,k)) )
-              enddo
-           enddo
-      else
-           do j=js,je
-              do i=is,ie
-                cmax(k) = max( cmax(k), max(abs(cx(i,j,k)),abs(cy(i,j,k)))+1.-sin_sg(i,j,5) )
-              enddo
-           enddo
-      endif
- !!!  if ( is_master() )  write(*,*) 'tracer_2d_1L: k, nsplt, cmax =', k, int(1. + cmax(k)), cmax(k)
-    ! add to qmax for allreduce
-     n=nq*npz + k
-     qmax(n) = cmax(k)
+     cmax(k) = 0.
+     do j=js,je
+        do i=is,ie
+          cmax(k) = max( cmax(k), max(abs(cx(i,j,k)),abs(cy(i,j,k)))+1.-sin_sg(i,j,5) )
+        enddo
+     enddo
    enddo  ! k-loop
 
                         call timing_on('COMM_TOTAL')
                             call timing_on('COMM_TRACER_MAX')
-  call mp_reduce_max(qmax,(nq+1)*npz)
+  call mp_reduce_max(cmax,npz)
                            call timing_off('COMM_TRACER_MAX')
                        call timing_off('COMM_TOTAL')
 
   ! get cmax from allreduce array
   do k=1,npz
-     n=nq*npz + k
-     cmax(k) = qmax(n)
+     if ( is_master() .and. (cmax(k) > 3.0) )  write(*,*) 'tracer_2d_1L: k, nsplt =', k, int(1. + cmax(k))
   enddo  ! k-loop
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
@@ -903,6 +878,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real ::  dpL(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  ! Pressure Thickness
       real ::  dpA(bd%is :bd%ie   ,bd%js :bd%je   ,npz)  ! Pressure Thickness
 ! Local Tracer Arrays
+      real ::   m1(bd%isd:bd%ied,npz,nq)
       real ::   q3(bd%isd:bd%ied,bd%jsd:bd%jed, npz,nq)! Ghosted 3D Tracers
       real ::   q2(bd%is :bd%ie ,               npz   )! 2D Tmp
       integer :: kord_tracers(nq)
@@ -914,13 +890,12 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
 ! Local Remap Arrays
       real  pe1(bd%is:bd%ie,npz+1)
       real  pe2(bd%is:bd%ie,npz+1)
-      real  dp1(bd%is:bd%ie,npz)
       real  dp2(bd%is:bd%ie,npz)
+! Local Array for scalings
+      real :: scalingFactors(nq)
 
 ! Local indices
       integer     :: i,j,k,n,iq
-
-      real :: scalingFactor
 
       type(group_halo_update_type), save :: i_pack
 
@@ -962,9 +937,13 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     mfxL(is:ie+1,js:je,:) = xL(is:ie+1,js:je,:)
     mfyL(is:ie,js:je+1,:) = yL(is:ie,js:je+1,:)
 
-! Fill local tracers and pressure thickness
-    dpL(bd%is:bd%ie,bd%js:bd%je,:) = pleB(:,:,2:npz+1) - pleB(:,:,1:npz)
-    q3(is:ie,js:je,:,:) = q(is:ie,js:je,:,:)
+! Fill local tracer mass and pressure thickness
+    dpL(is:ie,js:je,:) = max(pleB(:,:,2:npz+1) - pleB(:,:,1:npz), 1.0)
+    do iq=1,nq
+       do k=1,npz
+          q3(is:ie,js:je,k,iq) = q(is:ie,js:je,k,iq)
+       enddo
+    enddo
     call start_group_halo_update(i_pack, q3, domain)
 
     if ( flagstruct%z_tracer .and. q_split==0 ) then
@@ -984,88 +963,201 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
        kord_tracers = flagstruct%kord_tr
 !$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,npz,nq, &
 !$OMP                                  pleB,dpA,pleA,q3,flagstruct,kord_tracers) &
-!$OMP                          private(i,j,k,pe1,dp1,pe2,dp2)
+!$OMP                          private(i,j,k,iq,pe1,pe2,dp2,m1)
        do j=js,je
         ! pressures mapping from (dpA is new delp after tracer_2d)
           pe1(:,1) = pleB(:,j,1)
           do k=2,npz+1
             pe1(:,k) = pe1(:,k-1) + dpA(:,j,k-1)
           enddo
-          do k=1,npz
-             dp1(:,k) = pe1(:,k+1) - pe1(:,k)
-          enddo
         ! pressures mapping to
           pe2 = pleA(:,j,:)
           do k=1,npz
-             dp2(:,k) = pe2(:,k+1) - pe2(:,k)
+             dp2(:,k) = max(pe2(:,k+1) - pe2(:,k), 1.0)
           enddo
           call mapn_tracer(nq, npz, pe1, pe2, q3, dp2, kord_tracers, j,     &
                            is, ie, isd, ied, jsd, jed, 0., flagstruct%fill)
        enddo
 
-       ! Rescale tracers based on pleA at destination timestep
-       !------------------------------------------------------
+       !------------------------------------------------------------------
+       ! Rescale tracers globally
+       !------------------------------------------------------------------
+       ! Calculate all scaling factors in one MPI pass
+       scalingFactors = calcScalingFactors(q(is:ie,js:je,1:npz,1:nq), q3(is:ie,js:je,1:npz,1:nq), &
+                                           pleB, pleA, npz, nq, gridstruct, bd)
+      !! Calculate bit-reproducible scaling factors (with verbose logging ON)
+      !scalingFactors = calcScalingFactors_BitReproducible(q(is:ie,js:je,1:npz,1:nq), q3(is:ie,js:je,1:npz,1:nq), &
+      !                                                    pleB, pleA, npz, nq, gridstruct, bd, domain)
+       ! Apply scaling to each tracer
        do iq=1,nq
-            ! Scale tracers
-            !---------------
-            scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), pleB, pleA, &
-                              npz, domain, gridstruct, flagstruct, bd)
-            q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
+          do k=1,npz
+             do j=js,je
+                do i=is,ie
+                   q(i,j,k,iq) = q3(i,j,k,iq) * scalingFactors(iq)
+                enddo
+             enddo
+          enddo
        enddo
 
 end subroutine offline_tracer_advection
 
 !------------------------------------------------------------------------------------
 
-         function calcScalingFactor(q1, q2, ple1, ple2, npz, domain, gridstruct, flagstruct, bd) result(scaling)
-         integer, intent(in) :: npz
-         type(fv_grid_bounds_type), intent(IN   ) :: bd
-         real, intent(in) :: q1(bd%is:bd%ie,bd%js:bd%je,npz)
-         real, intent(in) :: q2(bd%is:bd%ie,bd%js:bd%je,npz)
+         function calcScalingFactors(q1, q2, ple1, ple2, npz, nq, gridstruct, bd, verbose_opt) result(scalings)
+         use mpp_mod, only: mpp_sum, mpp_pe, mpp_root_pe  ! Added mpp_pe to check for master node
+         
+         integer, intent(in) :: npz, nq
+         type(fv_grid_bounds_type), intent(IN) :: bd
+         real, intent(in) :: q1(bd%is:bd%ie,bd%js:bd%je,npz,nq)
+         real, intent(in) :: q2(bd%is:bd%ie,bd%js:bd%je,npz,nq)
          real, intent(in) :: ple1(bd%is:bd%ie,bd%js:bd%je,npz+1)
          real, intent(in) :: ple2(bd%is:bd%ie,bd%js:bd%je,npz+1)
-         type(domain2D), intent(INOUT) :: domain
-         type(fv_grid_type), intent(IN   ) :: gridstruct
-         type(fv_flags_type), intent(INOUT) :: flagstruct
-         integer :: sflag
-         real :: scaling
+         type(fv_grid_type), intent(IN) :: gridstruct
+         logical, intent(in), optional :: verbose_opt
 
-         integer :: k
-         real(REAL8)     :: qsum1(bd%is:bd%ie,bd%js:bd%je)
-         real(REAL8)     :: qsum2(bd%is:bd%ie,bd%js:bd%je)
-         real(REAL8)     :: globalSums(2)
+         real :: scalings(nq)
+
+         integer :: i, j, k, iq
+         real(REAL8) :: local_mass(2*nq)
+         real(REAL8) :: dp1, dp2, area_wt
+         real(REAL8) :: rel_error
          real(REAL8), parameter :: TINY_DENOMINATOR = tiny(1.d0)
-         real(REAL8)     :: scalingR8
-         !-------
-         ! Compute partial sum on local array first to minimize communication.
-         ! This algorithm will not be strongly repdroducible under changes do domain
-         ! decomposition, but uses far less communication bandwidth (and memory BW)
-         ! then the preceding implementation.
-         !-------
-         qsum1(:,:) = 0.d0
-         qsum2(:,:) = 0.d0
+
+         logical :: verbose
+
+         ! Set verbosity (default to false to keep logs clean)
+         verbose = .false.
+         if (present(verbose_opt)) verbose = verbose_opt
+
+         local_mass = 0.d0
+
+         ! 1. Compute local domain sums directly (including area weighting)
          do k=1,npz
-            qsum1(:,:) = qsum1(:,:) + q1(:,:,k) * (ple1(:,:,k+1)-ple1(:,:,k))
-            qsum2(:,:) = qsum2(:,:) + q2(:,:,k) * (ple2(:,:,k+1)-ple2(:,:,k))
+            do j=bd%js,bd%je
+               do i=bd%is,bd%ie
+                  area_wt = gridstruct%area_64(i,j)
+                  dp1 = (ple1(i,j,k+1) - ple1(i,j,k)) * area_wt
+                  dp2 = (ple2(i,j,k+1) - ple2(i,j,k)) * area_wt
+                  
+                  do iq=1,nq
+                     ! local_mass(iq)      = Mass BEFORE advection
+                     local_mass(iq) = local_mass(iq) + q1(i,j,k,iq) * dp1
+                     
+                     ! local_mass(iq+nq)   = Mass AFTER advection
+                     local_mass(iq+nq) = local_mass(iq+nq) + q2(i,j,k,iq) * dp2
+                  enddo
+               enddo
+            enddo
          enddo
 
-         ! numerator
-         globalSums(1) = g_sum_r8(domain, qsum1, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
-         ! denominator
-         globalSums(2) = g_sum_r8(domain, qsum2, bd%is,bd%ie, bd%js,bd%je, 0, &
-                                  gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
+         ! 2. ONE Single floating-point MPI sync
+         call mpp_sum(local_mass, 2*nq)
 
-         if (globalSums(2) > TINY_DENOMINATOR) then
-            scalingR8 =  globalSums(1) / globalSums(2)
-            !#################################################################
-            ! This line was added to ensure strong reproducibility of the code
-            !#################################################################
-            scaling = REAL(scalingR8, KIND=kind(1.00))
-         else
-            scaling = 1.0
-         end if
+         ! 3. Calculate scaling factors and report adjustments
+         do iq=1,nq
+            if (local_mass(iq+nq) > TINY_DENOMINATOR) then
+               ! Calculate the scaling factor
+               scalings(iq) = REAL(local_mass(iq) / local_mass(iq+nq), KIND=kind(1.0))
+               
+               ! Report exactly like the driver did (Master node only)
+               if (verbose) then
+                   if (mpp_pe() == mpp_root_pe()) then
+                      if (local_mass(iq) > 0.0_8) then
+                         rel_error = (local_mass(iq+nq) - local_mass(iq)) / local_mass(iq)
+                         
+                         if (ABS(rel_error) >= epsilon(1.0)) then
+                            write(6, 125) iq, rel_error
+                         endif
+                      endif
+                   endif
+               endif
+               
+            else
+               scalings(iq) = 1.0
+            end if
+         enddo
 
-         end function calcScalingFactor
+         125 format('Mass Conservation Adjustment Required in offline_advection (Tracer ', I3, '): ', g21.14)
+
+         end function calcScalingFactors
+
+         function calcScalingFactors_BitReproducible(q1, q2, ple1, ple2, npz, nq, gridstruct, bd, domain, verbose_opt) result(scalings)
+         use mpp_mod, only: mpp_pe, mpp_root_pe
+         
+         integer, intent(in) :: npz, nq
+         type(fv_grid_bounds_type), intent(IN) :: bd
+         real, intent(in) :: q1(bd%is:bd%ie,bd%js:bd%je,npz,nq)
+         real, intent(in) :: q2(bd%is:bd%ie,bd%js:bd%je,npz,nq)
+         real, intent(in) :: ple1(bd%is:bd%ie,bd%js:bd%je,npz+1)
+         real, intent(in) :: ple2(bd%is:bd%ie,bd%js:bd%je,npz+1)
+         type(fv_grid_type), intent(IN) :: gridstruct
+         type(domain2D), intent(INOUT) :: domain
+         logical, intent(in), optional :: verbose_opt
+
+         real :: scalings(nq)
+
+         integer :: i, j, k, iq
+         real(REAL8) :: qsum1(bd%is:bd%ie, bd%js:bd%je, nq)
+         real(REAL8) :: qsum2(bd%is:bd%ie, bd%js:bd%je, nq)
+         real(REAL8) :: global_mass1, global_mass2
+         real(REAL8) :: dp1, dp2
+         real(REAL8) :: rel_error
+         real(REAL8), parameter :: TINY_DENOMINATOR = tiny(1.d0)
+         
+         logical :: verbose
+
+         ! Set verbosity (default to false)
+         verbose = .false.
+         if (present(verbose_opt)) verbose = verbose_opt
+
+         qsum1 = 0.d0
+         qsum2 = 0.d0
+
+         ! 1. Compute 2D vertical integrals for ALL tracers in ONE cache-friendly pass.
+         ! (No area weighting here, because g_sum_r8 does it internally)
+         do k=1,npz
+            do j=bd%js,bd%je
+               do i=bd%is,bd%ie
+                  dp1 = ple1(i,j,k+1) - ple1(i,j,k)
+                  dp2 = ple2(i,j,k+1) - ple2(i,j,k)
+                  
+                  do iq=1,nq
+                     qsum1(i,j,iq) = qsum1(i,j,iq) + q1(i,j,k,iq) * dp1
+                     qsum2(i,j,iq) = qsum2(i,j,iq) + q2(i,j,k,iq) * dp2
+                  enddo
+               enddo
+            enddo
+         enddo
+
+         ! 2. Loop to call the Reproducible g_sum_r8 (2D slices)
+         do iq=1,nq
+            ! Mode 1 tells g_sum_r8 to divide by global_area internally
+            global_mass1 = g_sum_r8(domain, qsum1(:,:,iq), bd%is, bd%ie, bd%js, bd%je, 0, &
+                                    gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
+                                    
+            global_mass2 = g_sum_r8(domain, qsum2(:,:,iq), bd%is, bd%ie, bd%js, bd%je, 0, &
+                                    gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
+
+            ! 3. Calculate scaling factor
+            if (global_mass2 > TINY_DENOMINATOR) then
+               scalings(iq) = REAL(global_mass1 / global_mass2, KIND=kind(1.0))
+               
+               ! Report exactly like the driver did, if verbose is ON
+               if (verbose .and. mpp_pe() == mpp_root_pe()) then
+                  if (global_mass1 > 0.0_8) then
+                     rel_error = (global_mass2 - global_mass1) / global_mass1
+                     if (ABS(rel_error) >= epsilon(1.0)) then
+                        write(6, 125) iq, rel_error
+                     endif
+                  endif
+               endif
+            else
+               scalings(iq) = 1.0
+            end if
+         enddo
+
+         125 format('Mass Conservation Adjustment Required in offline_advection (Tracer ', I3, '): ', g21.14)
+
+         end function calcScalingFactors_BitReproducible
 
 end module fv_tracer2d_mod
