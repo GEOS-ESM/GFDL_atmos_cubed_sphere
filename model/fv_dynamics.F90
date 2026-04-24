@@ -245,20 +245,15 @@ contains
     type(fv_diag_type), intent(IN) :: idiag
 
 ! Local Arrays
-#ifdef SINGLE_FV
 ! R8 Mass flux arrays: the "Flux Capacitor"
       real(kind=8) ::  mfxR8(bd%is:bd%ie+1, bd%js:bd%je,   npz)
       real(kind=8) ::  mfyR8(bd%is:bd%ie  , bd%js:bd%je+1, npz)
 ! R8 Courant number arrays
       real(kind=8) ::  cxR8(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
       real(kind=8) ::  cyR8(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
-#endif
-! Local Mass flux arrays: the "Flux Capacitor"
-      real         ::  mfxL(bd%is:bd%ie+1, bd%js:bd%je,   npz)
-      real         ::  mfyL(bd%is:bd%ie  , bd%js:bd%je+1, npz)
-! Local Courant number arrays
-      real         ::  cxL(bd%is:bd%ie+1, bd%jsd:bd%jed, npz)
-      real         ::  cyL(bd%isd:bd%ied ,bd%js:bd%je+1, npz)
+
+      integer :: imax_req
+      real :: cmax_z(npz)
 ! More Local arrays 
       real:: ws(bd%is:bd%ie,bd%js:bd%je)
       real(kind=8):: te_2d(bd%is:bd%ie,bd%js:bd%je)
@@ -270,8 +265,7 @@ contains
       real, dimension(bd%is:bd%ie):: cvm
       real, allocatable :: dp1(:,:,:), dtdt_m(:,:,:), cappa(:,:,:)
       real(kind=8), allocatable :: psx(:,:)
-      !real(kind=8), allocatable :: dpx(:,:)
-      real(kind=8), allocatable :: dpx(:,:,:) !needed for OpenMP
+      real(kind=8), allocatable :: dpx(:,:,:)
       real:: akap, rdg, ph1, ph2, mdt, gam, amdt, u0
       integer:: kord_tracer(ncnst)
       integer :: i,j,k, n, iq, n_map, nq, nwat
@@ -604,14 +598,18 @@ contains
   endif
 
 !DryMassRoundoffControl
-  allocate(psx(isd:ied,jsd:jed),dpx(is:ie,js:je,npz))
-  psx(:,:) = 0.0
-  do j=js,je
-     do i=is,ie
-        psx(i,j) = pe(i,npz+1,j)
-        dpx(i,j,:) = 0.0
-     enddo
-  enddo
+  allocate(dpx(is:ie,js:je,npz))
+  dpx(:,:,:) = 0.0
+  if (hydrostatic) then
+      allocate(psx(isd:ied,jsd:jed))
+      psx(:,:) = 0.0
+      do j=js,je
+         do i=is,ie
+            psx(i,j) = pe(i,npz+1,j)
+         enddo
+      enddo
+  endif
+
                                                   call timing_on('FV_DYN_LOOP')
   do n_map=1, k_split   ! first level of time-split
                                            call timing_on('COMM_TOTAL')
@@ -645,29 +643,11 @@ contains
       call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
                     u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va,           & 
                     dudt_rf, dvdt_rf, dwdt_rf, uc, vc, &
-#ifdef SINGLE_FV
-                    mfxR8, mfyR8, cxR8, cyR8, &
-#else
-                    mfxL, mfyL, cxL, cyL, &
-#endif
+                    mfxR8, mfyR8, cxR8, cyR8, cmax_z, imax_req, q_split, &
                     pkz, peln, q_con, ak, bk, dpx, ks, &
                     gridstruct, flagstruct, neststruct, idiag, bd, &
                     domain, n_map==1, i_pack, last_step, diss_est,time_total)
                                            call timing_off('DYN_CORE')
-
-!MassFluxRoundoffControl
-#ifdef SINGLE_FV
-      mfxL=mfxR8
-      mfyL=mfyR8
-       cxL= cxR8
-       cyL= cyR8 
-#endif
-!     if ( flagstruct%range_warn ) then
-!        call range_check('CX_dyn', cxL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
-!                          -0.5, 0.5, bad_range)
-!        call range_check('CY_dyn', cyL(is:ie,js:je,:)/real(n_split), is, ie, js, je, 0, npz, gridstruct%agrid,   &
-!                          -0.5, 0.5, bad_range)
-!     endif
 
       if ( flagstruct%fv_debug ) then
          if(is_master()) write(6,*) ''
@@ -688,24 +668,25 @@ contains
 !DryMassRoundoffControl
       if(last_step) then
          if (hydrostatic) then
-         do k = 2, npz
-            dpx(:,:,1) = dpx(:,:,1) + dpx(:,:,k)
-         enddo
-         do j=js,je
-            do i=is,ie
-               psx(i,j) = psx(i,j) + dpx(i,j,1)
-            enddo
-         enddo
-                                        call timing_on('COMM_TOTAL')
-         call mpp_update_domains(psx, domain)
-                                        call timing_off('COMM_TOTAL')
-         do j=js-1,je+1
-            do i=is-1,ie+1
-               pe(i,npz+1,j) = psx(i,j)
-            enddo
-         enddo
+             do k = 2, npz
+                dpx(:,:,1) = dpx(:,:,1) + dpx(:,:,k)
+             enddo
+             do j=js,je
+                do i=is,ie
+                   psx(i,j) = psx(i,j) + dpx(i,j,1)
+                enddo
+             enddo
+                                            call timing_on('COMM_TOTAL')
+             call mpp_update_domains(psx, domain)
+                                            call timing_off('COMM_TOTAL')
+             do j=js-1,je+1
+                do i=is-1,ie+1
+                   pe(i,npz+1,j) = psx(i,j)
+                enddo
+             enddo
+             deallocate(psx)
          endif
-         deallocate(psx,dpx)
+         deallocate(dpx)
       end if
 
 #ifdef SW_DYNAMICS
@@ -723,17 +704,17 @@ contains
                                               call timing_on('tracer_2d')
        !!! CLEANUP: merge these two calls?
        if (gridstruct%nested) then
-         call tracer_2d_nested(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
+         call tracer_2d_nested(q, dp1, mfxR8, mfyR8, cxR8, cyR8, cmax_z, imax_req, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), &
                         flagstruct%nord_tr, flagstruct%trdm2, &
                         k_split, neststruct, parent_grid, flagstruct%lim_fac)
        else
          if ( flagstruct%z_tracer .and. q_split == 0 ) then
-         call tracer_2d_1L(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
+         call tracer_2d_1L(q, dp1, mfxR8, mfyR8, cxR8, cyR8, cmax_z, imax_req, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, mdt, idiag%id_divg, i_pack(10), &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac)
          else
-         call tracer_2d(q, dp1, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
+         call tracer_2d(q, dp1, mfxR8, mfyR8, cxR8, cyR8, cmax_z, imax_req, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, q_split, mdt, idiag%id_divg, i_pack(10), &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac)
          endif
@@ -793,7 +774,6 @@ contains
                      flagstruct%adiabatic, do_adiabatic_init, &
                      flagstruct%remap_option, flagstruct%gmao_remap, &
                      flagstruct%gmao_top_bc, flagstruct%gmao_bot_bc)
-!!!                  mfx=mfxL, mfy=mfyL, cx=cxL, cy=cyL)
 
 #ifdef AVEC_TIMERS
                                                   call avec_timer_stop(6)
@@ -808,10 +788,10 @@ contains
 #endif
 
 ! Accumulate the total Mass flux and Courant numbers for export
-         mfx = mfx + mfxL
-         mfy = mfy + mfyL
-          cx =  cx +  cxL
-          cy =  cy +  cyL
+         mfx = mfx + mfxR8
+         mfy = mfy + mfyR8
+          cx =  cx +  cxR8
+          cy =  cy +  cyR8
 
       if ( flagstruct%fv_debug ) then
          if(is_master()) write(6,*) ''

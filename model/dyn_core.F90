@@ -110,7 +110,7 @@ module dyn_core_mod
   use mpp_parameter_mod,  only: CORNER
   use fv_mp_mod,          only: is_master
   use fv_mp_mod,          only: start_group_halo_update, complete_group_halo_update
-  use fv_mp_mod,          only: group_halo_update_type
+  use fv_mp_mod,          only: group_halo_update_type, mp_ireduce_max, mp_barrier
   use sw_core_mod,        only: c_sw, d_sw, d2a2c_vect
   use a2b_edge_mod,       only: a2b_ord2, a2b_ord4
   use nh_core_mod,        only: Riem_Solver3, Riem_Solver_C, update_dz_c, update_dz_d, nest_halo_nh
@@ -162,9 +162,9 @@ contains
  
  subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, k_split, n_split, zvir, cp, akap, cappa, grav, hydrostatic,  &
                      u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
-                     dudt_rf, dvdt_rf, dwdt_rf, uc, vc, mfx, mfy, cx, cy, pkz, peln, q_con, ak, bk, dpx, &
+                     dudt_rf, dvdt_rf, dwdt_rf, uc, vc, mfx, mfy, cx, cy, cmax_z, imax_req, q_split, pkz, peln, q_con, ak, bk, dpx, &
                      ks, gridstruct, flagstruct, neststruct, idiag, bd, domain, &
-                     init_step, i_pack, end_step, diss_est,time_total)
+                     init_step, i_pack, end_step, diss_est, time_total)
 
     integer, intent(IN) :: npx
     integer, intent(IN) :: npy
@@ -225,6 +225,10 @@ contains
     real, intent(inout), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,npz):: ua, va
     real, intent(inout):: q_con(bd%isd:, bd%jsd:, 1:)
 
+    real, intent(out):: cmax_z(npz)
+    integer, intent(out):: imax_req 
+    integer, intent(in):: q_split
+
 ! The Flux capacitors: accumulated Mass flux arrays
     real(kind=8), intent(inout)::  mfx(bd%is:bd%ie+1, bd%js:bd%je,   npz)
     real(kind=8), intent(inout)::  mfy(bd%is:bd%ie  , bd%js:bd%je+1, npz)
@@ -242,6 +246,7 @@ contains
     real, allocatable, dimension(:,:,:):: pem, heat_source
 ! Auto 1D & 2D arrays:
     real, dimension(bd%isd:bd%ied,bd%jsd:bd%jed):: ws3, z_rat
+    real:: cmax
     real:: dp_ref(npz)
     real:: zs(bd%isd:bd%ied,bd%jsd:bd%jed)        !< surface height (m)
     real:: p1d(bd%is:bd%ie)
@@ -393,7 +398,12 @@ contains
          endif
     endif
 
-
+  ! LoadBalance Evaluate Only:Force synchronization before we start sending lots of messages around the network
+  !call timing_on('COMM_TOTAL')
+  !    call timing_on('COMM_SYNC_BEFORE_NS')
+  !        call mp_barrier()
+  !    call timing_off('COMM_SYNC_BEFORE_NS')
+  !call timing_off('COMM_TOTAL')
 
 !-----------------------------------------------------
   do it=1,n_split
@@ -1042,6 +1052,7 @@ contains
 
 ! *** Inline Rayleigh friction here
    if( flagstruct%RF_fast .and. flagstruct%tau > 0. )  then
+                                       call timing_on('RAY_FAST')
      dudt_rf =  u(is:ie,js:je,:)
      dvdt_rf =  v(is:ie,js:je,:)
      if (.not. hydrostatic) dwdt_rf =  w(is:ie,js:je,:)
@@ -1050,6 +1061,7 @@ contains
      dudt_rf = ( u(is:ie,js:je,:) - dudt_rf)/dt
      dvdt_rf = ( v(is:ie,js:je,:) - dvdt_rf)/dt
      if (.not. hydrostatic) dwdt_rf = ( w(is:ie,js:je,:) - dwdt_rf)/dt
+                                       call timing_off('RAY_FAST')
    endif
 
 ! *** Inline Beljaars turbulent-orographic-form-drag here
@@ -1195,7 +1207,41 @@ contains
 !-----------------------------------------------------
   enddo   ! time split loop
 !-----------------------------------------------------
+
+  ! LoadBalance Evaluate Only: Force synchronization before we start sending lots of messages around the network
+  !call timing_on('COMM_TOTAL')
+  !    call timing_on('COMM_SYNC_AFTER_NS')
+  !        call mp_barrier()
+  !    call timing_off('COMM_SYNC_AFTER_NS')
+  !call timing_off('COMM_TOTAL')
+
+  ! Initialize the request handle so the later WAIT call doesn't crash 
+  ! if the reduction is never started.
   if ( nq > 0 .and. .not. flagstruct%inline_q ) then
+
+     ! --- 1. NON-BLOCKING CMAX REDUCTION START ---
+     if ( q_split == 0 ) then
+        ! A. Compute local cmax_z for this processor
+!$OMP parallel do default(none) shared(npz,is,ie,js,je,cx,cy,cmax_z,gridstruct) &
+!$OMP                           private(i,j,k,cmax)
+        do k = 1, npz
+             ! Compute local cmax_z (cx and cy are already hot in cache)
+             cmax_z(k) = 0.
+             do j=js,je
+                do i=is,ie
+                  cmax = max(abs(cx(i,j,k)),abs(cy(i,j,k)))+1.-gridstruct%sin_sg(i,j,5)
+                  cmax_z(k) = max( cmax_z(k), cmax )
+                enddo
+             enddo
+        enddo
+        ! B. Initiate the non-blocking global reduction
+        call timing_on('COMM_TOTAL')
+          call timing_on('COMM_TRACER_MAX')
+          call mp_ireduce_max(cmax_z, npz, imax_req)
+          call timing_off('COMM_TRACER_MAX')
+        call timing_off('COMM_TOTAL')
+     endif
+
      call timing_on('COMM_TOTAL')
        call timing_on('COMM_TRACER')
        call start_group_halo_update(i_pack(10), q, domain)
@@ -1207,7 +1253,6 @@ contains
   if ( flagstruct%fv_debug ) then
        if(is_master()) write(*,*) 'End of n_split loop'
   endif
-
 
   if ( n_con/=0 .and. flagstruct%d_con > 1.e-5 ) then
     nf_ke = min(3, flagstruct%nord+1)

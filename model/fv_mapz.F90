@@ -1555,6 +1555,177 @@ endif        ! end last_step check
    integer i, k, l, m, k0
    integer LM1,LP0,LP1 
    logical gmao_bot, gmao_top
+   integer LP0_start  ! OPTIMIZATION: State tracking variable
+
+   ! Assuming these constants from context (1/3 and 2/3)
+   real, parameter :: r3 = 1.0/3.0
+   real, parameter :: r23 = 2.0/3.0
+
+                              gmao_bot=.false.
+   if (present(optional_bot)) gmao_bot=optional_bot
+
+                              gmao_top=.false.
+   if (present(optional_top)) gmao_top=optional_top
+
+   allocate ( q4(4,i1:i2,km) )
+
+   do k=1,km
+      do i=i1,i2
+         q4(1,i,k) = q1(i,j,k)
+      enddo
+   enddo
+   if ( kord >  7 ) then
+     if (present(q_min)) then
+       call scalar_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord,  q_min, qs=q_bot)
+     else
+       call scalar_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord, no_min, qs=q_bot)
+     endif
+   else
+     call ppm_profile( q4(1,i1,1), dpe1, km, i1, i2, iv, kord)
+   endif
+
+! Interpolate field onto target Pressures
+! ---------------------------------------
+   do i=i1,i2
+     k0 = 1
+     LP0_start = 1 ! OPTIMIZATION: Track the starting pressure index
+     
+     k_loop: do k=1,kn
+      LM1 = 1
+      LP0 = LP0_start ! Start from the previous k's index instead of 1
+      
+      do while( LP0.le.km )
+         if (pe1(i,LP0).lt.pe2(i,k)) then
+            LP0 = LP0+1
+         else
+            exit
+         endif
+      enddo
+      
+      LP0_start = LP0 ! Save the state for the next vertical level (k+1)
+      
+      LM1 = max(LP0-1,1)
+      LP0 = min(LP0, km)
+      
+! Entire grid below old ps
+! ----------------------------------------------------
+      if( gmao_bot .and. (pe2(i,k) .ge. pe1(i,km+1)) ) then
+            q2(i,k) = q1(i,j,km)
+! Extrapolate Linearly below last model level
+! ----------------------------------------------------
+      else if( gmao_bot .and. (LM1.eq.km .and. LP0.eq.km) ) then
+            pfac0=(pe2(i,k )-pe1(i,km  ))/(pe1(i,km)-pe1(i,km-1))
+            q2(i,k) = q1(i,j,km) + ( q1(i,j,km)-q1(i,j,km-1) )*pfac0
+! Interpolate Linearly between levels 1 => 2 and km-1 => km
+! -----------------------------------------------------------------
+      else if( gmao_bot .and. (LP0.eq.km) ) then
+            pfac0=(pe2(i,k  )-pe1(i,LP0))/(pe1(i,LM1)-pe1(i,LP0))
+            q2(i,k) = q1(i,j,LP0) + ( q1(i,j,LM1)-q1(i,j,LP0) )*pfac0
+! Extrapolate Linearly above first model level
+! ----------------------------------------------------
+      else if( gmao_top .and. (LM1.eq.1 .and. LP0.eq.1) ) then
+            pfac0=(pe2(i,k)-pe1(i,1))/(pe1(i,2)-pe1(i,1))
+            q2(i,k) = q1(i,j,1) + ( q1(i,j,2)-q1(i,j,1) )*pfac0
+! Interpolate Linearly between levels 1 => 2 and km-1 => km
+! -----------------------------------------------------------------
+      else if( gmao_top .and. (LM1.eq.1) ) then
+            pfac0=(pe2(i,k  )-pe1(i,LP0))/(pe1(i,LM1)-pe1(i,LP0))
+            q2(i,k) = q1(i,j,LP0) + ( q1(i,j,LM1)-q1(i,j,LP0) )*pfac0
+! Use standard FV3 remapping in between
+! ----------------------------------------------------
+      else
+         l_loop: do l=k0,km
+            ! locate the top edge: pe2(i,k)
+            if( pe2(i,k) >= pe1(i,l) .and. pe2(i,k) <= pe1(i,l+1) ) then
+               pl = (pe2(i,k)-pe1(i,l)) / dpe1(i,l)
+               if( pe2(i,k+1) <= pe1(i,l+1) ) then
+                  ! entire new grid is within the original grid
+                  pr = (pe2(i,k+1)-pe1(i,l)) / dpe1(i,l)
+                  pfac1 = (pr+pl)
+                  pfac2 = r3*(pr*pfac1+pl**2)
+                  q2(i,k) = q4(2,i,l) + 0.5*(q4(4,i,l)+q4(3,i,l)-q4(2,i,l))  &
+                             *pfac1-q4(4,i,l)*pfac2
+                  k0 = l
+                  cycle k_loop ! Replaces goto 555
+               else
+                  ! Fractional area...
+                  pfac0 = pe1(i,l+1)-pe2(i,k)
+                  pfac1 = (1.+pl)
+                  pfac2 = r3*(1.+pl*pfac1)
+                  qsum = pfac0*(q4(2,i,l)+0.5*(q4(4,i,l)+   &
+                            q4(3,i,l)-q4(2,i,l))*pfac1-q4(4,i,l)*pfac2)
+                  
+                  m_loop: do m=l+1,km
+                     ! locate the bottom edge: pe2(i,k+1)
+                     if( pe2(i,k+1) > pe1(i,m+1) ) then
+                        ! Whole layer
+                        qsum = qsum + dpe1(i,m)*q4(1,i,m)
+                     else
+                        dp = pe2(i,k+1)-pe1(i,m)
+                        esl = (dp / dpe1(i,m))
+                        pfac0 = (1.-r23*esl)
+                        qsum = qsum + dp*(q4(2,i,m)+0.5*esl*               &
+                                 (q4(3,i,m)-q4(2,i,m)+q4(4,i,m)*pfac0))
+                        k0 = m
+                        exit l_loop ! Replaces goto 123
+                     endif
+                  enddo m_loop
+                  
+                  exit l_loop ! Replaces goto 123
+               endif
+            endif
+         enddo l_loop
+         
+         ! Equivalent to 123 continue
+         q2(i,k) = qsum / dpe2(i,k)
+         
+      endif
+     enddo k_loop
+   enddo
+
+  deallocate( q4 )
+
+ end subroutine map_scalar
+
+ subroutine map_scalar_old( km,   pe1,    q1,           &
+                        kn,   pe2,    q2,           &
+                        dpe1, dpe2,   i1,  i2,      &
+                        j,  ibeg, iend, jbeg, jend, iv, kord, q_min, &
+                        q_bot, optional_bot, optional_top)
+! iv=1
+ integer, intent(in) :: i1                !< Starting longitude
+ integer, intent(in) :: i2                !< Finishing longitude
+ integer, intent(in) :: iv                !< Mode: 0 == constituents 1 == temp 2 == remap temp with cs scheme
+ integer, intent(in) :: kord              !< Method order
+ integer, intent(in) :: j                 !< Current latitude
+ integer, intent(in) :: ibeg, iend, jbeg, jend
+ integer, intent(in) :: km                !< Original vertical dimension
+ integer, intent(in) :: kn                !< Target vertical dimension
+ real, intent(in) ::  pe1(i1:i2,km+1)  !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
+ real, intent(in) ::  pe2(i1:i2,kn+1)  !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
+ real, intent(in) :: dpe1(i1:i2,km)    !< pressure thickness in the original vertical coordinate
+ real, intent(in) :: dpe2(i1:i2,kn)    !< pressure thickness in the new vertical coordinate
+ real, intent(in) ::    q1(ibeg:iend,jbeg:jend,1:km) !< Field input
+! INPUT/OUTPUT PARAMETERS:
+ real, intent(inout)::  q2(i1:i2,1:kn) !< Field output
+! Optional aruguments:
+ real, optional, intent(in):: q_min              !< minimum for scheme
+ real, optional, intent(in):: q_bot(i1:i2)       !< bottom BC
+ logical, optional, intent(in):: optional_bot    !< optional GMAO bottom BC
+ logical, optional, intent(in):: optional_top    !< optional GMAO top BC
+
+! DESCRIPTION:
+! IV = 0: constituents
+! pe1: pressure at layer edges (from model top to bottom surface)
+!      in the original vertical coordinate
+! pe2: pressure at layer edges (from model top to bottom surface)
+!      in the new vertical coordinate
+! LOCAL VARIABLES:
+   real, allocatable :: q4(:,:,:)
+   real    qsum, pl, pr, pfac0, pfac1, pfac2, dp, esl
+   integer i, k, l, m, k0
+   integer LM1,LP0,LP1 
+   logical gmao_bot, gmao_top
 
                               gmao_bot=.false.
    if (present(optional_bot)) gmao_bot=optional_bot
@@ -1668,9 +1839,127 @@ endif        ! end last_step check
 
   deallocate( q4 )
 
- end subroutine map_scalar
+ end subroutine map_scalar_old
 
  subroutine mapn_tracer(nq, km, pe1, pe2, q1, dp2, kord, j,     &
+                        i1, i2, isd, ied, jsd, jed, q_min, fill, qs)
+! INPUT PARAMETERS:
+      integer, intent(in):: km                !< vertical dimension
+      integer, intent(in):: j, nq, i1, i2
+      integer, intent(in):: isd, ied, jsd, jed
+      integer, intent(in):: kord(nq)
+      real, intent(in)::  pe1(i1:i2,km+1)     !< pressure at layer edges from model top to bottom surface in the original vertical coordinate
+      real, intent(in)::  pe2(i1:i2,km+1)     !< pressure at layer edges from model top to bottom surface in the new vertical coordinate
+      real, intent(in)::  dp2(i1:i2,km)
+      real, intent(in)::  q_min
+      logical, intent(in):: fill
+      real, intent(inout):: q1(isd:ied,jsd:jed,km,nq) ! Field input
+
+      real, optional, intent(in) ::   qs(i1:i2)
+
+! LOCAL VARIABLES:
+      real:: q4(4,i1:i2,km,nq)
+      real:: q2(i1:i2,km,nq) !< Field output
+      real:: qsum(nq)
+      real:: dp1(i1:i2,km)
+      real:: pl, pr, dp, esl, fac1, fac2
+      integer:: i, k, l, m, k0, iq
+
+      do k=1,km
+         do i=i1,i2
+            dp1(i,k) = pe1(i,k+1) - pe1(i,k)
+         enddo
+      enddo
+
+      do iq=1,nq
+         do k=1,km
+            do i=i1,i2
+               q4(1,i,k,iq) = q1(i,j,k,iq)
+            enddo
+         enddo
+         call scalar_profile( q4(1,i1,1,iq), dp1, km, i1, i2, 0, kord(iq), q_min, qs=qs)
+      enddo
+
+! Mapping
+! OPTIMIZATION: Replaced GOTOs with modern named loop exits/cycles for vectorization
+      do i=i1,i2
+         k0 = 1
+         
+         k_loop: do k=1,km
+            l_loop: do l=k0,km
+               ! locate the top edge: pe2(i,k)
+               if(pe2(i,k) >= pe1(i,l) .and. pe2(i,k) <= pe1(i,l+1)) then
+                  pl = (pe2(i,k)-pe1(i,l)) / dp1(i,l)
+                  
+                  if(pe2(i,k+1) <= pe1(i,l+1)) then
+                     ! entire new grid is within the original grid
+                     pr = (pe2(i,k+1)-pe1(i,l)) / dp1(i,l)
+                     fac1 = pr + pl
+                     fac2 = r3*(pr*fac1 + pl*pl)
+                     fac1 = 0.5*fac1
+                     do iq=1,nq
+                        q2(i,k,iq) = q4(2,i,l,iq) + (q4(4,i,l,iq)+q4(3,i,l,iq)-q4(2,i,l,iq))*fac1  &
+                                                  -  q4(4,i,l,iq)*fac2
+                     enddo
+                     k0 = l
+                     cycle k_loop ! Replaces goto 555
+                  else
+                     ! Fractional area...
+                     dp = pe1(i,l+1) - pe2(i,k)
+                     fac1 = 1. + pl
+                     fac2 = r3*(1.+pl*fac1)
+                     fac1 = 0.5*fac1
+                     do iq=1,nq
+                        qsum(iq) = dp*(q4(2,i,l,iq) + (q4(4,i,l,iq)+   &
+                                       q4(3,i,l,iq) - q4(2,i,l,iq))*fac1 - q4(4,i,l,iq)*fac2)
+                     enddo
+                     
+                     m_loop: do m=l+1,km
+                        ! locate the bottom edge: pe2(i,k+1)
+                        if(pe2(i,k+1) > pe1(i,m+1) ) then
+                           ! Whole layer..
+                           do iq=1,nq
+                              qsum(iq) = qsum(iq) + dp1(i,m)*q4(1,i,m,iq)
+                           enddo
+                        else
+                           dp = pe2(i,k+1)-pe1(i,m)
+                           esl = dp / dp1(i,m)
+                           fac1 = 0.5*esl
+                           fac2 = 1.-r23*esl
+                           do iq=1,nq
+                              qsum(iq) = qsum(iq) + dp*( q4(2,i,m,iq) + fac1*(         &
+                                         q4(3,i,m,iq)-q4(2,i,m,iq)+q4(4,i,m,iq)*fac2 ) )
+                           enddo
+                           k0 = m
+                           exit l_loop ! Replaces goto 123
+                        endif
+                     enddo m_loop
+                     
+                     exit l_loop ! Replaces goto 123 (if m_loop finished without exit)
+                  endif
+               endif
+            enddo l_loop
+            
+            ! 123 continue equivalent
+            do iq=1,nq
+               q2(i,k,iq) = qsum(iq) / dp2(i,k)
+            enddo
+         enddo k_loop
+      enddo
+
+  if (fill) call fillz(i2-i1+1, km, nq, q2, dp2)
+
+  do iq=1,nq
+     do k=1,km
+        do i=i1,i2
+           q1(i,j,k,iq) = q2(i,k,iq)
+        enddo
+     enddo
+  enddo
+
+ end subroutine mapn_tracer
+
+ subroutine mapn_tracer_old(nq, km, pe1, pe2, q1, dp2, kord, j,     &
                         i1, i2, isd, ied, jsd, jed, q_min, fill, qs)
 ! INPUT PARAMETERS:
       integer, intent(in):: km                !< vertical dimension
@@ -1781,7 +2070,7 @@ endif        ! end last_step check
      enddo
   enddo
 
- end subroutine mapn_tracer
+ end subroutine mapn_tracer_old
 
  subroutine remap_2d(km,   pe1,   q1,        &
                      kn,   pe2,   q2,        &
@@ -1876,9 +2165,434 @@ endif        ! end last_step check
  end subroutine remap_2d
 
 
+ subroutine scalar_profile(a4, delp, km, i1, i2, iv, kord, qmin, qs)
+! Optimized vertical profile reconstruction:
+! Latest: Apr 2008 S.-J. Lin, NOAA/GFDL
+ integer, intent(in):: i1, i2
+ integer, intent(in):: km      !< vertical dimension
+ integer, intent(in):: iv      !< iv =-1: winds iv = 0: positive definite scalars iv = 1: others
+ integer, intent(in):: kord
+ real, intent(in)   :: delp(i1:i2,km)     !< Layer pressure thickness
+ real, intent(inout):: a4(4,i1:i2,km)     !< Interpolated values
+ real, intent(in):: qmin
+ real, optional, intent(in) ::   qs(i1:i2)
+!-----------------------------------------------------------------------
+ logical, dimension(i1:i2,km):: extm, ext5, ext6
+ real  gam(i1:i2,km)
+ real    q(i1:i2,km+1)
+ real   d4(i1:i2)
+ real   bet, a_bot, grat
+ real   pmp_1, lac_1, pmp_2, lac_2, x0, x1
+ integer i, k, im
+
+ if ( iv .eq. -2 ) then
+      if (.not. present(qs)) call mpp_error (FATAL, 'fv_mapz::scalar_profile - qs is not present')
+      do i=i1,i2
+         gam(i,2) = 0.5
+           q(i,1) = 1.5*a4(1,i,1)
+      enddo
+      do k=2,km-1
+         do i=i1, i2
+                  grat = delp(i,k-1) / delp(i,k)
+                   bet =  2. + grat + grat - gam(i,k)
+                q(i,k) = (3.*(a4(1,i,k-1)+a4(1,i,k)) - q(i,k-1))/bet
+            gam(i,k+1) = grat / bet
+         enddo
+      enddo
+      do i=i1,i2
+            grat = delp(i,km-1) / delp(i,km)
+         q(i,km) = (3.*(a4(1,i,km-1)+a4(1,i,km)) - grat*qs(i) - q(i,km-1)) /  &
+                   (2. + grat + grat - gam(i,km))
+         q(i,km+1) = qs(i)
+      enddo
+      do k=km-1,1,-1
+        do i=i1,i2
+           q(i,k) = q(i,k) - gam(i,k+1)*q(i,k+1)
+        enddo
+      enddo
+ else
+  do i=i1,i2
+         grat = delp(i,2) / delp(i,1)   ! grid ratio
+          bet = grat*(grat+0.5)
+       q(i,1) = ( (grat+grat)*(grat+1.)*a4(1,i,1) + a4(1,i,2) ) / bet
+     gam(i,1) = ( 1. + grat*(grat+1.5) ) / bet
+  enddo
+
+  do k=2,km
+     do i=i1,i2
+           d4(i) = delp(i,k-1) / delp(i,k)
+             bet =  2. + d4(i) + d4(i) - gam(i,k-1)
+          q(i,k) = ( 3.*(a4(1,i,k-1)+d4(i)*a4(1,i,k)) - q(i,k-1) )/bet
+        gam(i,k) = d4(i) / bet
+     enddo
+  enddo
+
+  do i=i1,i2
+         a_bot = 1. + d4(i)*(d4(i)+1.5)
+     q(i,km+1) = (2.*d4(i)*(d4(i)+1.)*a4(1,i,km)+a4(1,i,km-1)-a_bot*q(i,km))  &
+               / ( d4(i)*(d4(i)+0.5) - a_bot*gam(i,km) )
+  enddo
+
+  do k=km,1,-1
+     do i=i1,i2
+        q(i,k) = q(i,k) - gam(i,k)*q(i,k+1)
+     enddo
+  enddo
+ endif
+
+!----- Perfectly linear scheme --------------------------------
+ if ( abs(kord) > 16 ) then
+  do k=1,km
+     do i=i1,i2
+        a4(2,i,k) = q(i,k  )
+        a4(3,i,k) = q(i,k+1)
+        a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+     enddo
+  enddo
+  return
+ endif
+!----- Perfectly linear scheme --------------------------------
+
+!------------------
+! Apply constraints
+!------------------
+  im = i2 - i1 + 1
+
+! Apply *large-scale* constraints
+  do i=i1,i2
+     q(i,2) = min( q(i,2), max(a4(1,i,1), a4(1,i,2)) )
+     q(i,2) = max( q(i,2), min(a4(1,i,1), a4(1,i,2)) )
+  enddo
+
+  do k=2,km
+     do i=i1,i2
+        gam(i,k) = a4(1,i,k) - a4(1,i,k-1)
+     enddo
+  enddo
+
+! Interior:
+  do k=3,km-1
+     do i=i1,i2
+        if ( gam(i,k-1)*gam(i,k+1)>0. ) then
+! Apply large-scale constraint to ALL fields if not local max/min
+             q(i,k) = min( q(i,k), max(a4(1,i,k-1),a4(1,i,k)) )
+             q(i,k) = max( q(i,k), min(a4(1,i,k-1),a4(1,i,k)) )
+        else
+          if ( gam(i,k-1) > 0. ) then
+! There exists a local max
+               q(i,k) = max(q(i,k), min(a4(1,i,k-1),a4(1,i,k)))
+          else
+! There exists a local min
+               q(i,k) = min(q(i,k), max(a4(1,i,k-1),a4(1,i,k)))
+               if ( iv==0 ) q(i,k) = max(0., q(i,k))
+          endif
+        endif
+     enddo
+  enddo
+
+! Bottom:
+  do i=i1,i2
+     q(i,km) = min( q(i,km), max(a4(1,i,km-1), a4(1,i,km)) )
+     q(i,km) = max( q(i,km), min(a4(1,i,km-1), a4(1,i,km)) )
+  enddo
+
+  do k=1,km
+     do i=i1,i2
+        a4(2,i,k) = q(i,k  )
+        a4(3,i,k) = q(i,k+1)
+     enddo
+  enddo
+
+  do k=1,km
+     if ( k==1 .or. k==km ) then
+       do i=i1,i2
+          extm(i,k) = (a4(2,i,k)-a4(1,i,k)) * (a4(3,i,k)-a4(1,i,k)) > 0.
+       enddo
+     else
+       do i=i1,i2
+          extm(i,k) = gam(i,k)*gam(i,k+1) < 0.
+       enddo
+     endif
+     if ( abs(kord) > 9 ) then
+       do i=i1,i2
+          x0 = 2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k))
+          x1 = abs(a4(2,i,k)-a4(3,i,k))
+          a4(4,i,k) = 3.*x0
+          ext5(i,k) = abs(x0) > x1
+          ext6(i,k) = abs(a4(4,i,k)) > x1
+       enddo
+     endif
+  enddo
+
+!---------------------------
+! Apply subgrid constraints:
+!---------------------------
+! f(s) = AL + s*[(AR-AL) + A6*(1-s)]         ( 0 <= s  <= 1 )
+! Top 2 and bottom 2 layers always use monotonic mapping
+
+  if ( iv==0 ) then
+     do i=i1,i2
+        a4(2,i,1) = max(0., a4(2,i,1))
+     enddo
+  elseif ( iv==-1 ) then
+      do i=i1,i2
+         if ( a4(2,i,1)*a4(1,i,1) <= 0. ) a4(2,i,1) = 0.
+      enddo
+  elseif ( iv==2 ) then
+     do i=i1,i2
+        a4(2,i,1) = a4(1,i,1)
+        a4(3,i,1) = a4(1,i,1)
+        a4(4,i,1) = 0.
+     enddo
+  endif
+
+  if ( iv/=2 ) then
+     do i=i1,i2
+        a4(4,i,1) = 3.*(2.*a4(1,i,1) - (a4(2,i,1)+a4(3,i,1)))
+     enddo
+     call cs_limiters(im, extm(i1,1), a4(1,i1,1), 1)
+  endif
+
+! k=2
+   do i=i1,i2
+      a4(4,i,2) = 3.*(2.*a4(1,i,2) - (a4(2,i,2)+a4(3,i,2)))
+   enddo
+   call cs_limiters(im, extm(i1,2), a4(1,i1,2), 2)
+
+
+!-------------------------------------
+! Huynh's 2nd constraint for interior:
+!-------------------------------------
+! OPTIMIZATION: Hoisted kord select block outside the vertical loop. Loop Fusion applied where possible.
+  select case(abs(kord))
+
+  case (0:8)
+     do k=3,km-2
+        do i=i1,i2
+           ! Left  edges
+           pmp_1 = a4(1,i,k) - 2.*gam(i,k+1)
+           lac_1 = pmp_1 + 1.5*gam(i,k+2)
+           a4(2,i,k) = min(max(a4(2,i,k), min(a4(1,i,k), pmp_1, lac_1)),   &
+                                          max(a4(1,i,k), pmp_1, lac_1) )
+           ! Right edges
+           pmp_2 = a4(1,i,k) + 2.*gam(i,k)
+           lac_2 = pmp_2 - 1.5*gam(i,k-1)
+           a4(3,i,k) = min(max(a4(3,i,k), min(a4(1,i,k), pmp_2, lac_2)),    &
+                                          max(a4(1,i,k), pmp_2, lac_2) )
+           ! Fused
+           a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+        enddo
+     enddo
+
+  case (9)
+     do k=3,km-2
+        do i=i1,i2
+           if ( extm(i,k) .and. extm(i,k-1) ) then
+               a4(2,i,k) = a4(1,i,k)
+               a4(3,i,k) = a4(1,i,k)
+               a4(4,i,k) = 0.
+           else if ( extm(i,k) .and. extm(i,k+1) ) then
+               a4(2,i,k) = a4(1,i,k)
+               a4(3,i,k) = a4(1,i,k)
+               a4(4,i,k) = 0.
+           else if ( extm(i,k) .and. a4(1,i,k)<qmin ) then
+               a4(2,i,k) = a4(1,i,k)
+               a4(3,i,k) = a4(1,i,k)
+               a4(4,i,k) = 0.
+           else
+             a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+             if( abs(a4(4,i,k)) > abs(a4(2,i,k)-a4(3,i,k)) ) then
+                   pmp_1 = a4(1,i,k) - 2.*gam(i,k+1)
+                   lac_1 = pmp_1 + 1.5*gam(i,k+2)
+               a4(2,i,k) = min(max(a4(2,i,k), min(a4(1,i,k), pmp_1, lac_1)),  &
+                                              max(a4(1,i,k), pmp_1, lac_1) )
+                   pmp_2 = a4(1,i,k) + 2.*gam(i,k)
+                   lac_2 = pmp_2 - 1.5*gam(i,k-1)
+               a4(3,i,k) = min(max(a4(3,i,k), min(a4(1,i,k), pmp_2, lac_2)),  &
+                                              max(a4(1,i,k), pmp_2, lac_2) )
+               a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+             endif
+           endif
+        enddo
+     enddo
+
+  case (10)
+     do k=3,km-2
+        do i=i1,i2
+           if( ext5(i,k) ) then
+               if( ext5(i,k-1) .or. ext5(i,k+1) ) then
+                    a4(2,i,k) = a4(1,i,k)
+                    a4(3,i,k) = a4(1,i,k)
+               elseif ( ext6(i,k-1) .or. ext6(i,k+1) ) then
+                    pmp_1 = a4(1,i,k) - 2.*gam(i,k+1)
+                    lac_1 = pmp_1 + 1.5*gam(i,k+2)
+                    a4(2,i,k) = min(max(a4(2,i,k), min(a4(1,i,k), pmp_1, lac_1)),  &
+                                                   max(a4(1,i,k), pmp_1, lac_1) )
+                    pmp_2 = a4(1,i,k) + 2.*gam(i,k)
+                    lac_2 = pmp_2 - 1.5*gam(i,k-1)
+                    a4(3,i,k) = min(max(a4(3,i,k), min(a4(1,i,k), pmp_2, lac_2)),  &
+                                                   max(a4(1,i,k), pmp_2, lac_2) )
+               endif
+           elseif( ext6(i,k) ) then
+               if( ext5(i,k-1) .or. ext5(i,k+1) ) then
+                   pmp_1 = a4(1,i,k) - 2.*gam(i,k+1)
+                   lac_1 = pmp_1 + 1.5*gam(i,k+2)
+                   a4(2,i,k) = min(max(a4(2,i,k), min(a4(1,i,k), pmp_1, lac_1)),  &
+                                                  max(a4(1,i,k), pmp_1, lac_1) )
+                   pmp_2 = a4(1,i,k) + 2.*gam(i,k)
+                   lac_2 = pmp_2 - 1.5*gam(i,k-1)
+                   a4(3,i,k) = min(max(a4(3,i,k), min(a4(1,i,k), pmp_2, lac_2)),  &
+                                                  max(a4(1,i,k), pmp_2, lac_2) )
+               endif
+           endif
+           ! Fused
+           a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+        enddo
+     enddo
+
+  case (12)
+     do k=3,km-2
+        do i=i1,i2
+           if( extm(i,k) ) then
+               a4(2,i,k) = a4(1,i,k)
+               a4(3,i,k) = a4(1,i,k)
+               a4(4,i,k) = 0.
+           else
+             a4(4,i,k) = 6.*a4(1,i,k) - 3.*(a4(2,i,k)+a4(3,i,k))
+             if( abs(a4(4,i,k)) > abs(a4(2,i,k)-a4(3,i,k)) ) then
+                   pmp_1 = a4(1,i,k) - 2.*gam(i,k+1)
+                   lac_1 = pmp_1 + 1.5*gam(i,k+2)
+               a4(2,i,k) = min(max(a4(2,i,k), min(a4(1,i,k), pmp_1, lac_1)),  &
+                                              max(a4(1,i,k), pmp_1, lac_1) )
+                   pmp_2 = a4(1,i,k) + 2.*gam(i,k)
+                   lac_2 = pmp_2 - 1.5*gam(i,k-1)
+               a4(3,i,k) = min(max(a4(3,i,k), min(a4(1,i,k), pmp_2, lac_2)),  &
+                                              max(a4(1,i,k), pmp_2, lac_2) )
+               a4(4,i,k) = 6.*a4(1,i,k) - 3.*(a4(2,i,k)+a4(3,i,k))
+             endif
+           endif
+        enddo
+     enddo
+
+  case (13)
+     do k=3,km-2
+        do i=i1,i2
+           if( ext6(i,k) ) then
+              if ( ext6(i,k-1) .and. ext6(i,k+1) ) then
+                  a4(2,i,k) = a4(1,i,k)
+                  a4(3,i,k) = a4(1,i,k)
+              endif
+           endif
+           ! Fused
+           a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+        enddo
+     enddo
+
+  case (14)
+     do k=3,km-2
+        do i=i1,i2
+           a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+        enddo
+     enddo
+
+  case (15)
+     do k=3,km-2
+        do i=i1,i2
+           if ( ext5(i,k) .and. ext5(i,k-1) ) then
+                a4(2,i,k) = a4(1,i,k)
+                a4(3,i,k) = a4(1,i,k)
+           else if ( ext5(i,k) .and. ext5(i,k+1) ) then
+                a4(2,i,k) = a4(1,i,k)
+                a4(3,i,k) = a4(1,i,k)
+           else if ( ext5(i,k) .and. a4(1,i,k)<qmin ) then
+                a4(2,i,k) = a4(1,i,k)
+                a4(3,i,k) = a4(1,i,k)
+           elseif( ext6(i,k) ) then
+                   pmp_1 = a4(1,i,k) - 2.*gam(i,k+1)
+                   lac_1 = pmp_1 + 1.5*gam(i,k+2)
+               a4(2,i,k) = min(max(a4(2,i,k), min(a4(1,i,k), pmp_1, lac_1)),  &
+                                              max(a4(1,i,k), pmp_1, lac_1) )
+                   pmp_2 = a4(1,i,k) + 2.*gam(i,k)
+                   lac_2 = pmp_2 - 1.5*gam(i,k-1)
+               a4(3,i,k) = min(max(a4(3,i,k), min(a4(1,i,k), pmp_2, lac_2)),  &
+                                              max(a4(1,i,k), pmp_2, lac_2) )
+           endif
+           ! Fused
+           a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+        enddo
+     enddo
+
+  case (16)
+     do k=3,km-2
+        do i=i1,i2
+           if( ext5(i,k) ) then
+              if ( ext5(i,k-1) .or. ext5(i,k+1) ) then
+                  a4(2,i,k) = a4(1,i,k)
+                  a4(3,i,k) = a4(1,i,k)
+              elseif ( ext6(i,k-1) .or. ext6(i,k+1) ) then
+                  pmp_1 = a4(1,i,k) - 2.*gam(i,k+1)
+                  lac_1 = pmp_1 + 1.5*gam(i,k+2)
+                  a4(2,i,k) = min(max(a4(2,i,k), min(a4(1,i,k), pmp_1, lac_1)),   &
+                                      max(a4(1,i,k), pmp_1, lac_1) )
+                  pmp_2 = a4(1,i,k) + 2.*gam(i,k)
+                  lac_2 = pmp_2 - 1.5*gam(i,k-1)
+                  a4(3,i,k) = min(max(a4(3,i,k), min(a4(1,i,k), pmp_2, lac_2)),    &
+                                      max(a4(1,i,k), pmp_2, lac_2) )
+              endif
+           endif
+           ! Fused
+           a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+        enddo
+     enddo
+
+  case (11) ! Evaluates the leftover abs(kord) < 16 criteria not caught by above 
+     do k=3,km-2
+        do i=i1,i2
+          if ( ext5(i,k) .and. (ext5(i,k-1).or.ext5(i,k+1).or.a4(1,i,k)<qmin) ) then
+               a4(2,i,k) = a4(1,i,k)
+               a4(3,i,k) = a4(1,i,k)
+               a4(4,i,k) = 0.
+          else
+               a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+          endif
+        enddo
+     enddo
+
+  end select
+
+! Additional constraint to ensure positivity (moved outside loop iteration)
+  if ( iv==0 ) then
+     do k=3,km-2
+        call cs_limiters(im, extm(i1,k), a4(1,i1,k), 0)
+     enddo
+  endif
+
+!----------------------------------
+! Bottom layer subgrid constraints:
+!----------------------------------
+  if ( iv==0 ) then
+     do i=i1,i2
+        a4(3,i,km) = max(0., a4(3,i,km))
+     enddo
+  elseif ( iv .eq. -1 ) then
+      do i=i1,i2
+         if ( a4(3,i,km)*a4(1,i,km) <= 0. )  a4(3,i,km) = 0.
+      enddo
+  endif
+
+  do k=km-1,km
+     do i=i1,i2
+        a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+     enddo
+     if(k==(km-1)) call cs_limiters(im, extm(i1,k), a4(1,i1,k), 2)
+     if(k== km   ) call cs_limiters(im, extm(i1,k), a4(1,i1,k), 1)
+  enddo
+
+ end subroutine scalar_profile
+
 !>@brief Optimized vertical profile reconstruction:
 !> Latest: Apr 2008 S.-J. Lin, NOAA/GFDL
- subroutine scalar_profile(a4, delp, km, i1, i2, iv, kord, qmin, qs)
+ subroutine scalar_profile_old(a4, delp, km, i1, i2, iv, kord, qmin, qs)
 ! Optimized vertical profile reconstruction:
 ! Latest: Apr 2008 S.-J. Lin, NOAA/GFDL
  integer, intent(in):: i1, i2
@@ -2285,7 +2999,7 @@ endif        ! end last_step check
      if(k== km   ) call cs_limiters(im, extm(i1,k), a4(1,i1,k), 1)
   enddo
 
- end subroutine scalar_profile
+ end subroutine scalar_profile_old
 
 !>@brief The subroutine 'cs_profile' performs the optimized vertical profile reconstruction:
 !>@date April 2008

@@ -63,7 +63,8 @@
 
 module fv_tracer2d_mod
    use tp_core_mod,       only: fv_tp_2d, copy_corners
-   use fv_mp_mod,         only: mp_reduce_max
+   use fv_mp_mod,         only: mp_barrier, mp_reduce_max, mp_reduce_min
+   use fv_mp_mod,         only: mp_ireduce_max, mp_wait_reduce_max
    use fv_mp_mod,         only: ng, mp_gather, is_master
    use fv_mp_mod,         only: group_halo_update_type
    use fv_mp_mod,         only: start_group_halo_update, complete_group_halo_update
@@ -76,6 +77,9 @@ module fv_tracer2d_mod
    use fv_grid_utils_mod, only: g_sum_r8
 
 implicit none
+
+#include "mpif.h"
+
 private
 
 public :: tracer_2d, tracer_2d_nested, tracer_2d_1L, offline_tracer_advection
@@ -89,7 +93,7 @@ contains
 !! It modifies 'tracer_2d' so that each layer uses a different diagnosed number 
 !! of split tracer timesteps. This potentially accelerates tracer advection when there
 !! is a large difference in layer-maximum wind speeds (cf. polar night jet).
-subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy, npz,   &
+subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, domain, npx, npy, npz,   &
                         nq,  hord, dt, id_divg, q_pack, nord_tr, trdm, lim_fac, dpA)
 
       type(fv_grid_bounds_type), intent(IN) :: bd
@@ -104,10 +108,15 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       type(group_halo_update_type), intent(inout) :: q_pack
       real   , intent(INOUT) :: q(bd%isd:bd%ied,bd%jsd:bd%jed,npz,nq)   !< Tracers
       real   , intent(INOUT) :: dp1(bd%isd:bd%ied,bd%jsd:bd%jed,npz)    !< DELP before dyn_core
-      real   , intent(IN   ) :: mfx(bd%is:bd%ie+1,bd%js:bd%je,  npz)    !< Mass Flux X-Dir
-      real   , intent(IN   ) :: mfy(bd%is:bd%ie  ,bd%js:bd%je+1,npz)    !< Mass Flux Y-Dir
-      real   , intent(IN   ) ::  cx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)  !< Courant Number X-Dir
-      real   , intent(IN   ) ::  cy(bd%isd:bd%ied,bd%js :bd%je +1,npz)  !< Courant Number Y-Dir
+
+      real(kind=8) , intent(IN   ) :: mfx(bd%is:bd%ie+1,bd%js:bd%je,  npz)    !< Mass Flux X-Dir
+      real(kind=8) , intent(IN   ) :: mfy(bd%is:bd%ie  ,bd%js:bd%je+1,npz)    !< Mass Flux Y-Dir
+      real(kind=8) , intent(IN   ) ::  cx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)  !< Courant Number X-Dir
+      real(kind=8) , intent(IN   ) ::  cy(bd%isd:bd%ied,bd%js :bd%je +1,npz)  !< Courant Number Y-Dir
+
+      real   , intent(INOUT) :: cmax(npz)
+      integer, intent(INOUT) :: imax_req
+
       real   , optional, intent(OUT) :: dpA(bd%is:bd%ie,bd%js:bd%je,npz)    ! DELP after advection
       type(fv_grid_type), intent(IN), target :: gridstruct
       type(domain2d), intent(INOUT) :: domain
@@ -126,7 +135,6 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real ::  cx2(bd%is:bd%ie+1,bd%jsd:bd%jed, npz)
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
       real :: c2d(bd%is:bd%ie,bd%js:bd%je)
-      real :: cmax(npz), cmin(npz)
       integer :: icount(npz,nq)
       real :: frac
       integer :: nsplt
@@ -137,6 +145,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real, pointer, dimension(:,:) :: dxa, dya, dx, dy
 
       real, parameter :: TRACER_EPS = tiny(1.0) ! Adjust threshold as needed
+
+      real(kind=8) :: t_start, t_wait, t_min_wait, t_max_wait
 
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
@@ -162,6 +172,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &
 !$OMP                                  sin_sg,cy,yfx,dya,dx) private(i,j,k)
   do k=1,npz
+     ! 1. Compute xfx
      do j=jsd,jed
         do i=is,ie+1
            if (cx(i,j,k) > 0.) then
@@ -171,6 +182,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
            endif
         enddo
      enddo
+     
+     ! 2. Compute yfx
      do j=js,je+1
         do i=isd,ied
            if (cy(i,j,k) > 0.) then
@@ -182,30 +195,20 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      enddo
   enddo  ! k-loop
 
+                        call timing_on('COMM_TOTAL')
+                            call timing_on('COMM_TRACER_MAX')
+  call mp_wait_reduce_max(cmax, npz, imax_req)
+                           call timing_off('COMM_TRACER_MAX')
+                       call timing_off('COMM_TOTAL')
+
                                call timing_on('COMM_TOTAL')
                          call timing_on('COMM_TRACER')
   call complete_group_halo_update(q_pack, domain)
                         call timing_off('COMM_TRACER')
                               call timing_off('COMM_TOTAL')
 
-!$OMP parallel do default(none) shared(is,ie,js,je,npz,nq,&
-!$OMP                                  sin_sg,cx,cy,cmax) private(i,j,k,n)
-   do k=1,npz
-     cmax(k) = 0.
-     do j=js,je
-        do i=is,ie
-          cmax(k) = max( cmax(k), max(abs(cx(i,j,k)),abs(cy(i,j,k)))+1.-sin_sg(i,j,5) )
-        enddo
-     enddo
-   enddo  ! k-loop
 
-                        call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER_MAX')
-  call mp_reduce_max(cmax,npz)
-                           call timing_off('COMM_TRACER_MAX')
-                       call timing_off('COMM_TOTAL')
-
-  ! get cmax from allreduce array
+  ! check cmax from allreduce array
   do k=1,npz
      if ( is_master() .and. (cmax(k) > 3.0) )  write(*,*) 'tracer_2d_1L: k, nsplt =', k, int(1. + cmax(k))
   enddo  ! k-loop
@@ -337,7 +340,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
 end subroutine tracer_2d_1L
 
 !>@brief The subroutine 'tracer_2d' is the standard routine for sub-cycled tracer advection.
-subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy, npz,   &
+subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, domain, npx, npy, npz,   &
                      nq,  hord, q_split, dt, id_divg, q_pack, nord_tr, trdm, lim_fac, dpA)
 
       type(fv_grid_bounds_type), intent(IN) :: bd
@@ -353,10 +356,15 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
       type(group_halo_update_type), intent(inout) :: q_pack
       real   , intent(INOUT) :: q(bd%isd:bd%ied,bd%jsd:bd%jed,npz,nq)   !< Tracers
       real   , intent(INOUT) :: dp1(bd%isd:bd%ied,bd%jsd:bd%jed,npz)    !< DELP before dyn_core
-      real   , intent(IN   ) :: mfx(bd%is:bd%ie+1,bd%js:bd%je,  npz)    !< Mass Flux X-Dir
-      real   , intent(IN   ) :: mfy(bd%is:bd%ie  ,bd%js:bd%je+1,npz)    !< Mass Flux Y-Dir
-      real   , intent(IN   ) ::  cx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)  !< Courant Number X-Dir
-      real   , intent(IN   ) ::  cy(bd%isd:bd%ied,bd%js :bd%je +1,npz)  !< Courant Number Y-Dir
+
+      real(kind=8) , intent(IN   ) :: mfx(bd%is:bd%ie+1,bd%js:bd%je,  npz)    !< Mass Flux X-Dir
+      real(kind=8) , intent(IN   ) :: mfy(bd%is:bd%ie  ,bd%js:bd%je+1,npz)    !< Mass Flux Y-Dir
+      real(kind=8) , intent(IN   ) ::  cx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)  !< Courant Number X-Dir
+      real(kind=8) , intent(IN   ) ::  cy(bd%isd:bd%ied,bd%js :bd%je +1,npz)  !< Courant Number Y-Dir
+
+      real   , intent(INOUT) :: cmax(npz)
+      integer, intent(INOUT) :: imax_req
+
       real   , optional, intent(OUT) :: dpA(bd%is:bd%ie,bd%js:bd%je,npz)! DELP after advection
       type(fv_grid_type), intent(IN), target :: gridstruct
       type(domain2d), intent(INOUT) :: domain
@@ -373,7 +381,6 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
       real :: mfy2(bd%is:bd%ie,bd%js:bd%je+1,npz)
       real ::  cx2(bd%is:bd%ie+1,bd%jsd:bd%jed, npz)
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
-      real :: cmax(npz)
       real :: frac, rdt
       integer :: maxsplt, ksplt(npz)
       integer :: i,j,k,n,it,iq
@@ -404,7 +411,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
       dy     => gridstruct%dy  
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &  
-!$OMP                                  sin_sg,cy,yfx,dya,dx,cmax,q_split)
+!$OMP                                  sin_sg,cy,yfx,dya,dx)
     do k=1,npz
        do j=jsd,jed
           do i=is,ie+1
@@ -424,29 +431,17 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
               endif
           enddo
        enddo
-       if ( q_split == 0 ) then
-         cmax(k) = 0.
-         if ( k < npz/6 ) then
-            do j=js,je
-               do i=is,ie
-                  cmax(k) = max( cmax(k), abs(cx(i,j,k)), abs(cy(i,j,k)) )
-               enddo
-            enddo
-         else
-            do j=js,je
-               do i=is,ie
-                  cmax(k) = max( cmax(k), max(abs(cx(i,j,k)),abs(cy(i,j,k)))+1.-sin_sg(i,j,5) )
-               enddo
-            enddo
-         endif
-       endif
     enddo
 
 !--------------------------------------------------------------------------------
 
 ! Determine global cmax on levels:
     if ( q_split == 0 ) then
-       call mp_reduce_max(cmax,npz)
+                        call timing_on('COMM_TOTAL')
+                            call timing_on('COMM_TRACER_MAX')
+       call mp_wait_reduce_max(cmax, npz, imax_req)
+                           call timing_off('COMM_TRACER_MAX')
+                       call timing_off('COMM_TOTAL')
     else
        cmax = q_split-1.
     endif
@@ -577,7 +572,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
 end subroutine tracer_2d
 
 
-subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy, npz,   &
+subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, domain, npx, npy, npz,   &
                      nq,  hord, q_split, dt, id_divg, q_pack, nord_tr, trdm, &
                      k_split, neststruct, parent_grid, lim_fac)
 
@@ -594,10 +589,15 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       type(group_halo_update_type), intent(inout) :: q_pack
       real   , intent(INOUT) :: q(bd%isd:bd%ied,bd%jsd:bd%jed,npz,nq)   !< Tracers
       real   , intent(INOUT) :: dp1(bd%isd:bd%ied,bd%jsd:bd%jed,npz)    !< DELP before dyn_core
-      real   , intent(INOUT) :: mfx(bd%is:bd%ie+1,bd%js:bd%je,  npz)    !< Mass Flux X-Dir
-      real   , intent(INOUT) :: mfy(bd%is:bd%ie  ,bd%js:bd%je+1,npz)    !< Mass Flux Y-Dir
-      real   , intent(INOUT) ::  cx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)  !< Courant Number X-Dir
-      real   , intent(INOUT) ::  cy(bd%isd:bd%ied,bd%js :bd%je +1,npz)  !< Courant Number Y-Dir
+
+      real(kind=8) , intent(IN   ) :: mfx(bd%is:bd%ie+1,bd%js:bd%je,  npz)    !< Mass Flux X-Dir
+      real(kind=8) , intent(IN   ) :: mfy(bd%is:bd%ie  ,bd%js:bd%je+1,npz)    !< Mass Flux Y-Dir
+      real(kind=8) , intent(IN   ) ::  cx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)  !< Courant Number X-Dir
+      real(kind=8) , intent(IN   ) ::  cy(bd%isd:bd%ied,bd%js :bd%je +1,npz)  !< Courant Number Y-Dir
+
+      real   , intent(INOUT) :: cmax(npz)
+      integer, intent(INOUT) :: imax_req
+
       type(fv_grid_type), intent(IN), target :: gridstruct
       type(fv_nest_type), intent(INOUT) :: neststruct
       type(fv_atmos_type), intent(INOUT) :: parent_grid
@@ -611,8 +611,12 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       real :: ra_y(bd%isd:bd%ied,bd%js:bd%je)
       real :: xfx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)
       real :: yfx(bd%isd:bd%ied,bd%js: bd%je+1, npz)
-      real :: cmax(npz)
-      real :: cmax_t
+
+      real :: mfxL(bd%is:bd%ie+1,bd%js:bd%je,  npz)    !< Mass Flux X-Dir
+      real :: mfyL(bd%is:bd%ie  ,bd%js:bd%je+1,npz)    !< Mass Flux Y-Dir
+      real ::  cxL(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)  !< Courant Number X-Dir
+      real ::  cyL(bd%isd:bd%ied,bd%js :bd%je +1,npz)  !< Courant Number Y-Dir
+
       real :: c_global
       real :: frac, rdt
       integer :: nsplt, nsplt_parent, msg_split_steps = 1
@@ -670,28 +674,11 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
   if ( q_split == 0 ) then
 ! Determine nsplt
 
-!$OMP parallel do default(none) shared(is,ie,js,je,npz,cmax,cx,cy,sin_sg) &
-!$OMP                          private(cmax_t )
-      do k=1,npz
-         cmax(k) = 0.
-         if ( k < 4 ) then
-! Top layers: C < max( abs(c_x), abs(c_y) )
-            do j=js,je
-               do i=is,ie
-                  cmax_t  = max( abs(cx(i,j,k)), abs(cy(i,j,k)) )
-                  cmax(k) = max( cmax_t, cmax(k) )
-               enddo
-            enddo
-         else
-            do j=js,je
-               do i=is,ie
-                  cmax_t  = max(abs(cx(i,j,k)), abs(cy(i,j,k))) + 1.-sin_sg(i,j,5)
-                  cmax(k) = max( cmax_t, cmax(k) )
-               enddo
-            enddo
-         endif
-      enddo
-      call mp_reduce_max(cmax,npz)
+                        call timing_on('COMM_TOTAL')
+                            call timing_on('COMM_TRACER_MAX')
+      call mp_wait_reduce_max(cmax, npz, imax_req)
+                           call timing_off('COMM_TRACER_MAX')
+                       call timing_off('COMM_TOTAL')
 
 ! find global max courant number and define nsplt to scale cx,cy,mfx,mfy
       c_global = cmax(1)
@@ -712,33 +699,38 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
    frac  = 1. / real(nsplt)
 
       if( nsplt /= 1 ) then
-!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,frac,xfx,mfx,cy,yfx,mfy)
+!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,cxL,frac,xfx,mfx,mfxL,cy,cyL,yfx,mfy,mfyL)
           do k=1,npz
              do j=jsd,jed
                 do i=is,ie+1
-                   cx(i,j,k) =  cx(i,j,k) * frac
+                   cxL(i,j,k) =  cx(i,j,k) * frac
                    xfx(i,j,k) = xfx(i,j,k) * frac
                 enddo
              enddo
              do j=js,je
                 do i=is,ie+1
-                   mfx(i,j,k) = mfx(i,j,k) * frac
+                   mfxL(i,j,k) = mfx(i,j,k) * frac
                 enddo
              enddo
 
              do j=js,je+1
                 do i=isd,ied
-                   cy(i,j,k) =  cy(i,j,k) * frac
+                   cyL(i,j,k) =  cy(i,j,k) * frac
                   yfx(i,j,k) = yfx(i,j,k) * frac
                 enddo
              enddo
 
              do j=js,je+1
                 do i=is,ie
-                  mfy(i,j,k) = mfy(i,j,k) * frac
+                  mfyL(i,j,k) = mfy(i,j,k) * frac
                 enddo
              enddo
           enddo
+      else
+          cxL= cx
+          cyL= cy
+         mfxL=mfx
+         mfyL=mfy
       endif
 
 
@@ -762,14 +754,14 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       endif
 
 
-!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfx,mfy,rarea,nq, &
-!$OMP                                  area,xfx,yfx,q,cx,cy,npx,npy,hord,gridstruct,bd,it,nsplt,nord_tr,trdm,lim_fac) &
+!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfxL,mfyL,rarea,nq, &
+!$OMP                                  area,xfx,yfx,q,cxL,cyL,npx,npy,hord,gridstruct,bd,it,nsplt,nord_tr,trdm,lim_fac) &
 !$OMP                          private(dp2, ra_x, ra_y, fx, fy)
       do k=1,npz
 
          do j=js,je
             do i=is,ie
-               dp2(i,j) = dp1(i,j,k) + ((mfx(i,j,k)-mfx(i+1,j,k))+(mfy(i,j,k)-mfy(i,j+1,k)))*rarea(i,j)
+               dp2(i,j) = dp1(i,j,k) + ((mfxL(i,j,k)-mfxL(i+1,j,k))+(mfyL(i,j,k)-mfyL(i,j+1,k)))*rarea(i,j)
             enddo
          enddo
 
@@ -786,14 +778,14 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 
          do iq=1,nq
          if ( it==1 .and. trdm>1.e-4 ) then
-            call fv_tp_2d(q(isd,jsd,k,iq), cx(is,jsd,k), cy(isd,js,k), &
+            call fv_tp_2d(q(isd,jsd,k,iq), cxL(is,jsd,k), cyL(isd,js,k), &
                           npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
-                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx(is,js,k), mfy=mfy(is,js,k),   &
+                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfxL(is,js,k), mfy=mfyL(is,js,k),   &
                           mass=dp1(isd,jsd,k), nord=nord_tr, damp_c=trdm)
          else
-            call fv_tp_2d(q(isd,jsd,k,iq), cx(is,jsd,k), cy(isd,js,k), &
+            call fv_tp_2d(q(isd,jsd,k,iq), cxL(is,jsd,k), cyL(isd,js,k), &
                           npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
-                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx(is,js,k), mfy=mfy(is,js,k))
+                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfxL(is,js,k), mfy=mfyL(is,js,k))
          endif
             do j=js,je
                do i=is,ie
@@ -871,10 +863,16 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
 ! Local Arrays
       real ::   xL(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz)  ! X-Dir for MPP Updates
       real ::   yL(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz)  ! Y-Dir for MPP Updates
-      real ::  cxL(bd%is :bd%ie +1,bd%jsd:bd%jed  ,npz)  ! Courant Number X-Dir
-      real ::  cyL(bd%isd:bd%ied  ,bd%js :bd%je +1,npz)  ! Courant Number Y-Dir
-      real :: mfxL(bd%is :bd%ie +1,bd%js :bd%je   ,npz)  ! Mass Flux X-Dir
-      real :: mfyL(bd%is :bd%ie   ,bd%js :bd%je +1,npz)  ! Mass Flux Y-Dir
+
+      real(kind=8) ::  cxL(bd%is :bd%ie +1,bd%jsd:bd%jed  ,npz)  ! Courant Number X-Dir
+      real(kind=8) ::  cyL(bd%isd:bd%ied  ,bd%js :bd%je +1,npz)  ! Courant Number Y-Dir
+      real(kind=8) :: mfxL(bd%is :bd%ie +1,bd%js :bd%je   ,npz)  ! Mass Flux X-Dir
+      real(kind=8) :: mfyL(bd%is :bd%ie   ,bd%js :bd%je +1,npz)  ! Mass Flux Y-Dir
+
+      real    :: cmax
+      real    :: cmax_z(npz)
+      integer :: imax_req
+
       real ::  dpL(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  ! Pressure Thickness
       real ::  dpA(bd%is :bd%ie   ,bd%js :bd%je   ,npz)  ! Pressure Thickness
 ! Local Tracer Arrays
@@ -925,6 +923,29 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     cxL(is:ie+1,jsd:jed,:) = xL(is:ie+1,jsd:jed,:)
     cyL(isd:ied,js:je+1,:) = yL(isd:ied,js:je+1,:)
 
+    ! --- 1. NON-BLOCKING CMAX REDUCTION START ---
+    if ( q_split == 0 ) then
+      ! A. Compute local cmax_z for this processor
+!$OMP parallel do default(none) shared(npz,is,ie,js,je,cx,cy,cmax_z,gridstruct) &
+!$OMP                           private(i,j,k,cmax)
+      do k = 1, npz
+           ! Compute local cmax_z (cx and cy are already hot in cache)
+           cmax_z(k) = 0.
+           do j=js,je
+              do i=is,ie
+                cmax = max(abs(cx(i,j,k)),abs(cy(i,j,k)))+1.-gridstruct%sin_sg(i,j,5)
+                cmax_z(k) = max( cmax_z(k), cmax )
+              enddo
+           enddo
+      enddo
+      ! B. Initiate the non-blocking global reduction
+      call timing_on('COMM_TOTAL')
+        call timing_on('COMM_TRACER_MAX')
+        call mp_ireduce_max(cmax_z, npz, imax_req)
+        call timing_off('COMM_TRACER_MAX')
+      call timing_off('COMM_TOTAL')
+    endif
+
 ! Fill MFX/MFY C-Grid boundaries
     xL(is:ie,js:je,:) = mfx(:,:,:)
     yL(is:ie,js:je,:) = mfy(:,:,:)
@@ -947,12 +968,12 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     call start_group_halo_update(i_pack, q3, domain)
 
     if ( flagstruct%z_tracer .and. q_split==0 ) then
-         call tracer_2d_1L(q3, dpL, mfxL, mfyL, cxL, cyL, &
+         call tracer_2d_1L(q3, dpL, mfxL, mfyL, cxL, cyL, cmax_z, imax_req, &
                          gridstruct, bd, domain, npx, npy, npz, nq,    &
                          flagstruct%hord_tr, dt, 0, i_pack, &
                          flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
     else
-         call tracer_2d(q3, dpL, mfxL, mfyL, cxL, cyL, gridstruct, bd, domain, npx, npy, npz, nq,    &
+         call tracer_2d(q3, dpL, mfxL, mfyL, cxL, cyL, cmax_z, imax_req, gridstruct, bd, domain, npx, npy, npz, nq,    &
                         flagstruct%hord_tr, q_split, dt, 0, i_pack, &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
     endif
