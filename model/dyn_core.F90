@@ -110,7 +110,7 @@ module dyn_core_mod
   use mpp_parameter_mod,  only: CORNER
   use fv_mp_mod,          only: is_master
   use fv_mp_mod,          only: start_group_halo_update, complete_group_halo_update
-  use fv_mp_mod,          only: group_halo_update_type, mp_ireduce_max, mp_barrier
+  use fv_mp_mod,          only: group_halo_update_type, mp_ireduce_max
   use sw_core_mod,        only: c_sw, d_sw, d2a2c_vect
   use a2b_edge_mod,       only: a2b_ord2, a2b_ord4
   use nh_core_mod,        only: Riem_Solver3, Riem_Solver_C, update_dz_c, update_dz_d, nest_halo_nh
@@ -397,13 +397,6 @@ contains
               endif
          endif
     endif
-
-  ! LoadBalance Evaluate Only:Force synchronization before we start sending lots of messages around the network
-  !call timing_on('COMM_TOTAL')
-  !    call timing_on('COMM_SYNC_BEFORE_NS')
-  !        call mp_barrier()
-  !    call timing_off('COMM_SYNC_BEFORE_NS')
-  !call timing_off('COMM_TOTAL')
 
 !-----------------------------------------------------
   do it=1,n_split
@@ -836,11 +829,47 @@ contains
                enddo
             enddo
        endif
+
     enddo           ! end openMP k-loop
     if ( (.not. hydrostatic) .and.  flagstruct%fv_debug ) &
     call prt_mxm('W_dsw ', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
 
                                                      call timing_off('d_sw')
+
+
+    ! Initialize the request handle so the later WAIT call doesn't crash 
+    ! if the reduction is never started.
+    if ( (it==n_split) .and. nq > 0 .and. .not. flagstruct%inline_q ) then
+                                            
+         ! --- 1. NON-BLOCKING CMAX REDUCTION START ---
+         ! A. Compute and store local cmax_z for this processor
+         !$OMP parallel do default(none) shared(npz,is,ie,js,je,cx,cy,cmax_z,gridstruct) &
+         !$OMP                           private(i,j,k,cmax)
+         do k = 1, npz
+             ! Compute local cmax_z (cx and cy are already hot in cache)
+             cmax_z(k) = 0.             
+             do j=js,je
+                do i=is,ie
+                  cmax = max(abs(cx(i,j,k)),abs(cy(i,j,k)))+1.-gridstruct%sin_sg(i,j,5)
+                  cmax_z(k) = max( cmax_z(k), cmax )
+                enddo
+             enddo
+         enddo
+         if ( q_split == 0 ) then
+            ! B. Initiate the non-blocking global reduction
+            call timing_on('COMM_TOTAL')
+              call timing_on('COMM_TRACER_MAX')
+              call mp_ireduce_max(cmax_z, npz, imax_req)
+              call timing_off('COMM_TRACER_MAX')
+            call timing_off('COMM_TOTAL')
+         endif
+
+         call timing_on('COMM_TOTAL')
+           call timing_on('COMM_TRACER')
+           call start_group_halo_update(i_pack(10), q, domain)
+           call timing_off('COMM_TRACER')
+         call timing_off('COMM_TOTAL')
+    endif
 
     if( flagstruct%fill_dp ) call mix_dp(hydrostatic, w, delp, pt, npz, ak, bk, .false., flagstruct%fv_debug, bd)
 
@@ -1207,48 +1236,6 @@ contains
 !-----------------------------------------------------
   enddo   ! time split loop
 !-----------------------------------------------------
-
-  ! LoadBalance Evaluate Only: Force synchronization before we start sending lots of messages around the network
-  !call timing_on('COMM_TOTAL')
-  !    call timing_on('COMM_SYNC_AFTER_NS')
-  !        call mp_barrier()
-  !    call timing_off('COMM_SYNC_AFTER_NS')
-  !call timing_off('COMM_TOTAL')
-
-  ! Initialize the request handle so the later WAIT call doesn't crash 
-  ! if the reduction is never started.
-  if ( nq > 0 .and. .not. flagstruct%inline_q ) then
-
-     ! --- 1. NON-BLOCKING CMAX REDUCTION START ---
-     if ( q_split == 0 ) then
-        ! A. Compute local cmax_z for this processor
-!$OMP parallel do default(none) shared(npz,is,ie,js,je,cx,cy,cmax_z,gridstruct) &
-!$OMP                           private(i,j,k,cmax)
-        do k = 1, npz
-             ! Compute local cmax_z (cx and cy are already hot in cache)
-             cmax_z(k) = 0.
-             do j=js,je
-                do i=is,ie
-                  cmax = max(abs(cx(i,j,k)),abs(cy(i,j,k)))+1.-gridstruct%sin_sg(i,j,5)
-                  cmax_z(k) = max( cmax_z(k), cmax )
-                enddo
-             enddo
-        enddo
-        ! B. Initiate the non-blocking global reduction
-        call timing_on('COMM_TOTAL')
-          call timing_on('COMM_TRACER_MAX')
-          call mp_ireduce_max(cmax_z, npz, imax_req)
-          call timing_off('COMM_TRACER_MAX')
-        call timing_off('COMM_TOTAL')
-     endif
-
-     call timing_on('COMM_TOTAL')
-       call timing_on('COMM_TRACER')
-       call start_group_halo_update(i_pack(10), q, domain)
-       call timing_off('COMM_TRACER')
-     call timing_off('COMM_TOTAL')
-  endif
-
 
   if ( flagstruct%fv_debug ) then
        if(is_master()) write(*,*) 'End of n_split loop'

@@ -196,9 +196,9 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd
   enddo  ! k-loop
 
                         call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER_MAX')
+                            call timing_on('COMM_TRACER_WAIT')
   call mp_wait_reduce_max(cmax, npz, imax_req)
-                           call timing_off('COMM_TRACER_MAX')
+                           call timing_off('COMM_TRACER_WAIT')
                        call timing_off('COMM_TOTAL')
 
                                call timing_on('COMM_TOTAL')
@@ -210,7 +210,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd
 
   ! check cmax from allreduce array
   do k=1,npz
-     if ( is_master() .and. (cmax(k) > 3.0) )  write(*,*) 'tracer_2d_1L: k, nsplt =', k, int(1. + cmax(k))
+     if ( is_master() .and. (cmax(k) > 1.0) )  write(*,*) 'tracer_2d_1L: k, nsplt =', k, int(1. + cmax(k))
   enddo  ! k-loop
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
@@ -381,6 +381,11 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
       real :: mfy2(bd%is:bd%ie,bd%js:bd%je+1,npz)
       real ::  cx2(bd%is:bd%ie+1,bd%jsd:bd%jed, npz)
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
+
+      real, parameter :: cfl_tol = 1.10 ! 10%
+      logical :: severe_violation
+      character(len=128) :: error_msg
+
       real :: frac, rdt
       integer :: maxsplt, ksplt(npz)
       integer :: i,j,k,n,it,iq
@@ -435,24 +440,51 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
 
 !--------------------------------------------------------------------------------
 
-! Determine global cmax on levels:
     if ( q_split == 0 ) then
-                        call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER_MAX')
+       !-------------------------------------------------------
+       ! ORIGINAL FV3 PATH (UNCHANGED)
+       !-------------------------------------------------------
+       call timing_on('COMM_TOTAL')
+       call timing_on('COMM_TRACER_MAX')
        call mp_wait_reduce_max(cmax, npz, imax_req)
-                           call timing_off('COMM_TRACER_MAX')
-                       call timing_off('COMM_TOTAL')
+       call timing_off('COMM_TRACER_MAX')
+       call timing_off('COMM_TOTAL')
+       maxsplt = 0
+       do k=1,npz
+          ksplt(k) = int(1. + cmax(k))
+          maxsplt = max(maxsplt, ksplt(k))
+       enddo
     else
-       cmax = q_split-1.
+       !-------------------------------------------------------
+       ! USER-SUPPLIED q_split PATH (NO GLOBAL REDUCTION)
+       !-------------------------------------------------------
+       maxsplt = q_split
+       severe_violation = .false.
+       do k=1,npz
+          ksplt(k) = q_split
+          if (cmax(k) > real(q_split)) then
+             !-------------------------------
+             ! mild violation → allow
+             !-------------------------------
+             if (cmax(k) <= cfl_tol * real(q_split)) then
+                write(*,'(A,I4,A,F10.5,A,F10.5)') &
+                   'Tracer CFL warning (mild): k=', k, &
+                   ' cmax=', cmax(k), &
+                   ' q_split=', real(q_split)
+             !-------------------------------
+             ! severe violation → fail
+             !-------------------------------
+             else
+                severe_violation = .true.
+                write(error_msg,'(A,I4,A,F10.5,A,F10.5)') &
+                  'FATAL tracer_2d CFL violation at k=', k, &
+                  ' cmax=', cmax(k), &
+                  ' q_split=', real(q_split)
+                call mpp_error(FATAL, trim(error_msg))
+             endif
+          endif
+       enddo
     endif
-
-! Determine maxsplt for outer iteration loop. 
-! Advection will be done base on levels using ksplt
-    maxsplt = 0
-    do k=1,npz
-       ksplt(k) = int(1. + cmax(k))
-       maxsplt = max(maxsplt,ksplt(k))
-    enddo
 
 !--------------------------------------------------------------------------------
 
@@ -464,11 +496,16 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
         cx2(:,:,k)=cx(:,:,k)
         cy2(:,:,k)=cy(:,:,k)
         if( ksplt(k) /= 1 ) then
-            frac  = 1. / real(ksplt(k))
+            frac = 1.0 / real(ksplt(k))
             do j=jsd,jed
                do i=is,ie+1
-                  cx2(i,j,k) =   cx(i,j,k) * frac
-                  xfx(i,j,k) =  xfx(i,j,k) * frac
+                  cx2(i,j,k) = cx(i,j,k) * frac
+                  if (abs(cx2(i,j,k)) > 1.0) then
+                     cx2(i,j,k) = sign(1.0, cx2(i,j,k))
+                     xfx(i,j,k) = xfx(i,j,k) * frac / abs(cx(i,j,k)*frac)
+                  else
+                     xfx(i,j,k) = xfx(i,j,k) * frac
+                  endif
                enddo
             enddo
             do j=js,je
@@ -476,10 +513,16 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
                   mfx2(i,j,k) = mfx(i,j,k) * frac
                enddo
             enddo
+
             do j=js,je+1
                do i=isd,ied
-                  cy2(i,j,k) =  cy(i,j,k) * frac
-                  yfx(i,j,k) = yfx(i,j,k) * frac
+                  cy2(i,j,k) = cy(i,j,k) * frac
+                  if (abs(cy2(i,j,k)) > 1.0) then
+                     cy2(i,j,k) = sign(1.0, cy2(i,j,k))
+                     yfx(i,j,k) = yfx(i,j,k) * frac / abs(cy(i,j,k)*frac)
+                  else
+                     yfx(i,j,k) = yfx(i,j,k) * frac
+                  endif
                enddo
             enddo
             do j=js,je+1
@@ -675,9 +718,9 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct
 ! Determine nsplt
 
                         call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER_MAX')
+                            call timing_on('COMM_TRACER_WAIT')
       call mp_wait_reduce_max(cmax, npz, imax_req)
-                           call timing_off('COMM_TRACER_MAX')
+                           call timing_off('COMM_TRACER_WAIT')
                        call timing_off('COMM_TOTAL')
 
 ! find global max courant number and define nsplt to scale cx,cy,mfx,mfy
