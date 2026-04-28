@@ -341,7 +341,7 @@ end subroutine tracer_2d_1L
 
 !>@brief The subroutine 'tracer_2d' is the standard routine for sub-cycled tracer advection.
 subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, domain, npx, npy, npz,   &
-                     nq,  hord, q_split, dt, id_divg, q_pack, nord_tr, trdm, lim_fac, dpA)
+                     nq,  hord, n_sponge, q_split, dt, id_divg, q_pack, nord_tr, trdm, lim_fac, dpA)
 
       type(fv_grid_bounds_type), intent(IN) :: bd
       integer, intent(IN) :: npx
@@ -349,7 +349,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
       integer, intent(IN) :: npz
       integer, intent(IN) :: nq    !< number of tracers to be advected
       integer, intent(IN) :: hord, nord_tr
-      integer, intent(IN) :: q_split
+      integer, intent(IN) :: n_sponge, q_split
       integer, intent(IN) :: id_divg
       real   , intent(IN) :: dt, trdm
       real   , intent(IN) :: lim_fac
@@ -382,7 +382,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
       real ::  cx2(bd%is:bd%ie+1,bd%jsd:bd%jed, npz)
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
 
-      real, parameter :: cfl_tol = 1.10 ! 10%
+      real, parameter :: cfl_tol = 1.25 ! 25%
       logical :: severe_violation
       character(len=128) :: error_msg
 
@@ -458,19 +458,21 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
        !-------------------------------------------------------
        ! USER-SUPPLIED q_split PATH (NO GLOBAL REDUCTION)
        !-------------------------------------------------------
-       maxsplt = q_split
+       maxsplt = 0
        severe_violation = .false.
        do k=1,npz
           ksplt(k) = q_split
-          if (cmax(k) > real(q_split)) then
+       !! if (k <= n_sponge) ksplt(k) = ksplt(k) + 1
+          maxsplt = max(maxsplt, ksplt(k))
+          if (cmax(k) > real(ksplt(k))) then
              !-------------------------------
              ! mild violation → allow
              !-------------------------------
-             if (cmax(k) <= cfl_tol * real(q_split)) then
+             if (cmax(k) <= cfl_tol * real(ksplt(k))) then
                 write(*,'(A,I4,A,F10.5,A,F10.5)') &
                    'Tracer CFL warning (mild): k=', k, &
                    ' cmax=', cmax(k), &
-                   ' q_split=', real(q_split)
+                   ' ksplt(k)=', real(ksplt(k))
              !-------------------------------
              ! severe violation → fail
              !-------------------------------
@@ -479,7 +481,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
                 write(error_msg,'(A,I4,A,F10.5,A,F10.5)') &
                   'FATAL tracer_2d CFL violation at k=', k, &
                   ' cmax=', cmax(k), &
-                  ' q_split=', real(q_split)
+                  ' ksplt(k)=', real(ksplt(k))
                 call mpp_error(FATAL, trim(error_msg))
              endif
           endif
@@ -495,42 +497,40 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
         mfy2(:,:,k)=mfy(:,:,k)
         cx2(:,:,k)=cx(:,:,k)
         cy2(:,:,k)=cy(:,:,k)
-        if( ksplt(k) /= 1 ) then
-            frac = 1.0 / real(ksplt(k))
-            do j=jsd,jed
-               do i=is,ie+1
-                  cx2(i,j,k) = cx(i,j,k) * frac
-                  if (abs(cx2(i,j,k)) > 1.0) then
-                     cx2(i,j,k) = sign(1.0, cx2(i,j,k))
-                     xfx(i,j,k) = xfx(i,j,k) * frac / abs(cx(i,j,k)*frac)
-                  else
-                     xfx(i,j,k) = xfx(i,j,k) * frac
-                  endif
-               enddo
-            enddo
-            do j=js,je
-               do i=is,ie+1
-                  mfx2(i,j,k) = mfx(i,j,k) * frac
-               enddo
-            enddo
+        frac = 1.0 / real(ksplt(k))
+        do j=jsd,jed
+           do i=is,ie+1
+              cx2(i,j,k) = cx(i,j,k) * frac
+              if (abs(cx2(i,j,k)) > 1.0) then
+                 cx2(i,j,k) = sign(1.0, cx2(i,j,k))
+                 xfx(i,j,k) = xfx(i,j,k) * frac / abs(cx(i,j,k)*frac)
+              else
+                 xfx(i,j,k) = xfx(i,j,k) * frac
+              endif
+           enddo
+        enddo
+        do j=js,je
+           do i=is,ie+1
+              mfx2(i,j,k) = mfx(i,j,k) * frac
+           enddo
+        enddo
 
-            do j=js,je+1
-               do i=isd,ied
-                  cy2(i,j,k) = cy(i,j,k) * frac
-                  if (abs(cy2(i,j,k)) > 1.0) then
-                     cy2(i,j,k) = sign(1.0, cy2(i,j,k))
-                     yfx(i,j,k) = yfx(i,j,k) * frac / abs(cy(i,j,k)*frac)
-                  else
-                     yfx(i,j,k) = yfx(i,j,k) * frac
-                  endif
-               enddo
-            enddo
-            do j=js,je+1
-               do i=is,ie
-                  mfy2(i,j,k) = mfy(i,j,k) * frac
-               enddo
-            enddo
-        endif
+        do j=js,je+1
+           do i=isd,ied
+              cy2(i,j,k) = cy(i,j,k) * frac
+              if (abs(cy2(i,j,k)) > 1.0) then
+                 cy2(i,j,k) = sign(1.0, cy2(i,j,k))
+                 yfx(i,j,k) = yfx(i,j,k) * frac / abs(cy(i,j,k)*frac)
+              else
+                 yfx(i,j,k) = yfx(i,j,k) * frac
+              endif
+           enddo
+        enddo
+        do j=js,je+1
+           do i=is,ie
+              mfy2(i,j,k) = mfy(i,j,k) * frac
+           enddo
+        enddo
     enddo
 
     do it=1,maxsplt
@@ -556,13 +556,11 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
          do j=jsd,jed
             do i=is,ie
                ra_x(i,j) = area(i,j) + (xfx(i,j,k) - xfx(i+1,j,k))
-               if (cx2(i,j,k) > 1.0)  write(*,*) 'cx2(i,j,k) > 1.0 : ', cx2(i,j,k), i, j, k
             enddo
          enddo
          do j=js,je
             do i=isd,ied
                ra_y(i,j) = area(i,j) + (yfx(i,j,k) - yfx(i,j+1,k))
-               if (cy2(i,j,k) > 1.0)  write(*,*) 'cy2(i,j,k) > 1.0 : ', cy2(i,j,k), i, j, k
             enddo
          enddo
 
@@ -1017,7 +1015,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                          flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
     else
          call tracer_2d(q3, dpL, mfxL, mfyL, cxL, cyL, cmax_z, imax_req, gridstruct, bd, domain, npx, npy, npz, nq,    &
-                        flagstruct%hord_tr, q_split, dt, 0, i_pack, &
+                        flagstruct%hord_tr, flagstruct%n_sponge, q_split, dt, 0, i_pack, &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
     endif
 
