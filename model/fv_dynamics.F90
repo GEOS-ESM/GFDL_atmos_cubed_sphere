@@ -137,8 +137,9 @@ module fv_dynamics_mod
    use boundary_mod,        only: nested_grid_BC_apply_intT
    use fv_arrays_mod,       only: fv_grid_type, fv_flags_type, fv_atmos_type, fv_nest_type, fv_diag_type, fv_grid_bounds_type
    use fv_nwp_nudge_mod,    only: do_adiabatic_init
-
-implicit none
+   use ESMF,                only: ESMF_Clock, ESMF_Time, ESMF_ClockGet, ESMF_TimeGet 
+ 
+ implicit none
 
    logical :: RF_initialized = .false.
    logical :: bad_range = .false.
@@ -162,8 +163,8 @@ contains
   subroutine fv_dynamics(npx, npy, npz, nq_tot,  ng, bdt, consv_te, fill,    &
                         reproduce_sum, kappa, cp_air, zvir, ptop, ks, ncnst, &
                         k_split, n_split,                                    &
-                        q_split, u, v, w, delz, hydrostatic, pt, delp, q,    &
-                        ps, pe, pk, peln, pkz, phis, varflt, q_con, omga, ua, va, uc, vc,          &
+                        q_split, u, v, w, delz, hydrostatic, GEOS_MLT, year, month, day, hour, minute, second, &
+                        pt, delp, q, ps, pe, pk, peln, pkz, phis, varflt, q_con, omga, ua, va, uc, vc,          &
                         ak, bk, mfx, mfy, cx, cy, ze0, hybrid_z, &
                         gridstruct, flagstruct, neststruct, idiag, bd, &
                         parent_grid, domain, diss_est, &
@@ -189,6 +190,9 @@ contains
     logical, intent(IN) :: fill
     logical, intent(IN) :: reproduce_sum
     logical, intent(IN) :: hydrostatic
+    
+    logical, intent(IN) :: GEOS_MLT
+    integer, intent(IN) :: year, month, day, hour, minute, second    
     logical, intent(IN) :: hybrid_z       !< Using hybrid_z for remapping
 
     type(fv_grid_bounds_type), intent(IN) :: bd
@@ -633,8 +637,8 @@ contains
     endif
 
                                            call timing_on('DYN_CORE')
-      call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
-                    u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va,           & 
+      call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, GEOS_MLT, &
+                    year, month, day, hour, minute, second, u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
                     uc, vc, &
 #ifdef SINGLE_FV
                     mfxR8, mfyR8, cxR8, cyR8, &
@@ -759,7 +763,7 @@ contains
                      kord_tracer, flagstruct%kord_tm, peln, te_2d,               &
                      ng, ua, va, omga, dp1, ws, fill, reproduce_sum,             &
                      idiag%id_mdt>0, dtdt_m, ptop, ak, bk, pfull, flagstruct, gridstruct, domain,   &
-                     flagstruct%do_sat_adj, hydrostatic, hybrid_z, do_omega,     &
+                     flagstruct%do_sat_adj, hydrostatic, GEOS_MLT, year, month, day, hour, minute, second, hybrid_z, do_omega,     &
                      flagstruct%adiabatic, do_adiabatic_init, &
                      mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap)
 

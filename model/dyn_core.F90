@@ -133,6 +133,14 @@ module dyn_core_mod
   use test_cases_mod,      only: test_case, case9_forcing1, case9_forcing2
 #endif
 
+! +++ awlee
+
+  use calc_gas_specific_heat_mlt_mod, only: calc_gas_specific_heat_mlt
+
+  use cond_driver_mod, only : cond_driver_from_msis
+  use cond_driver_mod, only : cond_driver_apply
+! --- awlee
+
 implicit none
 private
 
@@ -155,9 +163,10 @@ contains
 
 !-----------------------------------------------------------------------
 !     dyn_core :: FV Lagrangian dynamics driver
-!-----------------------------------------------------------------------
+!-x----------------------------------------------------------------------
  
- subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, k_split, n_split, zvir, cp, akap, cappa, grav, hydrostatic,  &
+ subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, k_split, n_split, zvir, cp, akap, cappa, grav, hydrostatic, &
+                     GEOS_MLT, year, month, day, hour, minute, second, &
                      u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
                      uc, vc, mfx, mfy, cx, cy, pkz, peln, q_con, ak, bk, dpx, &
                      ks, gridstruct, flagstruct, neststruct, idiag, bd, domain, &
@@ -172,6 +181,10 @@ contains
     real   , intent(IN) :: zvir, cp, akap, grav
     real   , intent(IN) :: ptop
     logical, intent(IN) :: hydrostatic
+
+    logical, intent(IN) :: GEOS_MLT                               ! Needed for GEOS_MLT
+    integer, intent(IN) :: year, month, day, hour, minute, second ! Needed for GEOS_MLT MSIS call
+    
     logical, intent(IN) :: init_step, end_step
     real, intent(in) :: pfull(npz)
     real, intent(in),     dimension(npz+1) :: ak, bk
@@ -232,6 +245,9 @@ contains
     type(domain2d),      intent(INOUT)         :: domain
 
     real, allocatable, dimension(:,:,:):: pem, heat_source
+    ! +++ awlee
+    real, allocatable, dimension(:,:,:) :: heat_tc
+    ! --- awlee
 ! Auto 1D & 2D arrays:
     real, dimension(bd%isd:bd%ied,bd%jsd:bd%jed):: ws3, z_rat
     real:: dp_ref(npz)
@@ -368,6 +384,11 @@ contains
     if ( flagstruct%d_con > 1.0E-5 ) then
          allocate( heat_source(isd:ied, jsd:jed, npz) )
          call init_ijk_mem(isd, ied, jsd, jed, npz, heat_source, 0.)
+         
+         ! +++ awlee
+         allocate( heat_tc(isd:ied, jsd:jed, npz) ) ! include halo
+         call init_ijk_mem(isd, ied, jsd, jed, npz, heat_tc, 0.)
+         ! --- awlee
     endif
 
     if ( flagstruct%convert_ke .or. flagstruct%vtdm4> 1.E-4 ) then
@@ -527,7 +548,8 @@ contains
       endif
       if ( hydrostatic ) then
            call geopk(ptop, pe, peln, delpc, pkc, gz, phis, ptc, q_con, pkz, npz, akap, .true., &
-                      gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd)
+                      gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd, &
+                      GEOS_MLT, pfull, year, month, day, hour, minute, second, gridstruct)
       else
 #ifndef SW_DYNAMICS
            if ( it == 1 ) then
@@ -840,7 +862,8 @@ contains
 
      if ( hydrostatic ) then
         call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
-                   gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd)
+                   gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, &
+                   GEOS_MLT, pfull, year, month, day, hour, minute, second, gridstruct)
      else
 #ifndef SW_DYNAMICS
                                             call timing_on('UPDATE_DZ')
@@ -1144,22 +1167,36 @@ contains
 !
 ! del(Cp*T) = - del(KE)
 !
-!$OMP parallel do default(none) shared(flagstruct,is,ie,js,je,n_con,pt,heat_source,delp,pkz,bdt) &
+      ! +++ awlee thermal conduction
+      call cond_driver_apply(gridstruct%agrid, gz, pt, pkz, heat_tc, ng, year, month, day, hour)
+      ! --- awlee thermal conduction abs(bdt)
+
+! +++ awlee add 'heat_tc' to the shared list right below
+!$OMP parallel do default(none) shared(flagstruct,is,ie,js,je,n_con,pt,heat_source,delp,pkz,bdt,heat_tc) &
 !$OMP                          private(dtmp)
-       do j=js,je
-          do k=1,n_con  ! n_con is usually less than 3;
-             if ( k<3 ) then
-                do i=is,ie
-                   pt(i,j,k) = pt(i,j,k) + heat_source(i,j,k)/(cp_air*delp(i,j,k)*pkz(i,j,k))
-                enddo
-             else
-                do i=is,ie
-                     dtmp = heat_source(i,j,k) / (cp_air*delp(i,j,k))
-                pt(i,j,k) = pt(i,j,k) + sign(min(abs(bdt)*flagstruct%delt_max,abs(dtmp)), dtmp)/pkz(i,j,k)
-                enddo
-             endif
-          enddo
-       enddo
+        do j=js,je
+           do k=1,n_con  ! n_con is usually less than 3;
+              if ( k<3 ) then
+                 do i=is,ie
+                    pt(i,j,k) = pt(i,j,k) + heat_source(i,j,k)/(cp_air*delp(i,j,k)*pkz(i,j,k))
+                 enddo
+              else
+                 do i=is,ie
+                    dtmp = heat_source(i,j,k) / (cp_air*delp(i,j,k))
+                    pt(i,j,k) = pt(i,j,k) + sign(min(abs(bdt)*flagstruct%delt_max,abs(dtmp)), dtmp)/pkz(i,j,k)
+                 enddo
+              endif
+
+              ! +++ awlee heat_tc: apply to top nine levels
+              if ( k <= 9 ) then
+                 do i=is,ie
+                    pt(i,j,k) = pt(i,j,k) + heat_tc(i,j,k) * bdt / pkz(i,j,k) ! heat_tc (K/s), bdt (s)
+                 enddo
+              endif
+              ! --- awlee
+
+           enddo
+        enddo
     else
 !$OMP parallel do default(none) shared(flagstruct,is,ie,js,je,n_con,pkz,cappa,rdg,delp,delz,pt, &
 !$OMP                                  heat_source,k1k,cv_air,bdt) &
@@ -1184,7 +1221,11 @@ contains
     endif
 
   endif
+
   if (allocated(heat_source)) deallocate( heat_source ) !If ncon == 0 but d_con > 1.e-5, this would not be deallocated in earlier versions of the code
+  ! +++ awlee
+  if (allocated(heat_tc)) deallocate(heat_tc)
+  ! --- awlee
 
 
   if ( end_step ) then
@@ -2035,15 +2076,22 @@ do 1000 j=jfirst,jlast
  end subroutine  mix_dp
 
 !>@brief The subroutine 'geopk' calculates geopotential and pressure to the kappa.
- subroutine geopk(ptop, pe, peln, delp, pk, gz, hs, pt, q_con, pkz, km, akap, CG, nested, computehalo, npx, npy, a2b_ord, bd)
+ subroutine geopk(ptop, pe, peln, delp, pk, gz, hs, pt, q_con, pkz, km, akap, CG, nested, computehalo, npx, npy, a2b_ord, bd, &
+                  GEOS_MLT, pfull, year, month, day, hour, minute, second, gridstruct)
 
    integer, intent(IN) :: km, npx, npy, a2b_ord
    real   , intent(IN) :: akap, ptop
    type(fv_grid_bounds_type), intent(IN) :: bd
+   type(fv_grid_type),  intent(INOUT), target :: gridstruct
    real   , intent(IN) :: hs(bd%isd:bd%ied,bd%jsd:bd%jed)
    real, intent(IN), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,km):: pt, delp
    real, intent(IN), dimension(bd%isd:,bd%jsd:,1:):: q_con
    logical, intent(IN) :: CG, nested, computehalo
+
+   logical, intent(IN) :: GEOS_MLT                               ! GEOS_MLT
+   integer, intent(IN) :: year, month, day, hour, minute, second ! GEOS_MLT
+   real,    intent(IN), dimension(km):: pfull                    ! GEOS_MLT
+
    ! !OUTPUT PARAMETERS
    real, intent(OUT), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,km+1):: gz, pk
    real, intent(OUT) :: pe(bd%is-1:bd%ie+1,km+1,bd%js-1:bd%je+1)
@@ -2052,11 +2100,14 @@ do 1000 j=jfirst,jlast
    ! !DESCRIPTION:
    !    Calculates geopotential and pressure to the kappa.
    ! Local:
+   real Cp_MLT(bd%isd:bd%ied, bd%jsd:bd%jed, km)
+   real Kappa_MLT(bd%isd:bd%ied, bd%jsd:bd%jed, km)
    real peg(bd%isd:bd%ied,km+1)
    real pkg(bd%isd:bd%ied,km+1)
    real(kind=8) p1d(bd%isd:bd%ied)
    real(kind=8) g1d(bd%isd:bd%ied)
-   real logp(bd%isd:bd%ied)
+   !real logp(bd%isd:bd%ied)
+   real logp(bd%isd:bd%ied, km+1) ! GEOS_MLT mod to avoid halo grid imprinting
    integer i, j, k
    integer ifirst, ilast
    integer jfirst, jlast
@@ -2088,14 +2139,28 @@ do 1000 j=jfirst,jlast
       if (je == npy-1) jlast  = jed
    end if
 
+   if ( GEOS_MLT ) then
+
+     call calc_gas_specific_heat_MLT(is, ie, js, je, isd, ied, jsd, jed, km, pfull, gridstruct, Cp_MLT, Kappa_MLT, &
+          year, month, day, hour, minute, second, ifirst, ilast, jfirst, jlast)
+ 
+   endif
 !$OMP parallel do default(none) shared(jfirst,jlast,ifirst,ilast,pk,km,gz,hs,ptop,ptk, &
-!$OMP                                  js,je,is,ie,peln,peln1,pe,delp,akap,pt,CG,pkz,q_con) &
+!$OMP                                  js,je,is,ie,peln,peln1,pe,delp,akap,pt,CG,pkz,q_con,Cp_MLT,Kappa_MLT,GEOS_MLT) &
 !$OMP                          private(peg, pkg, p1d, g1d, logp)
    do 2000 j=jfirst,jlast
 
       do i=ifirst, ilast
          p1d(i) = ptop
-         pk(i,j,1) = ptk
+         logp(i,1)    = log(ptop)  ! GEOS_MLT mod making logp 2D
+
+         ! GEOS_MLT Mod
+         if ( GEOS_MLT ) then
+            pk(i,j,1) = exp( Kappa_MLT(i,j,1) * log(ptop) )
+         else
+            pk(i,j,1) = ptk
+         endif
+
          g1d(i) = hs(i,j)
          gz(i,j,km+1) = hs(i,j)
 #ifdef USE_COND
@@ -2122,8 +2187,15 @@ do 1000 j=jfirst,jlast
       do k=2,km+1
          do i=ifirst, ilast
             p1d(i)  = p1d(i) + delp(i,j,k-1)
-            logp(i) = log(p1d(i))
-            pk(i,j,k) = exp( akap*logp(i) ) 
+            logp(i,k) = log(p1d(i))
+
+            if ( GEOS_MLT) then
+               ! Interface k sits between layers k-1 and k — use layer k-1's kappa
+               ! Also guard against k=km+1 going out of bounds
+               pk(i,j,k) = exp( Kappa_MLT(i,j,k-1)*logp(i,k) )
+            else
+               pk(i,j,k) = exp( akap*logp(i,k) ) 
+            endif
 #ifdef USE_COND
             peg(i,k) = peg(i,k-1) + delp(i,j,k-1)*(1.-q_con(i,j,k-1))
             pkg(i,k) = exp( akap*log(peg(i,k)) )
@@ -2136,37 +2208,90 @@ do 1000 j=jfirst,jlast
             enddo
             if( j>=js .and. j<=je) then
                do i=is,ie
-                  peln(i,k,j) = logp(i)
+                  peln(i,k,j) = logp(i,k)
                enddo
             endif
          endif
 
       enddo
 
-      ! Bottom up
-      do k=km,1,-1
-         do i=ifirst, ilast
-#ifdef SW_DYNAMICS
-            g1d(i) = g1d(i) + pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
-#else
-#ifdef USE_COND
-            g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pkg(i,k+1)-pkg(i,k))
-#else
-            g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
-#endif
-#endif
-            gz(i,j,k) = g1d(i)
-         enddo
-      enddo
+      if ( GEOS_MLT ) then
 
-      if ( .not. CG .and. j .ge. js .and. j .le. je ) then
-         do k=1,km
-            do i=is,ie
-               pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
+         ! Bottom up
+         do k=km,1,-1
+            do i=ifirst, ilast
+ #ifdef SW_DYNAMICS
+               g1d(i) = g1d(i) + pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+ #else
+ #ifdef USE_COND
+               if (k .le. 10) then
+                  ! Recompute interface pk values with this layer's kappa for thermodynamic consistency
+                  ! pk_top and pk_bot use the SAME kappa as Cp_MLT(i,j,k) = Rd/Kappa_MLT(i,j,k)
+                  g1d(i) = g1d(i) + Cp_MLT(i,j,k)*pt(i,j,k) * &
+                           (exp(Kappa_MLT(i,j,k)*log(peg(i,k+1))) - &
+                            exp(Kappa_MLT(i,j,k)*log(peg(i,k  ))))
+               else
+                  g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pkg(i,k+1)-pkg(i,k))
+               endif
+ #else
+               if (k .le. 10) then
+                  g1d(i) = g1d(i) + Cp_MLT(i,j,k)*pt(i,j,k) * &
+                  (exp(Kappa_MLT(i,j,k)*logp(i,k+1)) - &   ! ← logp covers halos
+                   exp(Kappa_MLT(i,j,k)*logp(i,k  )))
+               else
+                  g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+               endif
+
+ #endif
+ #endif
+               gz(i,j,k) = g1d(i)
             enddo
          enddo
-      endif
 
+         if ( .not. CG .and. j .ge. js .and. j .le. je ) then
+            do k=1,km
+               do i=is,ie
+                  if (k .le. 10) then
+                     ! pkz must use the same kappa as was used to compute pk at the interfaces above
+                     pkz(i,j,k) = (exp(Kappa_MLT(i,j,k)*peln(i,k+1,j)) - &
+                                   exp(Kappa_MLT(i,j,k)*peln(i,k,  j))) / &
+                                  (Kappa_MLT(i,j,k) * (peln(i,k+1,j)-peln(i,k,j)))
+                  else
+                     pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k)) / &
+                                  (akap*(peln(i,k+1,j)-peln(i,k,j)))
+                  endif
+               enddo
+            enddo
+         endif
+
+      else
+
+
+         ! Bottom up
+         do k=km,1,-1
+            do i=ifirst, ilast
+   #ifdef SW_DYNAMICS
+               g1d(i) = g1d(i) + pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+   #else
+   #ifdef USE_COND
+               g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pkg(i,k+1)-pkg(i,k))
+   #else
+               g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+   #endif
+   #endif
+               gz(i,j,k) = g1d(i)
+            enddo
+         enddo
+   
+         if ( .not. CG .and. j .ge. js .and. j .le. je ) then
+            do k=1,km
+               do i=is,ie
+                  pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
+               enddo
+            enddo
+         endif
+      endif
+   
 2000  continue
  end subroutine geopk
 
@@ -2523,6 +2648,5 @@ do 1000 j=jfirst,jlast
      enddo
 
  end subroutine Ray_fast
-
 
 end module dyn_core_mod
