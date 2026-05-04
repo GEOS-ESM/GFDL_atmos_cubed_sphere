@@ -378,7 +378,26 @@ contains
 ! Transform "density pt" to "density temp"
                !$ser verbatim if(j == js2d) then 
                !$ser savepoint MoistCVPlusPt_2d-In
-               !$ser data  qvapor_js=q(:,j,:,sphum) qliquid_js=q(:,j,:,liq_wat) qice_js=q(:,j,:,ice_wat) qrain_js=q(:,j,:,rainwat) qsnow_js=q(:,j,:,snowwat) qgraupel_js=q(:,j,:,graupel) qcld_js=q(:,j,:,cld_amt) gz1d=gz cvm=cvm r_vir=r_vir cappa=cappa rrg=rrg delp=delp delz=delz pt=pt k1k=k1k j_2d=js2d
+               !$ser data qvapor_js=q(:,j,:,sphum)
+               !$ser verbatim if(liq_wat > 0) then
+                  !$ser data qliquid_js=q(:,j,:,liq_wat)
+               !$ser verbatim endif
+               !$ser verbatim if(ice_wat > 0) then
+                  !$ser data qice_js=q(:,j,:,ice_wat)
+               !$ser verbatim endif
+               !$ser verbatim if(rainwat > 0) then
+                  !$ser data qrain_js=q(:,j,:,rainwat)
+               !$ser verbatim endif
+               !$ser verbatim if(snowwat > 0) then
+                  !$ser data qsnow_js=q(:,j,:,snowwat)
+               !$ser verbatim endif
+               !$ser verbatim if(graupel > 0) then
+                  !$ser data qgraupel_js=q(:,j,:,graupel)
+               !$ser verbatim endif
+               !$ser verbatim if(cld_amt > 0) then
+                  !$ser data qcld_js=q(:,j,:,cld_amt)
+               !$ser verbatim endif
+               !$ser data gz1d=gz cvm=cvm r_vir=r_vir cappa=cappa rrg=rrg delp=delp delz=delz pt=pt k1k=k1k j_2d=js2d
                !$ser verbatim endif
                do k=1,km
 #ifdef MOIST_CAPPA
