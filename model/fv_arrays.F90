@@ -303,6 +303,8 @@ module fv_arrays_mod
                             !< 8 by default; 9 recommended. It is also recommended to use the same value
                             !< for 'kord_wz' as for 'kord_mt'.
 
+
+
    !> Vorticity & w transport options:
    integer :: hord_vt = 9   !< Horizontal advection scheme for absolute vorticity and for
                             !< vertical velocity in nonhydrostatic simulations. 9 by default.
@@ -968,6 +970,9 @@ module fv_arrays_mod
                                           !< balance, causing the entire atmospheric column to expand instantaneously.
                                           !< If .false., heating from the physics is applied simply as a temperature
                                           !< tendency. The default value is .true.; ignored if hydrostatic = .true.
+
+   logical :: GEOS_MLT = .false.          !< Adding GEOS_MLT. Default false, if levels 
+                                          !< are 186 or 190, this will turn to true and adds GEOS_MLT physics and dynamics
 
    logical :: use_hydro_pressure = .false.   !< Whether to compute hydrostatic pressure for input to the physics.
                                              !< Currently only enabled for the fvGFS model.

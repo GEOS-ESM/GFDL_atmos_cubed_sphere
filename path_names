@@ -43,3 +43,13 @@ model/boundary.F90
 tools/external_sst.F90
 tools/fv_nudge.F90
 model/fv_nesting.F90
+NRL_MSIS/msis_constants.F90
+NRL_MSIS/msis_utils.F90
+NRL_MSIS/msis_init.F90
+NRL_MSIS/msis_gfn.F90
+NRL_MSIS/msis_tfn.F90
+NRL_MSIS/msis_dfn.F90
+NRL_MSIS/msis_calc.F90
+NRL_MSIS/msis_gtd8d.F90
+NRL_MSIS/msis_wrapper.F90
+
