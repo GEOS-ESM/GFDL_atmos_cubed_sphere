@@ -347,13 +347,18 @@ CONTAINS
     gama = 1./(1.-akap)
    rgrav = 1./grav
 
-   is1 = is - 1
-   ie1 = ie + 1
-
-!$OMP parallel do default(none) shared(js,je,is1,ie1,km,delp,pef,ptop,gz,rgrav,w3,pt, &
+!$OMP parallel do default(none) shared(js,je,is,ie,km,delp,pef,ptop,gz,rgrav,w3,pt, &
 !$OMP                                  a_imp,dt,gama,akap,ws,p_fac,scale_m,ms,hs,q_con,cappa) &
-!$OMP                          private(cp2,gm2, dm, dz2, w2, pm2, pe2, pem, peg)
+!$OMP                          private(is1, ie1, cp2, gm2, dm, dz2, w2, pm2, pe2, pem, peg)
    do 2000 j=js-1, je+1
+
+      if ( (j < js) .or. (j > je) ) then
+         is1 = is
+         ie1 = ie
+      else
+         is1 = is - 1
+         ie1 = ie + 1
+      endif
 
       do k=1,km
          do i=is1, ie1
@@ -398,16 +403,23 @@ CONTAINS
          enddo
       enddo
 
-
       if ( a_imp < -0.01 ) then
-           call SIM3p0_solver(dt, is1, ie1, km, rdgas, gama, akap, pe2, dm, &
-                              pem, w2, dz2, pt(is1:ie1,j,1:km), ws(is1,j), p_fac, scale_m)
+           call SIM3p0_solver(dt, is1, ie1, km, rdgas, gama, akap, &
+                              pe2(is1:ie1,:), dm(is1:ie1,:), pem(is1:ie1,:), &
+                              w2(is1:ie1,:), dz2(is1:ie1,:), &
+                              pt(is1:ie1,j,1:km), ws(is1:ie1,j), p_fac, scale_m)
+                              
       elseif ( a_imp <= 0.5 ) then
-           call RIM_2D(ms, dt, is1, ie1, km, rdgas, gama, gm2, pe2, &
-                       dm, pm2, w2, dz2, pt(is1:ie1,j,1:km), ws(is1,j), .true.)
+           call RIM_2D(ms, dt, is1, ie1, km, rdgas, gama, gm2(is1:ie1,:), &
+                       pe2(is1:ie1,:), dm(is1:ie1,:), pm2(is1:ie1,:), &
+                       w2(is1:ie1,:), dz2(is1:ie1,:), &
+                       pt(is1:ie1,j,1:km), ws(is1:ie1,j), .true.)
+                       
       else
-           call SIM1_solver(dt, is1, ie1, km, rdgas, gama, gm2, cp2, akap, pe2,  &
-                            dm, pm2, pem, w2, dz2, pt(is1:ie1,j,1:km), ws(is1,j), p_fac)
+           call SIM1_solver(dt, is1, ie1, km, rdgas, gama, gm2(is1:ie1,:), &
+                            cp2(is1:ie1,:), akap, pe2(is1:ie1,:), dm(is1:ie1,:), &
+                            pm2(is1:ie1,:), pem(is1:ie1,:), w2(is1:ie1,:), dz2(is1:ie1,:), &
+                            pt(is1:ie1,j,1:km), ws(is1:ie1,j), p_fac)
       endif
 
       do k=2,km+1
