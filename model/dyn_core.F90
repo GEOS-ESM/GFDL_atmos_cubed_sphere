@@ -247,6 +247,7 @@ contains
     real, allocatable, dimension(:,:,:):: pem, heat_source
     ! +++ awlee
     real, allocatable, dimension(:,:,:) :: heat_tc
+    real :: p_layer
     ! --- awlee
 ! Auto 1D & 2D arrays:
     real, dimension(bd%isd:bd%ied,bd%jsd:bd%jed):: ws3, z_rat
@@ -1163,41 +1164,53 @@ contains
     call del2_cubed(heat_source, cnst_0p20*gridstruct%da_min, gridstruct, domain, npx, npy, npz, nf_ke, bd)
 
 ! Note: pt here is cp*(Virtual_Temperature/pkz)
-    if ( hydrostatic ) then
+  if ( hydrostatic ) then
 !
 ! del(Cp*T) = - del(KE)
 !
-      ! +++ awlee thermal conduction
-      call cond_driver_apply(gridstruct%agrid, gz, pt, pkz, heat_tc, ng, year, month, day, hour)
-      ! --- awlee thermal conduction abs(bdt)
+      if ( GEOS_MLT ) then
+         call cond_driver_apply(gridstruct%agrid, gz, pt, pkz, heat_tc, &
+              ng, year, month, day, hour)
+      endif
 
-! +++ awlee add 'heat_tc' to the shared list right below
-!$OMP parallel do default(none) shared(flagstruct,is,ie,js,je,n_con,pt,heat_source,delp,pkz,bdt,heat_tc) &
-!$OMP                          private(dtmp)
-        do j=js,je
-           do k=1,n_con  ! n_con is usually less than 3;
-              if ( k<3 ) then
-                 do i=is,ie
-                    pt(i,j,k) = pt(i,j,k) + heat_source(i,j,k)/(cp_air*delp(i,j,k)*pkz(i,j,k))
-                 enddo
-              else
-                 do i=is,ie
-                    dtmp = heat_source(i,j,k) / (cp_air*delp(i,j,k))
-                    pt(i,j,k) = pt(i,j,k) + sign(min(abs(bdt)*flagstruct%delt_max,abs(dtmp)), dtmp)/pkz(i,j,k)
-                 enddo
-              endif
+!$OMP parallel do default(none) &
+!$OMP shared(flagstruct,is,ie,js,je,n_con,npz,pt,heat_source,delp,pkz,bdt,heat_tc,GEOS_MLT,pe) &
+!$OMP private(i,j,k,dtmp,p_layer)
+      do j=js,je
+         do k=1,n_con
+            if ( k < 3 ) then
+               do i=is,ie
+                  pt(i,j,k) = pt(i,j,k) + heat_source(i,j,k) / &
+                       (cp_air * delp(i,j,k) * pkz(i,j,k))
+               enddo
+            else
+               do i=is,ie
+                  dtmp = heat_source(i,j,k) / (cp_air * delp(i,j,k))
+                  pt(i,j,k) = pt(i,j,k) + &
+                       sign(min(abs(bdt) * flagstruct%delt_max, abs(dtmp)), dtmp) / &
+                       pkz(i,j,k)
+               enddo
+            endif
+         enddo
 
-              ! +++ awlee heat_tc: apply to top nine levels
-              if ( k <= 9 ) then
-                 do i=is,ie
-                    pt(i,j,k) = pt(i,j,k) + heat_tc(i,j,k) * bdt / pkz(i,j,k) ! heat_tc (K/s), bdt (s)
-                 enddo
-              endif
-              ! --- awlee
+         if ( GEOS_MLT ) then
+            do k=1,npz
+               do i=is,ie
+                  ! Layer-center pressure from edge pressures.
+                  ! pe is in Pa; 1.0 Pa = 0.01 hPa.
+                  p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
+                  if ( p_layer <= 1.0 ) then
+                     pt(i,j,k) = pt(i,j,k) + heat_tc(i,j,k)*bdt / pkz(i,j,k)
+                  endif
+               enddo
+            enddo
+         endif
 
-           enddo
-        enddo
-    else
+      enddo
+!$OMP end parallel do
+
+  else
+
 !$OMP parallel do default(none) shared(flagstruct,is,ie,js,je,n_con,pkz,cappa,rdg,delp,delz,pt, &
 !$OMP                                  heat_source,k1k,cv_air,bdt) &
 !$OMP                          private(dtmp, delt)

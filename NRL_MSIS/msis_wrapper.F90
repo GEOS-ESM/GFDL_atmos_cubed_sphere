@@ -109,6 +109,7 @@ contains
     T_out  = t(2)
   end subroutine msis_point
 
+
   subroutine load_f107_file()
     ! Read inpute file (F107_ap_appended.txt): columns: year doy hour ap f107 f107a
     character(len=*), parameter :: fname = 'F107_ap_appended.txt'
@@ -119,9 +120,9 @@ contains
 
     nrec = 0
 
-    print *, 'Trying to open file: ', fname
+    !print *, 'Trying to open file: ', fname
     open(newunit=unit, file=fname, status='old', action='read', iostat=ios)
-    print *, 'open iostat = ', ios
+    !print *, 'open iostat = ', ios
     if (ios /= 0) then
        loaded = .false.
        print *, 'Failed to open file.'
