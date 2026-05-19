@@ -1200,6 +1200,7 @@ contains
                   ! pe is in Pa; 1.0 Pa = 0.01 hPa.
                   p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
                   if ( p_layer <= 1.0 ) then
+                  !if ( p_layer <= 0.05 ) then ! 0.05 Pa = 0.0005 hPa
                      pt(i,j,k) = pt(i,j,k) + heat_tc(i,j,k)*bdt / pkz(i,j,k)
                   endif
                enddo
