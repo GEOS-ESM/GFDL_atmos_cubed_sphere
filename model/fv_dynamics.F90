@@ -169,13 +169,14 @@ contains
                         gridstruct, flagstruct, neststruct, idiag, bd, &
                         parent_grid, domain, diss_est, &
                         dudt_rf, dvdt_rf, dwdt_rf, dtdt_rf, &
-                        time_total)
+                        time_total, dtdt_tc)
 
     real, intent(IN) :: bdt  !< Large time-step
     real, intent(IN) :: consv_te
     real, intent(IN) :: kappa, cp_air
     real, intent(IN) :: zvir, ptop
     real, intent(IN), optional :: time_total
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_tc
 
     integer, intent(IN) :: npx
     integer, intent(IN) :: npy
@@ -647,7 +648,7 @@ contains
 #endif
                     pkz, peln, q_con, ak, bk, dpx, ks, &
                     gridstruct, flagstruct, neststruct, idiag, bd, &
-                    domain, n_map==1, i_pack, last_step, diss_est,time_total)
+                    domain, n_map==1, i_pack, last_step, diss_est,time_total, dtdt_tc=dtdt_tc)
                                            call timing_off('DYN_CORE')
 
 

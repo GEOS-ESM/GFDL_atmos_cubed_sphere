@@ -170,7 +170,7 @@ contains
                      u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
                      uc, vc, mfx, mfy, cx, cy, pkz, peln, q_con, ak, bk, dpx, &
                      ks, gridstruct, flagstruct, neststruct, idiag, bd, domain, &
-                     init_step, i_pack, end_step, diss_est,time_total)
+                     init_step, i_pack, end_step, diss_est,time_total, dtdt_tc)
 
     integer, intent(IN) :: npx
     integer, intent(IN) :: npy
@@ -200,6 +200,7 @@ contains
     real, intent(inout) :: delp(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  !< pressure thickness (pascal)
     real, intent(inout) :: q(   bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz, nq)  ! 
     real, intent(in), optional:: time_total  !< total time (seconds) since start
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_tc ! thermal conduction K/s
     real, intent(inout) :: diss_est(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  !< skeb dissipation estimate
 
 !-----------------------------------------------------------------------
@@ -389,6 +390,9 @@ contains
          ! +++ awlee
          allocate( heat_tc(isd:ied, jsd:jed, npz) ) ! include halo
          call init_ijk_mem(isd, ied, jsd, jed, npz, heat_tc, 0.)
+         if (present(dtdt_tc)) then
+            dtdt_tc(:,:,:) = 0.0
+         endif
          ! --- awlee
     endif
 
@@ -1171,6 +1175,9 @@ contains
       if ( GEOS_MLT ) then
          call cond_driver_apply(gridstruct%agrid, gz, pt, pkz, heat_tc, &
               ng, year, month, day, hour)
+         if (present(dtdt_tc)) then
+            dtdt_tc(:,:,:) = heat_tc(is:ie,js:je,:)
+         endif
       endif
 
 !$OMP parallel do default(none) &
@@ -1201,6 +1208,8 @@ contains
                   p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
                   if ( p_layer <= 1.0 ) then
                   !if ( p_layer <= 0.05 ) then ! 0.05 Pa = 0.0005 hPa
+                     ! heat_tc is dT/dt in K/s.
+                     ! pt is temperature divided by pkz, so convert dT to dpt.
                      pt(i,j,k) = pt(i,j,k) + heat_tc(i,j,k)*bdt / pkz(i,j,k)
                   endif
                enddo
