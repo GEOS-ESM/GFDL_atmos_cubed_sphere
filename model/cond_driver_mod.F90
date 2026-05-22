@@ -3,6 +3,7 @@
 !
 ! Thermal conduction driver (local-domain indexing):
 !  - Build T = pt * pkz on the local owned interior (exclude halos via ng)
+!  - Use halo-aware i,j for pt, but local ii,jj for pkz.
 !  - Use gz interfaces to form altitude for MSIS sampling
 !  - Compute dT/dt from thermal conduction and return in heat_tc (K/s)
 !
@@ -51,10 +52,6 @@ contains
     integer :: is,ie,js,je,ks,ke
     integer :: i,j,kk
     integer :: k0
-
-    integer :: nT0, nTtot
-    real    :: Tmin, Tmax, Tmin_nz, Tmax_nz
-    real    :: Kmin, Kmax, amin, amax, rmin, rmax, cpmin, cpmax, dtmin, dtmax
 
     real, allocatable :: K_tc(:,:,:)
     real, allocatable :: alpha(:,:,:)
@@ -115,70 +112,6 @@ contains
 
     call cond_z_tend(T, K_tc, rho, cp, dz, dz_if, dTdt, top_flux_ij)
 
-    if (printed_minmax) then
-      nT0   = 0
-      nTtot = 0
-
-      Tmin  =  huge(1.0); Tmax  = -huge(1.0)
-      Tmin_nz =  huge(1.0); Tmax_nz = -huge(1.0)
-
-      Kmin  =  huge(1.0); Kmax  = -huge(1.0)
-      amin  =  huge(1.0); amax  = -huge(1.0)
-      rmin  =  huge(1.0); rmax  = -huge(1.0)
-      cpmin =  huge(1.0); cpmax = -huge(1.0)
-      dtmin =  huge(1.0); dtmax = -huge(1.0)
-
-      do kk = ks, ke
-        do j = js, je
-          do i = is, ie
-            nTtot = nTtot + 1
-            Tmin  = min(Tmin,  T(i,j,kk));      Tmax  = max(Tmax,  T(i,j,kk))
-
-            if (T(i,j,kk) == 0.0) then
-              nT0 = nT0 + 1
-            else
-              Tmin_nz = min(Tmin_nz, T(i,j,kk))
-              Tmax_nz = max(Tmax_nz, T(i,j,kk))
-            end if
-
-            Kmin  = min(Kmin,  K_tc(i,j,kk));   Kmax  = max(Kmax,  K_tc(i,j,kk))
-            amin  = min(amin,  alpha(i,j,kk));  amax  = max(amax,  alpha(i,j,kk))
-            rmin  = min(rmin,  rho(i,j,kk));    rmax  = max(rmax,  rho(i,j,kk))
-            cpmin = min(cpmin, cp(i,j,kk));     cpmax = max(cpmax, cp(i,j,kk))
-            dtmin = min(dtmin, dTdt(i,j,kk));   dtmax = max(dtmax, dTdt(i,j,kk))
-          end do
-        end do
-      end do
-
-      write(*,'(a)') '---- TC_MINMAX (local domain) ----'
-      write(*,'(a,2(1pe13.5,1x))') '  T      min/max =', Tmin,  Tmax
-      write(*,'(a,2(1pe13.5,1x))') '  T(nz)  min/max =', Tmin_nz,  Tmax_nz
-      write(*,'(a,i0,a,i0)')       '  count(T==0) = ', nT0, ' / ', nTtot
-
-      if (diag_T_count >= 0) then
-        write(*,'(a,i0,a,i0)')     '  count(pkz<=0) = ', diag_pkz_le0, ' / ', diag_T_count
-        write(*,'(a,2(1pe13.5,1x))') '  pkz    min/max =', diag_pkz_min, diag_pkz_max
-      end if
-      if (allocated(diag_pkz0_by_k)) then
-        write(*,'(a)') '  pkz<=0 count by k (nonzero only):'
-        do k0 = diag_ks, diag_ke
-          if (diag_pkz0_by_k(k0) > 0) write(*,'(a,i0,a,i0)') '    k=', k0, ' count=', diag_pkz0_by_k(k0)
-        end do
-      end if
-
-      write(*,'(a,2(1pe13.5,1x))') '  K_tc   min/max =', Kmin,  Kmax
-      write(*,'(a,2(1pe13.5,1x))') '  alpha  min/max =', amin,  amax
-      write(*,'(a,2(1pe13.5,1x))') '  rho    min/max =', rmin,  rmax
-      write(*,'(a,2(1pe13.5,1x))') '  cp     min/max =', cpmin, cpmax
-      write(*,'(a,2(1pe13.5,1x))') '  dTdt   min/max =', dtmin, dtmax
-      write(*,'(a)') '---- end TC_MINMAX ----'
-
-      printed_minmax = .true.
-      if (allocated(diag_pkz0_by_k)) deallocate(diag_pkz0_by_k)
-      diag_ks = 0
-      diag_ke = -1
-    end if
-
     deallocate(K_tc, alpha, rho, cp, top_flux_ij)
   end subroutine cond_driver_from_msis
 
@@ -219,8 +152,6 @@ contains
     real :: O_cm3, N2_cm3, O2_cm3, Tmsis
     logical :: msis_ok
     real :: T_here
-    logical, save :: printed_time_once = .false.
-
 
     ! Always define output everywhere (including halos)
     heat_tc(:,:,:) = 0.0
@@ -250,11 +181,6 @@ contains
     if (present(mon_msis))  m  = mon_msis
     if (present(day_msis))  d  = day_msis
     if (present(hour_msis)) hh = hour_msis
-
-    if (printed_time_once) then
-      write(*,'(a,i4.4,a,i2.2,a,i2.2,a,i2.2)') 'TC/MSIS time used: ', y, '-', m, '-', d, ' ', hh
-      printed_time_once = .true.
-    end if
 
     allocate(Tcol(1:ni, 1:nj, 1:nk))
     allocate(dzcol(1:ni, 1:nj, 1:nk))
@@ -303,37 +229,14 @@ contains
     end do
     dzifcol(:,:,nk) = dzifcol(:,:,max(1,nk-1))
     
-    
-    ! Gather pkz diagnostics on the same local domain (for explaining T==0)
-    diag_T0_count = 0
-    diag_T_count  = 0
-    diag_pkz_le0  = 0
-    diag_pkz_min  =  huge(1.0)
-    diag_pkz_max  = -huge(1.0)
-
-    diag_ks = ks
-    diag_ke = ke
-    if (allocated(diag_pkz0_by_k)) deallocate(diag_pkz0_by_k)
-    allocate(diag_pkz0_by_k(ks:ke))
-    diag_pkz0_by_k(:) = 0
-
     do kk = ks, ke
       kkL = kk - ks + 1
       do jj = 1, nj
         j = js + jj - 1
         do ii = 1, ni
           i = is + ii - 1
-          diag_T_count = diag_T_count + 1
-          diag_pkz_min = min(diag_pkz_min, pkz(i,j,kk))
-          diag_pkz_max = max(diag_pkz_max, pkz(i,j,kk))
-          if (pkz(i,j,kk) <= 0.0) then
-            diag_pkz_le0 = diag_pkz_le0 + 1
-            diag_pkz0_by_k(kk) = diag_pkz0_by_k(kk) + 1
-          end if
-
-          T_here = pt(i,j,kk) * pkz(i,j,kk)
+          T_here = pt(i,j,kk) * pkz(ii,jj,kk)
           Tcol(ii,jj,kkL) = T_here
-          if (T_here == 0.0) diag_T0_count = diag_T0_count + 1
         end do
       end do
     end do

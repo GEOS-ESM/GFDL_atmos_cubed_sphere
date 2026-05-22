@@ -176,7 +176,6 @@ contains
     real, intent(IN) :: kappa, cp_air
     real, intent(IN) :: zvir, ptop
     real, intent(IN), optional :: time_total
-    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_tc
 
     integer, intent(IN) :: npx
     integer, intent(IN) :: npy
@@ -211,6 +210,7 @@ contains
     real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dvdt_rf ! V-wind tendency from Rayleigh friction
     real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dwdt_rf ! W      tendency from Rayleigh friction
     real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dtdt_rf ! Temp   tendency from Rayleigh friction
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_tc ! GEOS-MLT thermal conduction heat
 
 !-----------------------------------------------------------------------
 ! Auxilliary pressure arrays:    
