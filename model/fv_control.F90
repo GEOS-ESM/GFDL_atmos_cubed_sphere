@@ -183,7 +183,8 @@ module fv_control_mod
    integer , pointer :: nord_tr
    real    , pointer :: dddmp 
    real    , pointer :: d2_bg 
-   real    , pointer :: d4_bg 
+   real    , pointer :: d4_bg_top
+   real    , pointer :: d4_bg_bot
    real    , pointer :: vtdm4 
    real    , pointer :: trdm2 
    real    , pointer :: d2_bg_k1 
@@ -262,7 +263,8 @@ module fv_control_mod
    logical , pointer :: filter_phys 
    logical , pointer :: dwind_2d 
    logical , pointer :: breed_vortex_inline 
-   logical , pointer :: range_warn 
+   logical , pointer :: range_warn
+   integer , pointer :: exact_sum 
    logical , pointer :: fill 
    logical , pointer :: fill_dp 
    logical , pointer :: fill_wz 
@@ -273,13 +275,14 @@ module fv_control_mod
    logical , pointer :: do_Held_Suarez 
    logical , pointer :: do_reed_physics
    logical , pointer :: reed_cond_only
-   logical , pointer :: reproduce_sum 
    logical , pointer :: adjust_dry_mass 
    logical , pointer :: fv_debug  
    logical , pointer :: srf_init  
    logical , pointer :: mountain  
    integer , pointer :: remap_option  
    integer , pointer :: gmao_remap
+   logical , pointer :: gmao_top_bc
+   logical , pointer :: gmao_bot_bc
    logical , pointer :: z_tracer 
 
    logical , pointer :: old_divg_damp 
@@ -474,11 +477,12 @@ module fv_control_mod
                write(*,*) 'Internal mode del-2 background diff=', d2_bg*Atm(n)%gridstruct%da_min_c/sdt
 
                if (nord==1) then
-                   write(*,*) 'Internal mode del-4 background diff=', d4_bg
+                   write(*,*) 'Internal mode del-4 background diff Top=', d4_bg_top
+                   write(*,*) 'Internal mode del-4 background diff Bot=', d4_bg_bot
                    write(*,*) 'Vorticity del-4 (m**4/s)=', (vtdm4*Atm(n)%gridstruct%da_min)**2/sdt*1.E-6
                endif
-               if (nord==2) write(*,*) 'Internal mode del-6 background diff=', d4_bg
-               if (nord==3) write(*,*) 'Internal mode del-8 background diff=', d4_bg
+               if (nord==2) write(*,*) 'Internal mode del-6 background diff Top=', d4_bg_top
+               if (nord==3) write(*,*) 'Internal mode del-8 background diff Bot=', d4_bg_bot
                write(*,*) 'tracer del-2 diff=', trdm2
 
                write(*,*) 'Vorticity del-4 (m**4/s)=', (vtdm4*Atm(n)%gridstruct%da_min)**2/sdt*1.E-6
@@ -664,14 +668,14 @@ module fv_control_mod
                          kord_mt, kord_wz, kord_tm, kord_tr, fv_debug, fv_land, nudge, do_sat_adj, do_f3d, &
                          external_ic, read_increment, ncep_ic, nggps_ic, ecmwf_ic, use_new_ncep, use_ncep_phy, fv_diag_ic, &
                          external_eta, res_latlon_dynamics, res_latlon_tracers, scale_z, w_max, z_min, lim_fac, &
-                         dddmp, d2_bg, d4_bg, vtdm4, trdm2, d_ext, delt_max, beta, non_ortho, n_sponge, n_zfilter, &
+                         dddmp, d2_bg, d4_bg_top, d4_bg_bot, vtdm4, trdm2, d_ext, delt_max, beta, non_ortho, n_sponge, n_zfilter, &
                          warm_start, adjust_dry_mass, mountain, d_con, ke_bg, nord, nord_tr, convert_ke, use_old_omega, &
                          dry_mass, grid_type, do_Held_Suarez, do_reed_physics, reed_cond_only, &
-                         consv_te, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, Beljaars_TOFD, &
-                         range_warn, dwind_2d, inline_q, z_tracer, reproduce_sum, adiabatic, do_vort_damp, no_dycore,   &
+                         consv_te, exact_sum, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, Beljaars_TOFD, &
+                         range_warn, dwind_2d, inline_q, z_tracer, adiabatic, do_vort_damp, no_dycore,   &
                          tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, fv_sg_adj, breed_vortex_inline,  &
                          na_init, nudge_dz, hybrid_z, Make_NH, n_zs_filter, nord_zs_filter, full_zs_filter, reset_eta,         &
-                         pnats, dnats, a2b_ord, remap_option, gmao_remap, p_ref, d2_bg_k1, d2_bg_k2,  &
+                         pnats, dnats, a2b_ord, remap_option, gmao_remap, gmao_top_bc, gmao_bot_bc, p_ref, d2_bg_k1, d2_bg_k2,  &
                          c2l_ord, dx_const, dy_const, umax, deglat,      &
                          deglon_start, deglon_stop, deglat_start, deglat_stop, &
                          phys_hydrostatic, use_hydro_pressure, make_hybrid_z, old_divg_damp, add_noise, &
@@ -777,12 +781,9 @@ module fv_control_mod
          dimx = stretch_fac*4.0*(npx-1)
                               ns0 = 4
          if (npx >= 90)       ns0 = 5
-         if (stretch_fac > 1) then
-                              ns0 = 6
-            if (npx >= 1500)  ns0 = 7
-         endif
+         if (stretch_fac > 1) ns0 = 7
+         if (.not. hydrostatic) ns0 = 7
 #else
-         offset = 0.49
          dimx = 4.0*(npx-1)
          if ( hydrostatic ) then
             if ( npx >= 120 ) ns0 = 6
@@ -893,12 +894,6 @@ module fv_control_mod
 !----------------------------------------
 ! Adjust divergence damping coefficients:
 !----------------------------------------
-!      d_fac = real(n0split)/real(n_split)
-!      dddmp = dddmp * d_fac
-!      d2_bg = d2_bg * d_fac
-!      d4_bg = d4_bg * d_fac
-!      d_ext = d_ext * d_fac
-!      vtdm4 = vtdm4 * d_fac
       if (old_divg_damp) then
         if (is_master()) write(*,*) " fv_control: using original values for divergence damping "
         d2_bg_k1 = 6.         ! factor for d2_bg (k=1)  - default(4.)
@@ -987,18 +982,18 @@ module fv_control_mod
          
          !Pelist needs to be set to ALL (which should have been done
          !in broadcast_domains) to get this to work
-         call mpp_define_nest_domains(Atm(n)%neststruct%nest_domain, Atm(n)%domain, Atm(parent_grid_num)%domain, &
-              7, parent_tile, &
-              1, npx-1, 1, npy-1,                  & !Grid cells, not points
-              ioffset, ioffset + (npx-1)/refinement - 1, &
-              joffset, joffset + (npy-1)/refinement - 1,         &
-              (/ (i,i=0,mpp_npes()-1)  /), extra_halo = 0, name="nest_domain") !What pelist to use?
-         call mpp_define_nest_domains(Atm(n)%neststruct%nest_domain, Atm(n)%domain, Atm(parent_grid_num)%domain, &
-              7, parent_tile, &
-              1, npx-1, 1, npy-1,                  & !Grid cells, not points
-              ioffset, ioffset + (npx-1)/refinement - 1, &
-              joffset, joffset + (npy-1)/refinement - 1,         &
-              (/ (i,i=0,mpp_npes()-1)  /), extra_halo = 0, name="nest_domain") !What pelist to use?
+         !call mpp_define_nest_domains(Atm(n)%neststruct%nest_domain, Atm(n)%domain, Atm(parent_grid_num)%domain, &
+              !7, parent_tile, &
+              !1, npx-1, 1, npy-1,                  & !Grid cells, not points
+              !ioffset, ioffset + (npx-1)/refinement - 1, &
+              !joffset, joffset + (npy-1)/refinement - 1,         &
+              !(/ (i,i=0,mpp_npes()-1)  /), extra_halo = 0, name="nest_domain") !What pelist to use?
+         !call mpp_define_nest_domains(Atm(n)%neststruct%nest_domain, Atm(n)%domain, Atm(parent_grid_num)%domain, &
+              !7, parent_tile, &
+              !1, npx-1, 1, npy-1,                  & !Grid cells, not points
+              !ioffset, ioffset + (npx-1)/refinement - 1, &
+              !joffset, joffset + (npy-1)/refinement - 1,         &
+              !(/ (i,i=0,mpp_npes()-1)  /), extra_halo = 0, name="nest_domain") !What pelist to use?
 !              (/ (i,i=0,mpp_npes()-1)  /), extra_halo = 2, name="nest_domain_for_BC") !What pelist to use?
 
          Atm(parent_grid_num)%neststruct%child_grids(n) = .true.
@@ -1074,13 +1069,13 @@ module fv_control_mod
 
       allocate(Atm(ngrids))
     
-      allocate(grids_on_this_pe(ngrids))
+      if (.not. allocated(grids_on_this_pe)) allocate(grids_on_this_pe(ngrids))
       grids_on_this_pe = .false. !initialization
 
       npes = mpp_npes()
 
       ! Need to get a global pelist to send data around later?
-      allocate( pelist_all(npes) )
+      if (.not. allocated(pelist_all)) allocate( pelist_all(npes) )
       pelist_all = (/ (i,i=0,npes-1) /)
       pelist_all = pelist_all + mpp_root_pe()
 
@@ -1192,7 +1187,8 @@ module fv_control_mod
      nord_tr                       => Atm%flagstruct%nord_tr
      dddmp                         => Atm%flagstruct%dddmp
      d2_bg                         => Atm%flagstruct%d2_bg
-     d4_bg                         => Atm%flagstruct%d4_bg
+     d4_bg_top                     => Atm%flagstruct%d4_bg_top
+     d4_bg_bot                     => Atm%flagstruct%d4_bg_bot
      vtdm4                         => Atm%flagstruct%vtdm4
      trdm2                         => Atm%flagstruct%trdm2
      d2_bg_k1                      => Atm%flagstruct%d2_bg_k1
@@ -1264,6 +1260,7 @@ module fv_control_mod
      dwind_2d                      => Atm%flagstruct%dwind_2d
      breed_vortex_inline           => Atm%flagstruct%breed_vortex_inline
      range_warn                    => Atm%flagstruct%range_warn
+     exact_sum                     => Atm%flagstruct%exact_sum
      fill                          => Atm%flagstruct%fill
      fill_dp                       => Atm%flagstruct%fill_dp
      fill_wz                       => Atm%flagstruct%fill_wz
@@ -1274,13 +1271,14 @@ module fv_control_mod
      do_Held_Suarez                => Atm%flagstruct%do_Held_Suarez
      do_reed_physics               => Atm%flagstruct%do_reed_physics
      reed_cond_only                => Atm%flagstruct%reed_cond_only
-     reproduce_sum                 => Atm%flagstruct%reproduce_sum
      adjust_dry_mass               => Atm%flagstruct%adjust_dry_mass
      fv_debug                      => Atm%flagstruct%fv_debug
      srf_init                      => Atm%flagstruct%srf_init
      mountain                      => Atm%flagstruct%mountain
      remap_option                  => Atm%flagstruct%remap_option
      gmao_remap                    => Atm%flagstruct%gmao_remap
+     gmao_top_bc                   => Atm%flagstruct%gmao_top_bc
+     gmao_bot_bc                   => Atm%flagstruct%gmao_bot_bc
      z_tracer                      => Atm%flagstruct%z_tracer
      old_divg_damp                 => Atm%flagstruct%old_divg_damp
      fv_land                       => Atm%flagstruct%fv_land

@@ -46,14 +46,14 @@
 !   </tr>
 !     <td>mpp_mod</td>
 !     <td>FATAL, MPP_DEBUG, NOTE, MPP_CLOCK_SYNC,MPP_CLOCK_DETAILED, WARNING,
-!         mpp_pe, mpp_npes, mpp_node, mpp_root_pe, mpp_error, mpp_set_warn_level,
+!         mpp_pe, mpp_npes, mpp_root_pe, mpp_error, mpp_set_warn_level,
 !         mpp_declare_pelist, mpp_set_current_pelist, mpp_sync, mpp_clock_begin,
 !         mpp_clock_end, mpp_clock_id,mpp_chksum, stdout, stderr, mpp_broadcast,
 !         mpp_send, mpp_recv, mpp_sync_self, EVENT_RECV, mpp_gather,mpp_get_current_pelist,</td>
 !   </tr>
 !   <tr>
 !     <td>mpp_domains_mod</td>
-!     <td>GLOBAL_DATA_DOMAIN, BITWISE_EXACT_SUM, BGRID_NE, FOLD_NORTH_EDGE, CGRID_NE,
+!     <td>GLOBAL_DATA_DOMAIN, BGRID_NE, FOLD_NORTH_EDGE, CGRID_NE,
 !         MPP_DOMAIN_TIME, CYCLIC_GLOBAL_DOMAIN, NUPDATE,EUPDATE, XUPDATE, YUPDATE, SCALAR_PAIR,
 !         domain1D, domain2D, DomainCommunicator2D, mpp_get_ntile_count,mpp_get_compute_domain,
 !         mpp_get_data_domain,mpp_global_field, mpp_global_sum, mpp_global_max, mpp_global_min,
@@ -72,12 +72,12 @@
 ! !USES:
       use fms_mod,         only : fms_init, fms_end
       use mpp_mod,         only : FATAL, MPP_DEBUG, NOTE, MPP_CLOCK_SYNC,MPP_CLOCK_DETAILED, WARNING
-      use mpp_mod,         only : mpp_pe, mpp_npes, mpp_node, mpp_root_pe, mpp_error, mpp_set_warn_level
+      use mpp_mod,         only : mpp_pe, mpp_npes, mpp_root_pe, mpp_error, mpp_set_warn_level
       use mpp_mod,         only : mpp_declare_pelist, mpp_set_current_pelist, mpp_sync
       use mpp_mod,         only : mpp_clock_begin, mpp_clock_end, mpp_clock_id
       use mpp_mod,         only : mpp_chksum, stdout, stderr, mpp_broadcast
       use mpp_mod,         only : mpp_send, mpp_recv, mpp_sync_self, EVENT_RECV, mpp_gather
-      use mpp_domains_mod, only : GLOBAL_DATA_DOMAIN, BITWISE_EXACT_SUM, BGRID_NE, FOLD_NORTH_EDGE, CGRID_NE
+      use mpp_domains_mod, only : GLOBAL_DATA_DOMAIN, BGRID_NE, FOLD_NORTH_EDGE, CGRID_NE
       use mpp_domains_mod, only : MPP_DOMAIN_TIME, CYCLIC_GLOBAL_DOMAIN, NUPDATE,EUPDATE, XUPDATE, YUPDATE, SCALAR_PAIR
       use mpp_domains_mod, only : domain1D, domain2D, DomainCommunicator2D, mpp_get_ntile_count
       use mpp_domains_mod, only : mpp_get_compute_domain, mpp_get_data_domain

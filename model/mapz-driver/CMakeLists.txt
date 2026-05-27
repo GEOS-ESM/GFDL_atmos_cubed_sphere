@@ -5,14 +5,13 @@ set(srcs
   ../fv_fill.F90
   ../fv_arrays.F90
   ../fv_cmp.F90
-  ../lin_cloud_microphys.F90
 
   ../../tools/fv_timing.F90
   ../../tools/fv_mp_mod.F90
 
   stubs/fv_grid_utils_stub.f90
   stubs/external_ic_stub.F90
-  
+
   input/input_array_extents.f90
   input/input_scalars.f90
   input/input_arrays.f90
@@ -23,11 +22,11 @@ set(srcs
   main.F90)
 
 if (FV_PRECISION STREQUAL R4)
-  set(FMS fms_r4)
+  set(FMS FMS::fms_r4)
 elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
-  set(FMS fms_r8)
+  set(FMS FMS::fms_r8)
 elseif (FV_PRECISION STREQUAL R8)
-   set(FMS fms_r8)
+  set(FMS FMS::fms_r8)
 endif ()
 
 ecbuild_add_executable(
