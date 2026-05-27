@@ -1990,7 +1990,7 @@ subroutine pmaxmn_g(qname, q, is, ie, js, je, km, fac, area, domain)
       call mp_reduce_min(qmin)
       call mp_reduce_max(qmax)
 
-      gmean = g_sum(domain, q(is:ie,js:je,km), is, ie, js, je, 3, area, 1, .true.) 
+      gmean = g_sum(domain, q(is:ie,js:je,km), is, ie, js, je, 3, area, 1)
       if(is_master()) write(6,*) qname, qmax*fac, qmin*fac, gmean*fac
 
 end subroutine pmaxmn_g
