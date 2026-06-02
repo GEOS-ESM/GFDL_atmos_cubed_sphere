@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -86,14 +86,14 @@ module fv_control_mod
 !   </tr>
 !   <tr>
 !     <td>mpp_mod</td>
-!     <td>mpp_send, mpp_sync, mpp_transmit, mpp_set_current_pelist, mpp_declare_pelist, 
+!     <td>mpp_send, mpp_sync, mpp_transmit, mpp_set_current_pelist, mpp_declare_pelist,
 !         mpp_root_pe, mpp_recv, mpp_sync_self, mpp_broadcast, read_input_nml,
-!         FATAL, mpp_error, mpp_pe, stdlog, mpp_npes, mpp_get_current_pelist, 
+!         FATAL, mpp_error, mpp_pe, stdlog, mpp_npes, mpp_get_current_pelist,
 !         input_nml_file, get_unit, WARNING, read_ascii_file</td>
 !   </tr>
 !   <tr>
 !     <td>mpp_domains_mod</td>
-!     <td>mpp_get_data_domain, mpp_get_compute_domain, domain2D, mpp_define_nest_domains, 
+!     <td>mpp_get_data_domain, mpp_get_compute_domain, domain2D, mpp_define_nest_domains,
 !        nest_domain_type, mpp_get_global_domain, mpp_get_C2F_index, mpp_get_F2C_index,
 !        mpp_broadcast_domain, CENTER, CORNER, NORTH, EAST, WEST, SOUTH</td>
 !   </tr>
@@ -107,17 +107,28 @@ module fv_control_mod
 !   </tr>
 !   <tr>
 !     <td>tracer_manager_mod</td>
-!     <td>tm_get_number_tracers => get_number_tracers,tm_get_tracer_index => get_tracer_index,   
-!         tm_get_tracer_indices => get_tracer_indices, tm_set_tracer_profile => set_tracer_profile, 
+!     <td>tm_get_number_tracers => get_number_tracers,tm_get_tracer_index => get_tracer_index,
+!         tm_get_tracer_indices => get_tracer_indices, tm_set_tracer_profile => set_tracer_profile,
 !         tm_get_tracer_names => get_tracer_names,tm_check_if_prognostic=> check_if_prognostic,
 !         tm_register_tracers => register_tracers</td>
 !   </tr>
 ! </table>
 
-   use constants_mod,       only: pi=>pi_8, kappa, radius, grav, rdgas
+#if defined (SINGLE_FV)
+   use constantsr4_mod,     &
+#else
+   use constants_mod,       &
+#endif
+      only: pi=>pi_8, kappa, radius, grav, rdgas
    use field_manager_mod,   only: MODEL_ATMOS
-   use fms_mod,             only: write_version_number, open_namelist_file, &
-                                  check_nml_error, close_file, file_exist
+   use fms_mod,             only: write_version_number, &
+                                  check_nml_error
+#if defined (FMS1_IO)
+   use fms_mod,             only: open_namelist_file, &
+                                  close_file, file_exists => file_exist
+#else
+   use fms2_io_mod,         only: file_exists, close_file
+#endif
    use mpp_mod,             only: FATAL, mpp_error, mpp_pe, stdlog, &
                                   mpp_npes, mpp_get_current_pelist, &
                                   input_nml_file, get_unit, WARNING, &
@@ -165,34 +176,34 @@ module fv_control_mod
    character(len=80) , pointer :: grid_name
    character(len=120), pointer :: grid_file
    integer, pointer :: grid_type
-   integer , pointer :: hord_mt 
-   integer , pointer :: kord_mt 
-   integer , pointer :: kord_wz 
-   integer , pointer :: hord_vt 
-   integer , pointer :: hord_tm 
-   integer , pointer :: hord_dp 
-   integer , pointer :: kord_tm 
-   integer , pointer :: hord_tr 
-   integer , pointer :: kord_tr 
-   real    , pointer :: scale_z 
-   real    , pointer :: w_max 
-   real    , pointer :: z_min 
+   integer , pointer :: hord_mt
+   integer , pointer :: kord_mt
+   integer , pointer :: kord_wz
+   integer , pointer :: hord_vt
+   integer , pointer :: hord_tm
+   integer , pointer :: hord_dp
+   integer , pointer :: kord_tm
+   integer , pointer :: hord_tr
+   integer , pointer :: kord_tr
+   real    , pointer :: scale_z
+   real    , pointer :: w_max
+   real    , pointer :: z_min
    real    , pointer :: lim_fac
 
    integer , pointer :: nord
    integer , pointer :: nord_tr
-   real    , pointer :: dddmp 
-   real    , pointer :: d2_bg 
+   real    , pointer :: dddmp
+   real    , pointer :: d2_bg
    real    , pointer :: d4_bg_top
    real    , pointer :: d4_bg_bot
-   real    , pointer :: vtdm4 
-   real    , pointer :: trdm2 
-   real    , pointer :: d2_bg_k1 
-   real    , pointer :: d2_bg_k2 
-   real    , pointer :: d2_divg_max_k1 
-   real    , pointer :: d2_divg_max_k2 
-   real    , pointer :: damp_k_k1 
-   real    , pointer :: damp_k_k2 
+   real    , pointer :: vtdm4
+   real    , pointer :: trdm2
+   real    , pointer :: d2_bg_k1
+   real    , pointer :: d2_bg_k2
+   real    , pointer :: d2_divg_max_k1
+   real    , pointer :: d2_divg_max_k2
+   real    , pointer :: damp_k_k1
+   real    , pointer :: damp_k_k2
    integer , pointer ::    n_zs_filter
    integer , pointer :: nord_zs_filter
    logical , pointer :: full_zs_filter
@@ -202,119 +213,119 @@ module fv_control_mod
    logical , pointer :: consv_am
    logical , pointer :: do_sat_adj
    logical , pointer :: do_f3d
-   logical , pointer :: no_dycore 
-   logical , pointer :: convert_ke 
-   logical , pointer :: do_vort_damp 
-   logical , pointer :: use_old_omega 
+   logical , pointer :: no_dycore
+   logical , pointer :: convert_ke
+   logical , pointer :: do_vort_damp
+   logical , pointer :: use_old_omega
 ! PG off centering:
-   real    , pointer :: beta  
+   real    , pointer :: beta
    integer , pointer :: n_zfilter
-   integer , pointer :: n_sponge 
-   real    , pointer :: d_ext 
-   integer , pointer :: nwat  
-   logical , pointer :: warm_start 
-   logical , pointer :: inline_q 
-   real , pointer :: shift_fac   
-   logical , pointer :: do_schmidt 
-   real(kind=R_GRID) , pointer :: stretch_fac 
-   real(kind=R_GRID) , pointer :: target_lat  
-   real(kind=R_GRID) , pointer :: target_lon  
+   integer , pointer :: n_sponge
+   real    , pointer :: d_ext
+   integer , pointer :: nwat
+   logical , pointer :: warm_start
+   logical , pointer :: inline_q
+   real , pointer :: shift_fac
+   logical , pointer :: do_schmidt
+   real(kind=R_GRID) , pointer :: stretch_fac
+   real(kind=R_GRID) , pointer :: target_lat
+   real(kind=R_GRID) , pointer :: target_lon
 
-   logical , pointer :: reset_eta 
+   logical , pointer :: reset_eta
    real    , pointer :: p_fac
    real    , pointer :: a_imp
    real    , pointer :: dz_min
-   integer , pointer :: n_split 
-                             ! Default 
-   integer , pointer :: m_split 
-   integer , pointer :: k_split 
+   integer , pointer :: n_split
+                             ! Default
+   integer , pointer :: m_split
+   integer , pointer :: k_split
    logical , pointer :: use_logp
 
-   integer , pointer :: q_split 
-   integer , pointer :: print_freq 
+   integer , pointer :: q_split
+   integer , pointer :: print_freq
    logical , pointer :: write_3d_diags
 
-   integer , pointer :: npx           
-   integer , pointer :: npy           
+   integer , pointer :: npx
+   integer , pointer :: npy
    integer , pointer :: npz
-   integer , pointer :: npz_rst 
-                                      
-   integer , pointer :: ncnst 
-   integer , pointer :: pnats 
-   integer , pointer :: dnats 
-   integer , pointer :: ntiles        
-   integer , pointer :: nf_omega  
-   integer , pointer :: fv_sg_adj 
-                                      
-   integer , pointer :: na_init 
+   integer , pointer :: npz_rst
+
+   integer , pointer :: ncnst
+   integer , pointer :: pnats
+   integer , pointer :: dnats
+   integer , pointer :: ntiles
+   integer , pointer :: nf_omega
+   integer , pointer :: fv_sg_adj
+
+   integer , pointer :: na_init
    logical , pointer :: nudge_dz
-   real    , pointer :: p_ref 
-   real    , pointer :: dry_mass 
-   integer , pointer :: nt_prog 
-   integer , pointer :: nt_phys 
-   real    , pointer :: tau_h2o 
+   real    , pointer :: p_ref
+   real    , pointer :: dry_mass
+   integer , pointer :: nt_prog
+   integer , pointer :: nt_phys
+   real    , pointer :: tau_h2o
 
    real    , pointer :: delt_max
-   real    , pointer :: d_con 
+   real    , pointer :: d_con
    real    , pointer :: ke_bg
-   real    , pointer :: consv_te 
-   real    , pointer :: tau 
+   real    , pointer :: consv_te
+   real    , pointer :: tau
    real    , pointer :: rf_cutoff
-   logical , pointer :: filter_phys 
-   logical , pointer :: dwind_2d 
-   logical , pointer :: breed_vortex_inline 
+   logical , pointer :: filter_phys
+   logical , pointer :: dwind_2d
+   logical , pointer :: breed_vortex_inline
    logical , pointer :: range_warn
-   integer , pointer :: exact_sum 
-   logical , pointer :: fill 
-   logical , pointer :: fill_dp 
-   logical , pointer :: fill_wz 
+   integer , pointer :: exact_sum
+   logical , pointer :: fill
+   logical , pointer :: fill_dp
+   logical , pointer :: fill_wz
    logical , pointer :: check_negative
-   logical , pointer :: non_ortho 
-   logical , pointer :: adiabatic 
-   logical , pointer :: moist_phys 
-   logical , pointer :: do_Held_Suarez 
+   logical , pointer :: non_ortho
+   logical , pointer :: adiabatic
+   logical , pointer :: moist_phys
+   logical , pointer :: do_Held_Suarez
    logical , pointer :: do_reed_physics
    logical , pointer :: reed_cond_only
-   logical , pointer :: adjust_dry_mass 
-   logical , pointer :: fv_debug  
-   logical , pointer :: srf_init  
-   logical , pointer :: mountain  
-   integer , pointer :: remap_option  
+   logical , pointer :: adjust_dry_mass
+   logical , pointer :: fv_debug
+   logical , pointer :: srf_init
+   logical , pointer :: mountain
+   integer , pointer :: remap_option
    integer , pointer :: gmao_remap
    logical , pointer :: gmao_top_bc
    logical , pointer :: gmao_bot_bc
-   logical , pointer :: z_tracer 
+   logical , pointer :: z_tracer
 
-   logical , pointer :: old_divg_damp 
-   logical , pointer :: fv_land 
-   logical , pointer :: nudge 
+   logical , pointer :: old_divg_damp
+   logical , pointer :: fv_land
+   logical , pointer :: nudge
    logical , pointer :: nudge_ic
-   logical , pointer :: ncep_ic 
-   logical , pointer :: nggps_ic 
-   logical , pointer :: ecmwf_ic 
+   logical , pointer :: ncep_ic
+   logical , pointer :: nggps_ic
+   logical , pointer :: ecmwf_ic
    logical , pointer :: gfs_phil
    logical , pointer :: agrid_vel_rst
-   logical , pointer :: use_new_ncep 
-   logical , pointer :: use_ncep_phy 
-   logical , pointer :: fv_diag_ic 
-   logical , pointer :: external_ic 
+   logical , pointer :: use_new_ncep
+   logical , pointer :: use_ncep_phy
+   logical , pointer :: fv_diag_ic
+   logical , pointer :: external_ic
    logical , pointer :: external_eta
    logical , pointer :: read_increment
    character(len=128) , pointer :: res_latlon_dynamics
-   character(len=128) , pointer :: res_latlon_tracers 
-   logical , pointer :: hydrostatic 
+   character(len=128) , pointer :: res_latlon_tracers
+   logical , pointer :: hydrostatic
    logical , pointer :: phys_hydrostatic
    logical , pointer :: use_hydro_pressure
    logical , pointer :: do_uni_zfull !miz
    logical , pointer :: adj_mass_vmr ! f1p
-   logical , pointer :: hybrid_z    
-   logical , pointer :: Make_NH     
-   logical , pointer :: make_hybrid_z  
+   logical , pointer :: hybrid_z
+   logical , pointer :: Make_NH
+   logical , pointer :: make_hybrid_z
    logical , pointer :: nudge_qv
    real,     pointer :: add_noise
 
-   integer , pointer :: a2b_ord 
-   integer , pointer :: c2l_ord 
+   integer , pointer :: a2b_ord
+   integer , pointer :: c2l_ord
 
    integer, pointer :: ndims
 
@@ -361,7 +372,7 @@ module fv_control_mod
 !-------------------------------------------------------------------------------
 !>@brief The subroutine 'fv_init' initializes FV3.
 !>@details It allocates memory, sets up MPI and processor lists,
-!! sets up the grid, and controls FV3 namelist parameters.   
+!! sets up the grid, and controls FV3 namelist parameters.
  subroutine fv_init1(Atm, dt_atmos, grids_on_this_pe, p_split)
 
    type(fv_atmos_type), allocatable, intent(inout), target :: Atm(:)
@@ -387,7 +398,7 @@ module fv_control_mod
    call setup_pointers(Atm(1))
 
  end subroutine fv_init1
-         
+
  subroutine fv_init2(Atm, dt_atmos, grids_on_this_pe, p_split)
 
    type(fv_atmos_type), allocatable, intent(inout), target :: Atm(:)
@@ -412,7 +423,7 @@ module fv_control_mod
       call timing_init
       call timing_on('TOTAL')
 
-    ! Setup the run from namelist 
+    ! Setup the run from namelist
       ntilesMe = size(Atm(:)) !Full number of Atm arrays; one less than number of grids, if multiple grids
 
       call run_setup(Atm,dt_atmos, grids_on_this_pe, p_split)   ! initializes domain_decomp
@@ -422,7 +433,7 @@ module fv_control_mod
          !In a single-grid run this will still be needed to correctly set the domain
          call switch_current_Atm(Atm(n))
          call setup_pointers(Atm(n))
-         
+
          target_lon = target_lon * pi/180.
          target_lat = target_lat * pi/180.
 
@@ -433,7 +444,7 @@ module fv_control_mod
          !not sure if this works with multiple grids
          call tm_register_tracers (MODEL_ATMOS, ncnst, nt_prog, pnats, num_family)
          if(is_master()) then
-            write(*,*) 'ncnst=', ncnst,' num_prog=',nt_prog,' pnats=',pnats,' dnats=',dnats,' num_family=',num_family         
+            write(*,*) 'ncnst=', ncnst,' num_prog=',nt_prog,' pnats=',pnats,' dnats=',dnats,' num_family=',num_family
             print*, ''
          endif
 
@@ -513,7 +524,7 @@ module fv_control_mod
                call mpp_get_global_domain( Atm(n)%parent_grid%domain, &
                     isg, ieg, jsg, jeg)
 
-               !FIXME: Should replace this by generating the global grid (or at least one face thereof) on the 
+               !FIXME: Should replace this by generating the global grid (or at least one face thereof) on the
                ! nested PEs instead of sending it around.
                if (gid == Atm(n)%parent_grid%pelist(1)) then
                      call mpp_send(Atm(n)%parent_grid%grid_global(isg-ng:ieg+1+ng,jsg-ng:jeg+1+ng,1:2,parent_tile), &
@@ -585,7 +596,7 @@ module fv_control_mod
             endif
          endif
       end do
-      
+
     ! Initialize restart functions
       call fv_restart_init()
 
@@ -602,7 +613,7 @@ module fv_control_mod
  end subroutine fv_init2
 !-------------------------------------------------------------------------------
 
-!>@brief The subroutine 'fv_end' terminates FV3, deallocates memory, 
+!>@brief The subroutine 'fv_end' terminates FV3, deallocates memory,
 !! saves restart files, and stops I/O.
  subroutine fv_end(Atm, grids_on_this_pe, restarts)
 
@@ -645,7 +656,7 @@ module fv_control_mod
 
    real :: dim0 = 180.           !< base dimension
    real :: dt0  = 1800.          !< base time step
-   real :: ns0  = 5.             !< base nsplit for base dimension 
+   real :: ns0  = 5.             !< base nsplit for base dimension
                                  !< For cubed sphere 5 is better
    real :: offset = 0.49         !< base to help round up n_split
    real :: dimx, dl, dp, dxmin, dymin, d_fac
@@ -695,18 +706,9 @@ module fv_control_mod
    bubble_do = .false.
    test_case = 11   ! (USGS terrain)
 
-#ifdef INTERNAL_FILE_NML
 ! Read Main namelist
    read (input_nml_file,fv_grid_nml,iostat=ios)
    ierr = check_nml_error(ios,'fv_grid_nml')
-#else
-   f_unit=open_namelist_file()
-   rewind (f_unit)
-! Read Main namelist
-   read (f_unit,fv_grid_nml,iostat=ios)
-   ierr = check_nml_error(ios,'fv_grid_nml')
-   call close_file(f_unit)
-#endif
 
    unit = stdlog()
    write(unit, nml=fv_grid_nml)
@@ -720,13 +722,12 @@ module fv_control_mod
          call fv_diag_init_gn(Atm(n))
       endif
 
-#ifdef INTERNAL_FILE_NML
    ! Set input_file_nml for correct parent/nest initialization
       if (n > 1) then
          write(nested_grid_filename,'(A4, I2.2)') 'nest', n
          call read_input_nml(nested_grid_filename)
       endif
-   ! Read FVCORE namelist 
+   ! Read FVCORE namelist
       read (input_nml_file,fv_core_nml,iostat=ios)
       ierr = check_nml_error(ios,'fv_core_nml')
    ! Read Test_Case namelist
@@ -737,26 +738,6 @@ module fv_control_mod
       if (n > 1) then
         call read_input_nml
       endif
-#else
-      if (size(Atm) == 1) then
-         f_unit = open_namelist_file()
-      else if (n == 1) then
-         f_unit = open_namelist_file('input.nml')
-      else 
-         write(nested_grid_filename,'(A10, I2.2, A4)') 'input_nest', n, '.nml'
-         f_unit = open_namelist_file(nested_grid_filename)
-      endif
-
-   ! Read FVCORE namelist 
-      read (f_unit,fv_core_nml,iostat=ios)
-      ierr = check_nml_error(ios,'fv_core_nml')
-
-   ! Read Test_Case namelist
-      rewind (f_unit)
-      read (f_unit,test_case_nml,iostat=ios)
-      ierr = check_nml_error(ios,'test_case_nml')
-      call close_file(f_unit)
-#endif
       write(unit, nml=fv_core_nml)
       write(unit, nml=test_case_nml)
 
@@ -800,7 +781,7 @@ module fv_control_mod
       else
          dimx = max ( npx, 2*(npy-1) )
       endif
-          
+
       if (grid_type < 4) then
          n0split = nint ( ns0*abs(dt_atmos)*dimx/(dt0*dim0) + offset )
       elseif (grid_type == 4 .or. grid_type == 7) then
@@ -878,8 +859,8 @@ module fv_control_mod
 
       else
          Atm(n)%neststruct%ioffset                = -999
-         Atm(n)%neststruct%joffset                = -999   
-         Atm(n)%neststruct%parent_tile            = -1      
+         Atm(n)%neststruct%joffset                = -999
+         Atm(n)%neststruct%parent_tile            = -1
          Atm(n)%neststruct%refinement             = -1
       end if
 
@@ -960,7 +941,7 @@ module fv_control_mod
    enddo
 
    do n=1,size(Atm)
-      
+
       call switch_current_Atm(Atm(n),.false.)
       call setup_pointers(Atm(n))
       !! CLEANUP: WARNING not sure what changes to domain_decomp may cause
@@ -979,7 +960,7 @@ module fv_control_mod
       if (nested) then
          if (mod(npx-1 , refinement) /= 0 .or. mod(npy-1, refinement) /= 0) &
               call mpp_error(FATAL, 'npx or npy not an even refinement of its coarse grid.')
-         
+
          !Pelist needs to be set to ALL (which should have been done
          !in broadcast_domains) to get this to work
          !call mpp_define_nest_domains(Atm(n)%neststruct%nest_domain, Atm(n)%domain, Atm(parent_grid_num)%domain, &
@@ -1035,7 +1016,7 @@ module fv_control_mod
   end subroutine run_setup
 
   subroutine init_nesting(Atm, grids_on_this_pe, p_split)
-    
+
     type(fv_atmos_type), intent(inout), allocatable :: Atm(:)
    logical, allocatable, intent(INOUT) :: grids_on_this_pe(:)
     integer, intent(INOUT) :: p_split
@@ -1053,22 +1034,14 @@ module fv_control_mod
     nest_pes = 0
     ntiles = -999
 
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file,nest_nml,iostat=ios)
       ierr = check_nml_error(ios,'nest_nml')
-#else
-      f_unit=open_namelist_file()
-      rewind (f_unit)
-      read (f_unit,nest_nml,iostat=ios)
-      ierr = check_nml_error(ios,'nest_nml')
-      call close_file(f_unit)
-#endif
 
       if (ntiles /= -999) ngrids = ntiles
       if (ngrids > 10) call mpp_error(FATAL, "More than 10 nested grids not supported")
 
       allocate(Atm(ngrids))
-    
+
       if (.not. allocated(grids_on_this_pe)) allocate(grids_on_this_pe(ngrids))
       grids_on_this_pe = .false. !initialization
 
@@ -1110,7 +1083,7 @@ module fv_control_mod
                if (n > 1) then
                   call mpp_declare_pelist(Atm(n)%pelist, trim(pe_list_name))
                   !Make sure nested-grid input file exists
-                  if (.not. file_exist('input_'//trim(pe_list_name)//'.nml')) then
+                  if (.not. file_exists('input_'//trim(pe_list_name)//'.nml')) then
                      call mpp_error(FATAL, "Could not find nested grid namelist input_"//trim(pe_list_name)//".nml")
                   endif
                endif
@@ -1125,7 +1098,7 @@ module fv_control_mod
                call mpp_declare_pelist(Atm(n)%pelist, trim(pe_list_name))
                !Make sure nested-grid input file exists
                if (n > 1) then
-                  if (.not. file_exist('input_'//trim(pe_list_name)//'.nml')) then
+                  if (.not. file_exists('input_'//trim(pe_list_name)//'.nml')) then
                      call mpp_error(FATAL, "Could not find nested grid namelist input_"//trim(pe_list_name)//".nml")
                   endif
                endif
@@ -1309,7 +1282,7 @@ module fv_control_mod
      a2b_ord                       => Atm%flagstruct%a2b_ord
      c2l_ord                       => Atm%flagstruct%c2l_ord
      ndims                         => Atm%flagstruct%ndims
-    
+
      dx_const                      => Atm%flagstruct%dx_const
      dy_const                      => Atm%flagstruct%dy_const
      deglon_start                  => Atm%flagstruct%deglon_start
@@ -1335,5 +1308,5 @@ module fv_control_mod
      compute_coords_locally        => Atm%flagstruct%compute_coords_locally
   end subroutine setup_pointers
 
-       
+
 end module fv_control_mod

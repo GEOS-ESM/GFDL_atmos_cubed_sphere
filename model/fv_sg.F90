@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -51,7 +51,12 @@ module fv_sg_mod
 !-----------------------------------------------------------------------
 ! FV sub-grid mixing
 !-----------------------------------------------------------------------
-  use constants_mod,      only: rdgas, rvgas, cp_air, cp_vapor, hlv, hlf, kappa, grav
+#if defined (SINGLE_FV)
+  use constantsr4_mod,    &
+#else
+  use constants_mod,      &
+#endif
+                          only: rdgas, rvgas, cp_air, cp_vapor, hlv, hlf, kappa, grav
   use tracer_manager_mod, only: get_tracer_index
   use field_manager_mod,  only: MODEL_ATMOS
   use fv_mp_mod,          only: mp_reduce_min, is_master
@@ -86,7 +91,7 @@ public  fv_subgrid_z, qsmith, neg_adj3
   real, parameter:: t2_max = 315.
   real, parameter:: t3_max = 325.
   real, parameter:: Lv0 =  hlv0 - dc_vap*t_ice   !< = 3.147782e6
-  real, parameter:: Li0 =  hlf0 - dc_ice*t_ice   !< = -2.431928e5 
+  real, parameter:: Li0 =  hlf0 - dc_ice*t_ice   !< = -2.431928e5
 
   real, parameter:: zvir =  rvgas/rdgas - 1.     !< = 0.607789855
   real, allocatable:: table(:),des(:)
@@ -107,26 +112,26 @@ contains
       integer, intent(in):: isd, ied, jsd, jed
       integer, intent(in):: tau         !< Relaxation time scale
       real, intent(in):: dt             !< model time step
-      real, intent(in)::   pe(is-1:ie+1,km+1,js-1:je+1) 
+      real, intent(in)::   pe(is-1:ie+1,km+1,js-1:je+1)
       real, intent(in):: peln(is  :ie,  km+1,js  :je)
       real, intent(in):: delp(isd:ied,jsd:jed,km)      !< Delta p at each model level
       real, intent(in):: delz(isd:,jsd:,1:)      !< Delta z at each model level
       real, intent(in)::  pkz(is:ie,js:je,km)
       logical, intent(in)::  hydrostatic
       integer, intent(in), optional:: k_bot
-! 
+!
       real, intent(inout):: ua(isd:ied,jsd:jed,km)
       real, intent(inout):: va(isd:ied,jsd:jed,km)
       real, intent(inout)::  w(isd:,jsd:,1:)
       real, intent(inout):: ta(isd:ied,jsd:jed,km)      !< Temperature
       real, intent(inout):: qa(isd:ied,jsd:jed,km,nq)   !< Specific humidity & tracers
-      real, intent(inout):: u_dt(is:ie,js:je,km) 
-      real, intent(inout):: v_dt(is:ie,js:je,km) 
+      real, intent(inout):: u_dt(is:ie,js:je,km)
+      real, intent(inout):: v_dt(is:ie,js:je,km)
       real, intent(inout):: t_dt(is:ie,js:je,km)
       real, intent(inout):: w_dt(is:ie,js:je,km)
 !---------------------------Local variables-----------------------------
       real, dimension(is:ie,km):: u0, v0, w0, t0, hd, te, gz, tvm, pm, den
-      real q0(is:ie,km,nq), qcon(is:ie,km) 
+      real q0(is:ie,km,nq), qcon(is:ie,km)
       real, dimension(is:ie):: gzh, lcp2, icp2, cvm, cpm, qs
       real ri_ref, ri, pt1, pt2, ratio, tv, cv, tmp, q_liq, q_sol
       real tv1, tv2, g2, h0, mc, fra, rk, rz, rdt, tvd, tv_surf
@@ -193,9 +198,9 @@ contains
       if ( pe(is,1,js) < 2. ) then
            t_min = t1_min
       else
-           t_min = t2_min 
+           t_min = t2_min
       endif
-      if ( k_bot < min(km,24)  ) then 
+      if ( k_bot < min(km,24)  ) then
          t_max = t2_max
       else
          t_max = t3_max
@@ -230,7 +235,7 @@ contains
 !$OMP                          private(kk,lcp2,icp2,tcp3,dh,dq,den,qs,qsw,dqsdt,qcon,q0,     &
 !$OMP                                  t0,u0,v0,w0,h0,pm,gzh,tvm,tmp,cpm,cvm,q_liq,q_sol,    &
 !$OMP                                  tv,gz,hd,te,ratio,pt1,pt2,tv1,tv2,ri_ref, ri,mc,km1)
-  do 1000 j=js,je  
+  do 1000 j=js,je
 
     do iq=1, nq
        do k=1,kbot
@@ -283,7 +288,7 @@ contains
           enddo
        elseif ( nwat==3 ) then
           do i=is,ie
-             q_liq = q0(i,k,liq_wat) 
+             q_liq = q0(i,k,liq_wat)
              q_sol = q0(i,k,ice_wat)
              cpm(i) = (1.-(q0(i,k,sphum)+q_liq+q_sol))*cp_air + q0(i,k,sphum)*cp_vapor + q_liq*c_liq + q_sol*c_ice
              cvm(i) = (1.-(q0(i,k,sphum)+q_liq+q_sol))*cv_air + q0(i,k,sphum)*cv_vap   + q_liq*c_liq + q_sol*c_ice
@@ -393,7 +398,7 @@ contains
 !!!         ri_ref = min(ri_max, ri_min + (ri_max-ri_min)*dim(500.e2,pm(i,k))/250.e2 )
             ri_ref = min(ri_max, ri_min + (ri_max-ri_min)*dim(400.e2,pm(i,k))/200.e2 )
 
-#ifdef MAPL_MODE 
+#ifdef MAPL_MODE
 ! Enhancing mixing at the model top
             if ( k==2 ) then
                  ri_ref = 4.*ri_ref
@@ -454,7 +459,7 @@ contains
             endif
          enddo
 
-!-------------- 
+!--------------
 ! Retrive Temp:
 !--------------
        if ( hydrostatic ) then
@@ -516,7 +521,7 @@ contains
                cvm(i) = (1.-(q0(i,kk,sphum)+q_liq+q_sol))*cv_air + q0(i,kk,sphum)*cv_vap   + q_liq*c_liq + q_sol*c_ice
             enddo
            endif
-     
+
             do i=is,ie
                tv = gz(i,kk) + 0.5*(u0(i,kk)**2+v0(i,kk)**2+w0(i,kk)**2)
                t0(i,kk) = (te(i,kk)- tv) / cvm(i)
@@ -582,7 +587,7 @@ contains
  end subroutine fv_subgrid_z
 
   subroutine qsmith_init
-  integer, parameter:: length=2621 
+  integer, parameter:: length=2621
   integer i
 
   if( .not. allocated(table) ) then
@@ -598,7 +603,7 @@ contains
        enddo
        des(length) = des(length-1)
   endif
- 
+
   end subroutine qsmith_init
 
 
@@ -618,7 +623,7 @@ contains
   eps10  = 10.*esl
 
   if( .not. allocated(table) ) call  qsmith_init
- 
+
       do k=k1,km
          do i=1,im
             ap1 = 10.*DIM(t(i,k), Tmin) + 1.
@@ -639,15 +644,15 @@ contains
            enddo
       enddo
       endif
- 
+
   end subroutine qsmith
- 
+
 
  subroutine qs_table(n,table)
       integer, intent(in):: n
       real table (n)
       real:: dt=0.1
-      real esbasw, tbasw, esbasi, tbasi, Tmin, tem, aa, b, c, d, e, esh20 
+      real esbasw, tbasw, esbasi, tbasi, Tmin, tem, aa, b, c, d, e, esh20
       real wice, wh2o
       integer i
 ! Constants
@@ -675,7 +680,7 @@ contains
       real table (n)
       real esupc(200)
       real:: dt=0.1
-      real esbasw, tbasw, esbasi, tbasi, Tmin, tem, aa, b, c, d, e, esh20 
+      real esbasw, tbasw, esbasi, tbasi, Tmin, tem, aa, b, c, d, e, esh20
       real wice, wh2o
       integer i
 
@@ -897,7 +902,7 @@ real, dimension(is:ie,js:je):: pt2, qv2, ql2, qi2, qs2, qr2, qg2, dp2, p2, icpk,
                qr2(i,j) = qr2(i,j) + dq
                dq1 = min( dq, qs2(i,j) )
                qs2(i,j) = qs2(i,j) - dq1
-               qi2(i,j) = qi2(i,j) + dq1 - dq 
+               qi2(i,j) = qi2(i,j) + dq1 - dq
                pt2(i,j) = pt2(i,j) - dq*icpk(i,j)
           endif
 ! fix negative rain water with available vapor
@@ -980,8 +985,8 @@ real, dimension(is:ie,js:je):: pt2, qv2, ql2, qi2, qs2, qr2, qg2, dp2, p2, icpk,
        do i=is, ie
           if( qv(i,j,k) < 0. .and. qv(i,j,k-1) > 0. ) then
               dq = min(-qv(i,j,k)*dp(i,j,k), qv(i,j,k-1)*dp(i,j,k-1))
-              qv(i,j,k-1) = qv(i,j,k-1) - dq/dp(i,j,k-1) 
-              qv(i,j,k  ) = qv(i,j,k  ) + dq/dp(i,j,k  ) 
+              qv(i,j,k-1) = qv(i,j,k-1) - dq/dp(i,j,k-1)
+              qv(i,j,k  ) = qv(i,j,k  ) + dq/dp(i,j,k  )
           endif
           if( qv(i,j,k) < 0. ) then
               qv(i,j,k+1) = qv(i,j,k+1) + qv(i,j,k)*dp(i,j,k)/dp(i,j,k+1)
@@ -990,7 +995,7 @@ real, dimension(is:ie,js:je):: pt2, qv2, ql2, qi2, qs2, qr2, qg2, dp2, p2, icpk,
        enddo
     enddo
   enddo
- 
+
 ! Bottom layer; Borrow from above
 !$OMP parallel do default(none) shared(is,ie,js,je,kbot,qv,dp) private(dq)
   do j=js, je
@@ -1000,8 +1005,8 @@ real, dimension(is:ie,js:je):: pt2, qv2, ql2, qi2, qs2, qr2, qg2, dp2, p2, icpk,
             if ( qv(i,j,kbot)>=0. ) goto 123
             if ( qv(i,j,k) > 0. ) then
                  dq = min(-qv(i,j,kbot)*dp(i,j,kbot), qv(i,j,k)*dp(i,j,k))
-                 qv(i,j,k   ) = qv(i,j,k   ) - dq/dp(i,j,k) 
-                 qv(i,j,kbot) = qv(i,j,kbot) + dq/dp(i,j,kbot) 
+                 qv(i,j,k   ) = qv(i,j,k   ) - dq/dp(i,j,k)
+                 qv(i,j,kbot) = qv(i,j,kbot) + dq/dp(i,j,kbot)
             endif
          enddo   ! k-loop
 123      continue
@@ -1009,7 +1014,7 @@ real, dimension(is:ie,js:je):: pt2, qv2, ql2, qi2, qs2, qr2, qg2, dp2, p2, icpk,
      enddo ! i-loop
  enddo   ! j-loop
 
- 
+
  if (present(qa)) then
 !-----------------------------------
 ! Fix negative cloud fraction
@@ -1026,7 +1031,7 @@ real, dimension(is:ie,js:je):: pt2, qv2, ql2, qi2, qs2, qr2, qg2, dp2, p2, icpk,
      enddo
    enddo
  enddo
- 
+
 ! Bottom layer; Borrow from above
 !$OMP parallel do default(none) shared(is,ie,js,je,qa,kbot,dp) &
 !$OMP                          private(dq)
@@ -1034,8 +1039,8 @@ real, dimension(is:ie,js:je):: pt2, qv2, ql2, qi2, qs2, qr2, qg2, dp2, p2, icpk,
      do i=is, ie
         if( qa(i,j,kbot) < 0. .and. qa(i,j,kbot-1)>0.) then
             dq = min(-qa(i,j,kbot)*dp(i,j,kbot), qa(i,j,kbot-1)*dp(i,j,kbot-1))
-            qa(i,j,kbot-1) = qa(i,j,kbot-1) - dq/dp(i,j,kbot-1) 
-            qa(i,j,kbot  ) = qa(i,j,kbot  ) + dq/dp(i,j,kbot  ) 
+            qa(i,j,kbot-1) = qa(i,j,kbot-1) - dq/dp(i,j,kbot-1)
+            qa(i,j,kbot  ) = qa(i,j,kbot  ) + dq/dp(i,j,kbot  )
         endif
 ! if qa is still < 0
         qa(i,j,kbot) = max(0., qa(i,j,kbot))

@@ -21,18 +21,10 @@ set(srcs
   output/output.f90
   main.F90)
 
-if (FV_PRECISION STREQUAL R4)
-  set(FMS FMS::fms_r4)
-elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
-  set(FMS FMS::fms_r8)
-elseif (FV_PRECISION STREQUAL R8)
-  set(FMS FMS::fms_r8)
-endif ()
-
 ecbuild_add_executable(
   TARGET mapz-driver
   SOURCES ${srcs}
-  LIBS ${FMS} MAPL)
+  LIBS FMS::fms MAPL)
 target_compile_definitions(mapz-driver PRIVATE MAPL_MODE SPMD TIMING)
 target_compile_options(mapz-driver PRIVATE ${TRACEBACK})
 set_target_properties(${this} PROPERTIES Fortran_MODULE_DIRECTORY ${esma_include}/${this})

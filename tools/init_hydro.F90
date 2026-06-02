@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -41,7 +41,7 @@ module init_hydro_mod
 !   <tr>
 !     <td>mpp_mod</td>
 !     <td>mpp_chksum, stdout, mpp_error, FATAL, NOTE,get_unit, mpp_sum, mpp_broadcast,
-!         mpp_get_current_pelist, mpp_npes, mpp_set_current_pelist, mpp_send, mpp_recv, 
+!         mpp_get_current_pelist, mpp_npes, mpp_set_current_pelist, mpp_send, mpp_recv,
 !         mpp_sync_self, mpp_npes, mpp_pe, mpp_sync</td>
 !   </tr>
 !   <tr>
@@ -54,8 +54,12 @@ module init_hydro_mod
 !   </tr>
 ! </table>
 
-
-      use constants_mod,      only: grav, rdgas, rvgas
+#if defined (SINGLE_FV)
+      use constantsr4_mod,    &
+#else
+      use constants_mod,      &
+#endif
+                              only: grav, rdgas, rvgas
       use fv_grid_utils_mod,  only: g_sum
       use fv_mp_mod,          only: is_master
       use field_manager_mod,  only: MODEL_ATMOS
@@ -72,7 +76,7 @@ module init_hydro_mod
 contains
 
 !-------------------------------------------------------------------------------
-!>@brief the subroutine 'p_var' computes auxiliary pressure variables for 
+!>@brief the subroutine 'p_var' computes auxiliary pressure variables for
 !! a hydrostatic state.
 !>@details The variables are: surfce, interface, layer-mean pressure, exener function
 !! Given (ptop, delp) computes (ps, pk, pe, peln, pkz)
@@ -137,7 +141,7 @@ contains
       if ( adjust_dry_mass ) then
          do i=ifirst,ilast
             ratio(i) = 1. + dpd/(ps(i,j)-ptop)
-         enddo 
+         enddo
          do k=1,km
             do i=ifirst,ilast
                delp(i,j,k) = delp(i,j,k) * ratio(i)
@@ -185,7 +189,7 @@ contains
       rdg = -rdgas / grav
       if ( present(make_nh) ) then
           if ( make_nh ) then
-             delz = 1.e25 
+             delz = 1.e25
 !$OMP parallel do default(none) shared(ifirst,ilast,jfirst,jlast,km,delz,rdg,pt,peln)
              do k=1,km
                 do j=jfirst,jlast
@@ -238,14 +242,14 @@ contains
 
 
 
- subroutine drymadj(km,  ifirst, ilast, jfirst,  jlast,  ng, &  
+ subroutine drymadj(km,  ifirst, ilast, jfirst,  jlast,  ng, &
                     cappa,   ptop, ps, delp, q,  nq, area,  nwat,  &
                     dry_mass, adjust_dry_mass, moist_phys, dpd, domain)
 
 ! INPUT PARAMETERS:
       integer km
       integer ifirst, ilast  !< Longitude strip
-      integer jfirst, jlast  !< Latitude strip    
+      integer jfirst, jlast  !< Latitude strip
       integer nq, ng, nwat
       real, intent(in):: dry_mass
       real, intent(in):: ptop
@@ -255,9 +259,9 @@ contains
       real(kind=R_GRID), intent(IN) :: area(ifirst-ng:ilast+ng, jfirst-ng:jlast+ng)
       type(domain2d), intent(IN) :: domain
 
-! INPUT/OUTPUT PARAMETERS:     
+! INPUT/OUTPUT PARAMETERS:
       real, intent(in)::   q(ifirst-ng:ilast+ng,jfirst-ng:jlast+ng,km,nq)
-      real, intent(in)::delp(ifirst-ng:ilast+ng,jfirst-ng:jlast+ng,km)     
+      real, intent(in)::delp(ifirst-ng:ilast+ng,jfirst-ng:jlast+ng,km)
       real, intent(inout):: ps(ifirst-ng:ilast+ng,jfirst-ng:jlast+ng)        !< surface pressure
       real, intent(out):: dpd
 ! Local
@@ -265,7 +269,7 @@ contains
       real  psmo, psdry
       integer i, j, k
 
-!$OMP parallel do default(none) shared(ifirst,ilast,jfirst,jlast,km,ps,ptop,psd,delp,nwat,q) 
+!$OMP parallel do default(none) shared(ifirst,ilast,jfirst,jlast,km,ps,ptop,psd,delp,nwat,q)
       do j=jfirst,jlast
 
          do i=ifirst,ilast
@@ -293,9 +297,9 @@ contains
       enddo
 
 ! Check global maximum/minimum
-      psdry = g_sum(domain, psd, ifirst, ilast, jfirst, jlast, ng, area, 1) 
+      psdry = g_sum(domain, psd, ifirst, ilast, jfirst, jlast, ng, area, 1)
        psmo = g_sum(domain, ps(ifirst:ilast,jfirst:jlast), ifirst, ilast, jfirst, jlast,  &
-                     ng, area, 1) 
+                     ng, area, 1)
 
 #ifdef MAPL_MODE
       if( adjust_dry_mass ) Then
@@ -332,7 +336,7 @@ contains
 !! basic state from input heights.
  subroutine hydro_eq(km, is, ie, js, je, ps, hs, drym, delp, ak, bk,  &
                      pt, delz, area, ng, mountain, hydrostatic, hybrid_z, domain)
-! Input: 
+! Input:
   integer, intent(in):: is, ie, js, je, km, ng
   real, intent(in):: ak(km+1), bk(km+1)
   real, intent(in):: hs(is-ng:ie+ng,js-ng:je+ng)
@@ -353,7 +357,7 @@ contains
   real mslp, z1, t1, p1, t0, a0, psm
   real ztop, c0
 #ifdef INIT_4BYTE
-  real(kind=4) ::  dps 
+  real(kind=4) ::  dps
 #else
   real dps    ! note that different PEs will get differt dps during initialization
               ! this has no effect after cold start
@@ -373,7 +377,7 @@ contains
         c0 = t0/a0
 
      if ( hybrid_z ) then
-          ptop = 100.   ! *** hardwired model top *** 
+          ptop = 100.   ! *** hardwired model top ***
      else
           ptop = ak(1)
      endif
@@ -408,8 +412,8 @@ contains
         ps(i,j) = ps(i,j) + dps
         gz(i,   1) = ztop
         gz(i,km+1) = hs(i,j)
-        ph(i,   1) = ptop                                                     
-        ph(i,km+1) = ps(i,j)                                               
+        ph(i,   1) = ptop
+        ph(i,km+1) = ps(i,j)
      enddo
 
      if ( hybrid_z ) then
@@ -418,14 +422,14 @@ contains
 !---------------
         do k=km,2,-1
            do i=is,ie
-              gz(i,k) = gz(i,k+1) - delz(i,j,k)*grav 
+              gz(i,k) = gz(i,k+1) - delz(i,j,k)*grav
            enddo
         enddo
 ! Correct delz at the top:
         do i=is,ie
             delz(i,j,1) = (gz(i,2) - ztop) / grav
         enddo
- 
+
         do k=2,km
            do i=is,ie
               if ( gz(i,k) >= z1 ) then

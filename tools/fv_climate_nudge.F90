@@ -1,10 +1,16 @@
 module fv_climate_nudge_mod
 
 use fv_arrays_mod,  only: REAL4, REAL8, FVPRC
-use fms_mod,          only: open_namelist_file, check_nml_error,  &
-                            close_file, stdlog, mpp_pe, mpp_root_pe, &
+use fms_mod,          only: check_nml_error,  &
+                            stdlog, mpp_pe, mpp_root_pe, &
                             write_version_number, string, error_mesg, &
-                            FATAL, WARNING, NOTE, file_exist
+                            FATAL, WARNING, NOTE
+#if defined (FMS1_IO)
+use fms_mod,          only: open_namelist_file, close_file, &
+                            file_exists => file_exist
+#else
+use fms2_io_mod,      only: file_exists, close_file
+#endif
 use mpp_mod,          only: input_nml_file
 use diag_manager_mod, only: register_diag_field, send_data,   &
                             register_static_field
@@ -113,20 +119,8 @@ real(FVPRC) :: missing_value = -1.e10
    if (module_is_initialized) return
 
  ! read namelist
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=fv_climate_nudge_nml, iostat=io)
    ierr = check_nml_error (io, 'fv_climate_nudge_nml')
-#else
-   if (file_exist('input.nml') ) then
-     unit = open_namelist_file()
-     ierr=1  
-     do while (ierr /= 0)
-       read (unit, nml=fv_climate_nudge_nml, iostat=io, end=10) 
-       ierr = check_nml_error (io, 'fv_climate_nudge_nml')
-     enddo   
-10   call close_file (unit)
-   endif
-#endif
 
 !----- write version and namelist to log file -----
 
@@ -325,7 +319,7 @@ logical :: virtual_temp_obs = .false.
 
  ! vertically dependent factor
    call get_factor (npz,pfull, factor)
- ! first time allocate state 
+ ! first time allocate state
    if (do_state_alloc) then
       call var_state_init ( is, ie, js, je, npz, State(1) )
       call var_state_init ( is, ie, js, je, npz, State(2) )
@@ -618,7 +612,7 @@ real(FVPRC)    :: psurf
          factor(k,2) = 0.
       enddo
    endif
-   
+
 ! Specific humidity
    if (skip_top_q > 0) then
       do k = 1, skip_top_q
@@ -808,7 +802,7 @@ end subroutine prt_minmax_3d
 !
   integer, intent(out), dimension(is:ie,js:je  ):: id1, id2, jdc
   real(FVPRC),    intent(out), dimension(is:ie,js:je,4):: s2c
- 
+
 !===============================================================================================
 
 ! local:
@@ -817,7 +811,7 @@ end subroutine prt_minmax_3d
   real(FVPRC):: a1, b1
   integer i, j, i1, i2, jc, i0, j0
 
- !pk0(1) = ak_in(1)**KAPPA 
+ !pk0(1) = ak_in(1)**KAPPA
  !pn_top = log(ak_in(1))
 
   do i=isd,ied-1
@@ -991,7 +985,7 @@ end subroutine prt_minmax_3d
        gz(km+1) = gz_dat(i,j)
        pk0(km+1) = ph_dat(i,j,km+1)**KAPPA
        do k=km,1,-1
-           gz(k) = gz(k+1) + RDGAS*tp_dat(i,j,k)*(pn_dat(i,j,k+1)-pn_dat(i,j,k)) 
+           gz(k) = gz(k+1) + RDGAS*tp_dat(i,j,k)*(pn_dat(i,j,k+1)-pn_dat(i,j,k))
            pk0(k) = ph_dat(i,j,k)**KAPPA
        enddo
        if ( phis(i,j) .gt. gz_dat(i,j) ) then

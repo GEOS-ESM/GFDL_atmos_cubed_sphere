@@ -81,7 +81,12 @@ module fv_mapz_mod
 !   </tr>
 ! </table>
 
-  use constants_mod,     only: radius, pi=>pi_8, rvgas, rdgas, grav, hlv, hlf, hls, cp_air, cp_vapor
+#if defined (SINGLE_FV)
+  use constantsr4_mod,    &
+#else
+  use constants_mod,      &
+#endif
+                         only: radius, pi=>pi_8, rvgas, rdgas, grav, hlv, hlf, hls, cp_air, cp_vapor
   use tracer_manager_mod,only: get_tracer_index
   use field_manager_mod, only: MODEL_ATMOS
   use fv_grid_utils_mod, only: ptop_min
@@ -176,7 +181,7 @@ contains
   real, intent(inout):: delp(isd:ied,jsd:jed,km)      !< pressure thickness
   real, intent(inout)::  pe(is-1:ie+1,km+1,js-1:je+1) !< pressure at layer edges
   real, intent(inout):: ps(isd:ied,jsd:jed)           !< surface pressure
- 
+
 ! u-wind will be ghosted one latitude to the north upon exit
   real, intent(inout)::  u(isd:ied  ,jsd:jed+1,km)   !< u-wind (m/s)
   real, intent(inout)::  v(isd:ied+1,jsd:jed  ,km)   !< v-wind (m/s)
@@ -219,7 +224,7 @@ contains
   real, dimension(is:ie,km)   :: dp2, dpe1,dpe2, dpn1,dpn2
   real, dimension(is:ie,km+1) :: pe1, pe2, pk2, pn1, pn2, phis
   real, dimension(is:ie+1,km+1):: pe0, pe3
-  real, dimension(is:ie+1,km)  :: dpe0,dpe3 
+  real, dimension(is:ie+1,km)  :: dpe0,dpe3
   real, dimension(is:ie):: gz, cvm
   real(kind=8):: tesum, zsum, dtmp
   real   :: rcp, rg, tmp, tpe, rrg, bkh, k1k, dlnp
@@ -372,7 +377,7 @@ contains
 ! Transform "density pt" to "density temp"
 !$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,nwat, &
 !$OMP                                  sphum,liq_wat,rainwat,ice_wat,snowwat,graupel,&
-!$OMP                                  q,cappa,r_vir,pt,rrg,delp,delz,k1k) & 
+!$OMP                                  q,cappa,r_vir,pt,rrg,delp,delz,k1k) &
 !$OMP                           private(i,j,k,gz,cvm)
                do k=1,km
                  do j=js,je
@@ -431,7 +436,7 @@ contains
 ! TE using 3D winds (pt is virtual potential temperature):
 !$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,hs,nwat, &
 !$OMP                                  sphum,liq_wat,rainwat,ice_wat,snowwat,graupel,&
-!$OMP                                  te,q,cappa,r_vir,pt,pe,pkz,rrg,delp,delz,k1k,& 
+!$OMP                                  te,q,cappa,r_vir,pt,pe,pkz,rrg,delp,delz,k1k,&
 !$OMP                                  gridstruct,u,v,w) &
 !$OMP                           private(i,j,k,phis,gz,cvm)
              do j=js,je
@@ -517,7 +522,7 @@ contains
             pn2(i,2: km  ) = log(peO(i,2:km,j))
          enddo
          dpn1(is:ie,1:km) = pn1(is:ie,2:km+1)-pn1(is:ie,1:km)
-         dpn2(is:ie,1:km) = pn2(is:ie,2:km+1)-pn2(is:ie,1:km)  
+         dpn2(is:ie,1:km) = pn2(is:ie,2:km+1)-pn2(is:ie,1:km)
          if (remap_te) then
            call map_scalar(km,  pn1,  te,       &
                            km,  pn2,  q2,       &
@@ -535,9 +540,9 @@ contains
          endif
       endif
 
-1000  continue             
+1000  continue
 
-      call timing_off('Remap_T')  
+      call timing_off('Remap_T')
 
 
       call timing_on('Remap_Q')
@@ -589,7 +594,7 @@ contains
 !----------------
    if ( .not. hydrostatic ) then
 
-      call timing_on('Remap_NH')           
+      call timing_on('Remap_NH')
 
 ! Remap delz for hybrid sigma-p coordinate
 !$OMP parallel do default(none) shared(is,ie,isd,ied,js,je,jsd,jed,km,kord,ikord_wz, &
@@ -664,7 +669,7 @@ contains
          w(is:ie,j,:) = w2
 1002  continue
 
-      call timing_off('Remap_NH')          
+      call timing_off('Remap_NH')
 
     endif
 
@@ -1111,7 +1116,7 @@ if( last_step .and. (.not.do_adiabatic_init)  ) then
            zsum = mpp_global_sum(domain, tmp_2D, flags=sflag)
            dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cp*zsum)
       else
-           tmp_2D = zsum1*gridstruct%area_64(is:ie,js:je) 
+           tmp_2D = zsum1*gridstruct%area_64(is:ie,js:je)
            zsum = mpp_global_sum(domain, tmp_2D, flags=sflag)
            dtmp = E_Flux*(grav*pdt*4.*pi*radius**2) / (cv_air*zsum)
       endif
@@ -1211,7 +1216,7 @@ endif        ! end last_step check
     elseif ( last_step .and. adiabatic ) then
 
 !$OMP do
-        do k=1,km                          
+        do k=1,km
            do j=js,je
                  do i=is,ie
                     pt(i,j,k) = (pt(i,j,k)+dtmp*pkz(i,j,k))
@@ -1553,7 +1558,7 @@ endif        ! end last_step check
    real, allocatable :: q4(:,:,:)
    real    qsum, pl, pr, pfac0, pfac1, pfac2, dp, esl
    integer i, k, l, m, k0
-   integer LM1,LP0,LP1 
+   integer LM1,LP0,LP1
    logical gmao_bot, gmao_top
 
                               gmao_bot=.false.
