@@ -974,6 +974,14 @@ module fv_arrays_mod
    logical :: GEOS_MLT = .false.          !< Adding GEOS_MLT. Default false, if levels 
                                           !< are 186 or 190, this will turn to true and adds GEOS_MLT physics and dynamics
 
+   logical :: do_mol_diffusion = .false.  !< Include molecular diffusion
+ 
+   integer :: mol_diffusion_k_top = 1     !< Top level to apply molecular diffusion
+
+   integer :: mol_diffusion_k_bot = 10    !< Bottom level to apply molecular diffusion 
+
+   real :: prandtl_number = 1.0           !< Tuning parameter for molecular diffusion -- based on thermal conduction   
+
    logical :: use_hydro_pressure = .false.   !< Whether to compute hydrostatic pressure for input to the physics.
                                              !< Currently only enabled for the fvGFS model.
                                              !< Ignored in hydrostatic simulations. The default is .false.

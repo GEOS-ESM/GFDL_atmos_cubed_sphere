@@ -135,7 +135,8 @@ contains
                       akap, cappa, kord_mt, kord_wz, kord_tr, kord_tm,  peln, te0_2d,        &
                       ng, ua, va, omga, te, ws, fill, reproduce_sum, out_dt, dtdt,      &
                       ptop, ak, bk, pfull, flagstruct, gridstruct, domain, do_sat_adj, &
-                      hydrostatic, GEOS_MLT, year, month, day, minute, hour, second, hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
+                      hydrostatic, GEOS_MLT, year, month, day, minute, hour, second, mol_diffusion_k_top, mol_diffusion_k_bot, &
+                      hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
                       mfx, mfy, cx, cy, remap_option, gmao_remap)
   logical, intent(in):: last_step
   real,    intent(in):: mdt                    !< remap time step
@@ -191,6 +192,8 @@ contains
   real, intent(inout), dimension(isd:,jsd:,1:)::delz, q_con, cappa
   logical, intent(in):: hydrostatic
   logical, intent(in):: GEOS_MLT
+  integer, intent(in):: mol_diffusion_k_top
+  integer, intent(in):: mol_diffusion_k_bot
   logical, intent(in):: hybrid_z
   logical, intent(in):: out_dt
 
@@ -232,7 +235,8 @@ contains
   integer:: i,j,k
   integer:: nt, liq_wat, ice_wat, rainwat, snowwat, cld_amt, graupel, iq, n, kmp, kp, k_next
   logical:: remap_t, remap_pt, remap_te
-
+  real :: blend_factor, kappa_blend, cp_blend
+  
   remap_t  = .false.
   remap_pt = .false.
   remap_te = .false.
@@ -351,13 +355,13 @@ contains
   endif
 
 !$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,kord_tm,remap_t, &
-!$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic,GEOS_MLT, &
+!$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic,GEOS_MLT,mol_diffusion_k_top,mol_diffusion_k_bot, &
 !$OMP                                  pt,pk,rg,peln,q,nwat,liq_wat,rainwat,ice_wat,snowwat,    &
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,kord_tr,fill, adiabatic, &
 !$OMP                                  hs,w,ws,kord_wz,rrg,kord_mt,consv,remap_option,gmao_remap,Cp_MLT,Kappa_MLT)    &
-!$OMP                          private(gz,cvm,bkh,dp2,   &
+!$OMP                          private(gz,cvm,bkh,dp2,blend_factor,kappa_blend,cp_blend,   &
 !$OMP                                  pe0,pe1,pe2,pe3,pk1,pk2,pn1,pn2,phis,q2,w2,dpln,dlnp)
   do 1000 j=js,je+1
 
@@ -411,56 +415,75 @@ contains
                        
             if ( hydrostatic ) then
                
-               !*****************
-               ! GEOS_MLT Modification
-               !*****************
-                    
-               !if ( GEOS_MLT ) then
+                !*****************
+                ! GEOS_MLT Modification
+                !*****************
+                     
+                if ( GEOS_MLT ) then
 
-                  !call pkez(km, is, ie, js, je, j, pe, pk, akap, peln, pkz, ptop)
-               ! 
-                !  do k=km,1,-1
-                !     if (k .lt. 10) then
-                !        do i=is,ie
-                !           phis(i,k) = phis(i,k+1) + Cp_MLT(i,j,k)*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
-                !        enddo
-                !        print *, 'MLT phis', phis
-                !     else
-                !        do i=is,ie
-                !           phis(i,k) = phis(i,k+1) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
-                !        enddo
-                !        print *, 'non-MLT phis', phis
-                !     endif
-                !  enddo
-                !  do k=1,km+1
-                !     do i=is,ie
-                !        phis(i,k) = phis(i,k) * pe1(i,k)
-                !     enddo
-                !  enddo
-                !  do k=1,km
-                !     if (k .lt. 10) then
-                !        do i=is,ie
-                !           te(i,j,k) = 0.25*gridstruct%rsin2(i,j)*(u(i,j,k)**2+u(i,j+1,k)**2 +  &
-                !                v(i,j,k)**2+v(i+1,j,k)**2 -  &
-                !                (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j))  &
-                !                + Cp_MLT(i,j,k)*pt(i,j,k)*pkz(i,j,k) +  (phis(i,k+1)-phis(i,k))/(pe1(i,k+1)-pe1(i,k))
-                !        enddo
-                !     else
-                !        do i=is,ie
-                !            te(i,j,k) = 0.25*gridstruct%rsin2(i,j)*(u(i,j,k)**2+u(i,j+1,k)**2 +  &
-                !                    v(i,j,k)**2+v(i+1,j,k)**2 -  &
-                !                   (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j))  &
-                !                 + cp_air*pt(i,j,k)*pkz(i,j,k) &
-                !                 + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j))
-                !        enddo
-                !     endif
-                !  enddo
-                 
-                  ! ******
-                  ! End GEOS_MLT Modification
-                  ! ******
+                   call pkez(km, is, ie, js, je, j, pe, pk, akap, peln, pkz, ptop)
+
+                   do i=is,ie
+                      phis(i,km+1) = hs(i,j)
+                   enddo
+
+                   do k=km,1,-1
+                      do i=is,ie
+                         if (k .lt. mol_diffusion_k_top) then
+                            phis(i,k) = phis(i,k+1) + Kappa_MLT(i,j,k)*cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+                         else if (k .le. mol_diffusion_k_top + 2) then
+                            blend_factor = real(k - mol_diffusion_k_top) / 3.0
+                            kappa_blend = (1.0 - blend_factor)*Kappa_MLT(i,j,k) + blend_factor*akap
+                            phis(i,k) = phis(i,k+1) + kappa_blend*cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+                         else
+                            phis(i,k) = phis(i,k+1) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
+                         endif
+                      enddo
+                   enddo
+
+                   do k=1,km+1
+                      do i=is,ie
+                         phis(i,k) = phis(i,k) * pe1(i,k)
+                      enddo
+                   enddo
+
+                ! Compute cp*T + KE with variable cp in MLT
+                
+                   do k=1,km
+                      do i=is,ie
+                         if (k .lt. mol_diffusion_k_top) then
+                            ! Use variable cp from MSIS in thermosphere
+                            te(i,j,k) = 0.25*gridstruct%rsin2(i,j)*(u(i,j,k)**2+u(i,j+1,k)**2 +  &
+                            v(i,j,k)**2+v(i+1,j,k)**2 -  &
+                            (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j))  &
+                            + Cp_MLT(i,j,k)*pt(i,j,k)*pkz(i,j,k) &
+                            + (phis(i,k+1)-phis(i,k))/(pe1(i,k+1)-pe1(i,k))
+                         else if (k .le. mol_diffusion_k_top + 2) then
+                            ! Blend cp in transition region
+                            blend_factor = real(k - mol_diffusion_k_top) / 3.0
+                            cp_blend = (1.0 - blend_factor)*Cp_MLT(i,j,k) + blend_factor*cp_air
+                            te(i,j,k) = 0.25*gridstruct%rsin2(i,j)*(u(i,j,k)**2+u(i,j+1,k)**2 +  &
+                            v(i,j,k)**2+v(i+1,j,k)**2 -  &
+                            (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j))  &
+                            + cp_blend*pt(i,j,k)*pkz(i,j,k) &
+                            + (phis(i,k+1)-phis(i,k))/(pe1(i,k+1)-pe1(i,k))
+                         else
+                            ! Standard atmosphere below transition
+                            te(i,j,k) = 0.25*gridstruct%rsin2(i,j)*(u(i,j,k)**2+u(i,j+1,k)**2 +  &
+                            v(i,j,k)**2+v(i+1,j,k)**2 -  &
+                            (u(i,j,k)+u(i,j+1,k))*(v(i,j,k)+v(i+1,j,k))*gridstruct%cosa_s(i,j))  &
+                            + cp_air*pt(i,j,k)*pkz(i,j,k) &
+                            + (phis(i,k+1)-phis(i,k))/(pe1(i,k+1)-pe1(i,k))
+                         endif
+                      enddo
+                   enddo
+
+
+                !*******
+                ! End GEOS_MLT Modification
+                !*******
                
-               !else
+                else
 
                   call pkez(km, is, ie, js, je, j, pe, pk, akap, peln, pkz, ptop)
                   do i=is,ie
