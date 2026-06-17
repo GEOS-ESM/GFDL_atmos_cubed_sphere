@@ -135,7 +135,7 @@ contains
                       akap, cappa, kord_mt, kord_wz, kord_tr, kord_tm,  peln, te0_2d,        &
                       ng, ua, va, omga, te, ws, fill, reproduce_sum, out_dt, dtdt,      &
                       ptop, ak, bk, pfull, flagstruct, gridstruct, domain, do_sat_adj, &
-                      hydrostatic, GEOS_MLT, year, month, day, minute, hour, second, mol_diffusion_k_top, mol_diffusion_k_bot, &
+                      hydrostatic, GEOS_MLT, year, month, day, hour, minute, second, mol_diffusion_k_top, mol_diffusion_k_bot, &
                       hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
                       mfx, mfy, cx, cy, remap_option, gmao_remap)
   logical, intent(in):: last_step
@@ -509,7 +509,7 @@ contains
                                  + (phis(i,k+1)-phis(i,k))/(pe(i,k+1,j)-pe(i,k,j))
                      enddo
                   enddo  
-               !endif                  
+               endif                  
             else     
                
 ! TE using 3D winds (pt is virtual potential temperature):

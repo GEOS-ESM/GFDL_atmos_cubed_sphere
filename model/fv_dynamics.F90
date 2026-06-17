@@ -764,7 +764,8 @@ contains
                      kord_tracer, flagstruct%kord_tm, peln, te_2d,               &
                      ng, ua, va, omga, dp1, ws, fill, reproduce_sum,             &
                      idiag%id_mdt>0, dtdt_m, ptop, ak, bk, pfull, flagstruct, gridstruct, domain,   &
-                     flagstruct%do_sat_adj, hydrostatic, GEOS_MLT, year, month, day, hour, minute, second, hybrid_z, do_omega,     &
+                     flagstruct%do_sat_adj, hydrostatic, GEOS_MLT, year, month, day, hour, minute, second, &
+                     flagstruct%mol_diffusion_k_top, flagstruct%mol_diffusion_k_bot, hybrid_z, do_omega,     &
                      flagstruct%adiabatic, do_adiabatic_init, &
                      mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap)
 

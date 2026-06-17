@@ -12,7 +12,7 @@ contains
 
     subroutine calc_gas_specific_heat_MLT(is, ie, js, je, isd, ied, jsd, jed, km, pfull, &
                                            gridstruct, Cp_MLT, Kappa_MLT, year, month, day, hour, minute, second, &
-                                           ifirst, ilast, jfirst, jlast)
+                                           ifirst, ilast, jfirst, jlast, z_layer_km)
 
         implicit none
 
@@ -23,6 +23,7 @@ contains
         integer, intent(in) :: km
         real, intent(in) :: pfull(km)
         type(fv_grid_type), intent(in), target :: gridstruct
+        real, intent(in), optional :: z_layer_km(isd:ied, jsd:jed, km)
 
         ! --- Intent OUT ---
         real, intent(inout) :: Cp_MLT(isd:ied, jsd:jed, km)      ! Variable specific heat [J/(kg·K)]
@@ -92,8 +93,12 @@ contains
 
               do k = 1, km
 
-                 estz = z_approx(k)
-
+                 if (present(z_layer_km)) then
+                    estz = z_layer_km(i,j,k)
+                 else
+                    estz = z_approx(k)
+                 endif
+                 
                  call msis_point(year, month, day, hour, estz, &
                       real(lat_deg, 4), real(lon_deg, 4), stl, &
                       Om_k, N2m_k, O2m_k, T_k)
