@@ -980,7 +980,20 @@ module fv_arrays_mod
 
    integer :: mol_diffusion_k_bot = 10    !< Bottom level to apply molecular diffusion 
 
-   real :: prandtl_number = 1.0           !< Tuning parameter for molecular diffusion -- based on thermal conduction   
+   real :: prandtl_number = 1.0           !< Tuning parameter for molecular diffusion -- based on thermal conduction
+
+   ! GEOS-MLT molecular momentum diffusion controls. These can be set from
+   ! fv_core_nml or from GEOS resources through FV_StateMod.F90.
+   logical :: geos_mlt_momdiff_enable = .true.      !< Apply molecular momentum diffusion to U/V
+   logical :: geos_mlt_momdiff_diag = .true.       !< Print molecular momentum diffusion diagnostics
+   logical :: geos_mlt_momdiff_heat = .false.!< Add molecular KE-loss heating to PT
+   integer :: geos_mlt_momdiff_kmax = 20           !< Maximum top levels to consider
+   integer :: geos_mlt_momdiff_print_stride = 20   !< Print every N calls
+   real :: geos_mlt_momdiff_pr = 0.70              !< Prandtl number for nu = Pr*lambda/(rho*cp)
+   real :: geos_mlt_momdiff_nu_scale = 1.0           !< Runtime multiplier for diagnosed nu
+   real :: geos_mlt_momdiff_pmax_pa = 1.0          !< Apply where layer pressure <= this value [Pa]
+   real :: geos_mlt_momdiff_rmax = 0.20            !< Explicit diffusion stability cap
+   real :: geos_mlt_momdiff_nu_max = 1.0e6         !< Absolute kinematic viscosity cap [m2 s-1]
 
    logical :: use_hydro_pressure = .false.   !< Whether to compute hydrostatic pressure for input to the physics.
                                              !< Currently only enabled for the fvGFS model.
@@ -2144,3 +2157,4 @@ end subroutine deallocate_fv_nest_BC_type_3d
 
 
 end module fv_arrays_mod
+

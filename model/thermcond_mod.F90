@@ -1,4 +1,4 @@
-! Thermal conduction +++ awlee
+! Thermal conduction +++ geos_mlt
 
 module thermcond_mod
   implicit none
@@ -76,4 +76,5 @@ contains
   end subroutine tc_calc
 
 end module thermcond_mod
+
 

@@ -130,11 +130,12 @@ module dyn_core_mod
   use boundary_mod,         only: extrapolation_BC,  nested_grid_BC_apply_intT
 
 ! +++ GEOS_MLT  
-  use calc_gas_specific_heat_mlt_mod, only: calc_gas_specific_heat_mlt
+  use calc_gas_specific_heat_mlt_mod, only: calc_gas_specific_heat_mlt, calc_mlt_thermo_state
   use ESMF, only: ESMF_Clock, ESMF_Time, ESMF_ClockGet, ESMF_TimeGet
 
   use cond_driver_mod, only : cond_driver_from_msis
   use cond_driver_mod, only : cond_driver_apply
+  use mol_mom_diff_mod, only : mol_mom_diff_compute_tend
 ! +++ GEOS_MLT
 
 
@@ -162,6 +163,15 @@ public :: dyn_core, del2_cubed, init_ijk_mem
   integer :: kmax=1
   real, parameter :: mlt_pressure_cutoff_pa = 1.0  ! 1.0 Pa = 0.01 hPa
 
+  ! GEOS_MLT baseline: explicit dKappa hydrostatic contribution.
+  ! The dKappa term is applied to the MLT hydrostatic geopotential update.
+  ! The discrete estimate uses interface-averaged Kappa from neighboring layers.
+  logical, parameter :: geos_mlt_apply_explicit_dk_hydro = .true.
+
+  ! GEOS_MLT baseline: runtime-controlled molecular momentum diffusion.
+  ! The coefficients are stored in flagstruct and are read from fv_core_nml.
+  integer :: geos_mlt_momdiff_call_count = 0
+
 contains
 
 !-----------------------------------------------------------------------
@@ -169,10 +179,11 @@ contains
 !-----------------------------------------------------------------------
  
  subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, k_split, n_split, zvir, cp, akap, cappa, grav, hydrostatic, GEOS_MLT, &
-                     year, month, day, hour, minute, second, u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
+                     year, doy, ut_seconds, u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
                      uc, vc, mfx, mfy, cx, cy, pkz, peln, q_con, ak, bk, dpx, &
                      ks, gridstruct, flagstruct, neststruct, idiag, bd, domain, &
-                     init_step, i_pack, end_step, diss_est,time_total, dtdt_tc)
+                     init_step, i_pack, end_step, diss_est,time_total, dtdt_tc, &
+                     dtdt_molke, dtdt_dcon, dudt_moldiff, dvdt_moldiff)
 
     integer, intent(IN) :: npx
     integer, intent(IN) :: npy
@@ -185,7 +196,7 @@ contains
     logical, intent(IN) :: hydrostatic
     
     logical, intent(IN) :: GEOS_MLT                                        ! Needed for GEOS_MLT
-    integer, intent(IN) :: year, month, day, hour, minute, second          ! Needed for GEOS_MLT MSIS call
+    integer, intent(IN) :: year, doy, ut_seconds                           ! Needed for GEOS_MLT MSIS call
     
     logical, intent(IN) :: init_step, end_step
     real, intent(in) :: pfull(npz)
@@ -203,6 +214,10 @@ contains
     real, intent(inout) :: q(   bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz, nq)  ! 
     real, intent(in), optional:: time_total  !< total time (seconds) since start
     real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_tc ! thermal conduction K/s
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_molke ! molecular KE-loss heating diagnostic K/s
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_dcon ! native d_con heating diagnostic K/s
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dudt_moldiff ! molecular U tendency m/s2
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dvdt_moldiff ! molecular V tendency m/s2
     real, intent(inout) :: diss_est(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  !< skeb dissipation estimate
 
 !-----------------------------------------------------------------------
@@ -247,12 +262,21 @@ contains
     type(fv_diag_type),  intent(IN)            :: idiag
     type(domain2d),      intent(INOUT)         :: domain
     
-    ! +++ awlee
+    ! +++ geos_mlt
     real, allocatable, dimension(:,:,:) :: heat_tc
     real, allocatable, dimension(:,:,:) :: kappa_mlt_dyn
     real, allocatable, dimension(:,:,:) :: cp_mlt_dyn
+    real, allocatable, dimension(:,:,:) :: lambda_mlt_dyn
+    real, allocatable, dimension(:,:,:) :: rho_mlt_dyn
+    real, allocatable, dimension(:,:,:) :: alpha_mlt_dyn
+    real, allocatable, dimension(:,:,:) :: u_momdiff_tend
+    real, allocatable, dimension(:,:,:) :: v_momdiff_tend
+    real, allocatable, dimension(:,:,:) :: momdiff_ke_heat_tend
+    real, allocatable, dimension(:,:,:) :: t_phys_sync
     real :: p_layer
-    ! --- awlee
+    real :: cp_eff
+    ! --- geos_mlt
+
 
     real, allocatable, dimension(:,:,:):: pem, heat_source
 ! Auto 1D & 2D arrays:
@@ -421,10 +445,81 @@ contains
     ! They keep dry-air defaults when GEOS_MLT is disabled.
     allocate(kappa_mlt_dyn(isd:ied, jsd:jed, npz))
     allocate(cp_mlt_dyn(isd:ied, jsd:jed, npz))
+    allocate(lambda_mlt_dyn(isd:ied, jsd:jed, npz))
+    allocate(rho_mlt_dyn(isd:ied, jsd:jed, npz))
+    allocate(alpha_mlt_dyn(isd:ied, jsd:jed, npz))
+    allocate(u_momdiff_tend(isd:ied, jsd:jed, npz))
+    allocate(v_momdiff_tend(isd:ied, jsd:jed, npz))
+    allocate(momdiff_ke_heat_tend(isd:ied, jsd:jed, npz))
     
     kappa_mlt_dyn(:,:,:) = akap
     cp_mlt_dyn(:,:,:) = cp_air
+    lambda_mlt_dyn(:,:,:) = 0.0
+    rho_mlt_dyn(:,:,:) = 0.0
+    alpha_mlt_dyn(:,:,:) = 0.0
+    u_momdiff_tend(:,:,:) = 0.0
+    v_momdiff_tend(:,:,:) = 0.0
+    momdiff_ke_heat_tend(:,:,:) = 0.0
+    if (present(dtdt_molke)) dtdt_molke(:,:,:) = 0.0
+    if (present(dtdt_dcon)) dtdt_dcon(:,:,:) = 0.0
+    if (present(dudt_moldiff)) dudt_moldiff(:,:,:) = 0.0
+    if (present(dvdt_moldiff)) dvdt_moldiff(:,:,:) = 0.0
 
+
+
+    ! +++ geos_mlt
+    if ( GEOS_MLT .and. hydrostatic ) then
+
+       ! Synchronize the GEOS-side dry PKZ convention with the MLT-aware
+       ! FV3 dynamics convention without changing physical temperature.
+       ! Complete the pending pt/delp halo update, preserve T = pt*pkz,
+       ! recompute MLT-aware pkz, then reset pt = T/pkz.
+       call complete_group_halo_update(i_pack(1), domain)
+
+       allocate(t_phys_sync(is:ie, js:je, npz))
+
+       do k=1,npz
+          do j=js,je
+             do i=is,ie
+                t_phys_sync(i,j,k) = pt(i,j,k) * pkz(i,j,k)
+             enddo
+          enddo
+       enddo
+
+       call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
+                  gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                  year, doy, ut_seconds, gridstruct, delz, &
+                  Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn, &
+                  Lambda_MLT_out=lambda_mlt_dyn, Rho_MLT_out=rho_mlt_dyn, Alpha_MLT_out=alpha_mlt_dyn)
+
+       do k=1,npz
+          do j=js,je
+             do i=is,ie
+                pt(i,j,k) = t_phys_sync(i,j,k) / pkz(i,j,k)
+             enddo
+          enddo
+       enddo
+
+       deallocate(t_phys_sync)
+
+       if (is_master()) then
+          write(*,*) 'GEOS_MLT_MOMDIFF apply=', flagstruct%geos_mlt_momdiff_enable, &
+               ' diag=', flagstruct%geos_mlt_momdiff_diag, &
+               ' heat=', flagstruct%geos_mlt_momdiff_heat, &
+               ' Pr=', flagstruct%geos_mlt_momdiff_pr, &
+               ' nu_scale=', flagstruct%geos_mlt_momdiff_nu_scale, &
+               ' pmax_pa=', flagstruct%geos_mlt_momdiff_pmax_pa, &
+               ' kmax=', flagstruct%geos_mlt_momdiff_kmax, &
+               ' rmax=', flagstruct%geos_mlt_momdiff_rmax
+       endif
+
+       ! Restart the grouped halo update because pt has been changed.
+       ! The first split loop will complete this update as in native FV3.
+       call start_group_halo_update(i_pack(1), delp, domain, complete=.false.)
+       call start_group_halo_update(i_pack(1), pt,   domain, complete=.true.)
+
+    endif
+    ! --- geos_mlt
 
 
 !-----------------------------------------------------
@@ -569,8 +664,9 @@ contains
       if ( hydrostatic ) then
            call geopk(ptop, pe, peln, delpc, pkc, gz, phis, ptc, q_con, pkz, npz, akap, .true., &
                       gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
-                      year, month, day, hour, minute, second, gridstruct, delz,&
-                      Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn)
+                      year, doy, ut_seconds, gridstruct, delz,& 
+                      Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn, &
+                  Lambda_MLT_out=lambda_mlt_dyn, Rho_MLT_out=rho_mlt_dyn, Alpha_MLT_out=alpha_mlt_dyn)
       else
 #ifndef SW_DYNAMICS
            if ( it == 1 ) then
@@ -688,12 +784,13 @@ contains
             end do
       endif
 
+
                                                      call timing_on('d_sw')
 !$OMP parallel do default(none) shared(npz,flagstruct,nord_v,pfull,damp_vt,hydrostatic,last_step, &
 !$OMP                                  is,ie,js,je,isd,ied,jsd,jed,omga,delp,gridstruct,npx,npy,  &
 !$OMP                                  ng,zh,vt,ptc,pt,u,v,w,uc,vc,ua,va,divgd,mfx,mfy,cx,cy,     &
 !$OMP                                  crx,cry,xfx,yfx,q_con,zvir,sphum,nq,q,dt,bd,rdt,iep1,jep1, &
-!$OMP                                  heat_source,diss_est,dpx,GEOS_MLT,year,month,day,hour,minute,second, &
+!$OMP                                  heat_source,diss_est,dpx,GEOS_MLT,year,doy,ut_seconds,     &
 !$OMP                                  kappa_mlt_dyn,peln) &
 !$OMP                          private(nord_k, nord_w, nord_t, damp_w, damp_t, d2_divg, kfac, &
 !$OMP                          d_con_k,kgb, hord_m, hord_v, hord_t, hord_p, wk, heat_s,diss_e, z_rat)
@@ -829,6 +926,7 @@ contains
 
                                                      call timing_off('d_sw')
 
+
     if( flagstruct%fill_dp ) call mix_dp(hydrostatic, w, delp, pt, npz, ak, bk, .false., flagstruct%fv_debug, bd)
 
                                                              call timing_on('COMM_TOTAL')
@@ -868,6 +966,7 @@ contains
 #endif
                                        call timing_off('COMM_TOTAL')
 
+
      !Want to move this block into the hydro/nonhydro branch above and merge the two if structures
      if (gridstruct%nested) then
        call nested_grid_BC_apply_intT(delp, &
@@ -886,10 +985,12 @@ contains
      end if
 
      if ( hydrostatic ) then
+
         call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
                    gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
-                   year, month, day, hour, minute, second, gridstruct, delz,& 
-                   Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn)
+                   year, doy, ut_seconds, gridstruct, delz,& 
+                   Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn, &
+                  Lambda_MLT_out=lambda_mlt_dyn, Rho_MLT_out=rho_mlt_dyn, Alpha_MLT_out=alpha_mlt_dyn)
      else
 #ifndef SW_DYNAMICS
                                             call timing_on('UPDATE_DZ')
@@ -1020,6 +1121,57 @@ contains
 #endif
    endif
                                        call timing_off('PG_D')
+
+   ! +++ GEOS_MLT v13.2 runtime-controlled molecular momentum diffusion
+   if ( GEOS_MLT .and. (flagstruct%geos_mlt_momdiff_enable .or. &
+        flagstruct%geos_mlt_momdiff_diag .or. flagstruct%geos_mlt_momdiff_heat) ) then
+      geos_mlt_momdiff_call_count = geos_mlt_momdiff_call_count + 1
+
+      call mol_mom_diff_compute_tend('GEOS_MLT_MOMDIFF_AFTER_PGRAD', &
+           is, ie, js, je, isd, ied, jsd, jed, npz, &
+           dt, flagstruct%geos_mlt_momdiff_pr, flagstruct%geos_mlt_momdiff_pmax_pa, &
+           flagstruct%geos_mlt_momdiff_kmax, flagstruct%geos_mlt_momdiff_rmax, &
+           flagstruct%geos_mlt_momdiff_nu_max, flagstruct%geos_mlt_momdiff_nu_scale, &
+           pe, gz, ua, va, lambda_mlt_dyn, rho_mlt_dyn, cp_mlt_dyn, &
+           u_momdiff_tend, v_momdiff_tend, momdiff_ke_heat_tend, &
+           flagstruct%geos_mlt_momdiff_diag .and. is_master() .and. &
+           mod(geos_mlt_momdiff_call_count-1, &
+           max(1, flagstruct%geos_mlt_momdiff_print_stride)) == 0)
+
+      if (present(dudt_moldiff)) dudt_moldiff(:,:,:) = u_momdiff_tend(is:ie,js:je,:)
+      if (present(dvdt_moldiff)) dvdt_moldiff(:,:,:) = v_momdiff_tend(is:ie,js:je,:)
+      if (present(dtdt_molke)) dtdt_molke(:,:,:) = momdiff_ke_heat_tend(is:ie,js:je,:)
+
+      if (flagstruct%geos_mlt_momdiff_enable) then
+         call update_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, dt, &
+              u_momdiff_tend, v_momdiff_tend, u, v, gridstruct, npx, npy, npz, domain)
+
+!$OMP parallel do default(none) shared(is,ie,js,je,npz,ua,va,u_momdiff_tend,v_momdiff_tend,dt) &
+!$OMP                          private(i,j,k)
+         do k=1,npz
+            do j=js,je
+               do i=is,ie
+                  ua(i,j,k) = ua(i,j,k) + dt*u_momdiff_tend(i,j,k)
+                  va(i,j,k) = va(i,j,k) + dt*v_momdiff_tend(i,j,k)
+               enddo
+            enddo
+         enddo
+!$OMP end parallel do
+      endif
+
+      if (flagstruct%geos_mlt_momdiff_heat) then
+!$OMP parallel do default(none) shared(is,ie,js,je,npz,pt,pkz,momdiff_ke_heat_tend,dt) private(i,j,k)
+         do k=1,npz
+            do j=js,je
+               do i=is,ie
+                  pt(i,j,k) = pt(i,j,k) + dt*momdiff_ke_heat_tend(i,j,k)/max(1.0e-12, pkz(i,j,k))
+               enddo
+            enddo
+         enddo
+!$OMP end parallel do
+      endif
+   endif
+   ! --- GEOS_MLT v13.2 runtime-controlled molecular momentum diffusion
 
 ! *** Inline Rayleigh friction here?
    if( flagstruct%RF_fast .and. flagstruct%tau > 0. )  &
@@ -1156,6 +1308,7 @@ contains
 
     end if
 
+
     if ( flagstruct%fv_debug ) then
           if(is_master()) write(*,*) 'n_split loop, it=', it
           call prt_mxm('PT',      pt, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
@@ -1184,18 +1337,53 @@ contains
   endif
 
 
+
   if ( GEOS_MLT ) then
      call cond_driver_apply(gridstruct%agrid, gz, pt, pkz, heat_tc, &
-          ng, year, month, day, hour)
+          ng, year, doy, ut_seconds)
      if (present(dtdt_tc)) then
         dtdt_tc(:,:,:) = heat_tc(is:ie,js:je,:)
      endif
   endif
 
 
+
   if ( n_con/=0 .and. flagstruct%d_con > 1.e-5 ) then
     nf_ke = min(3, flagstruct%nord+1)
     call del2_cubed(heat_source, cnst_0p20*gridstruct%da_min, gridstruct, domain, npx, npy, npz, nf_ke, bd)
+
+! Diagnose the actual native d_con heating tendency before it is applied.
+    if (present(dtdt_dcon)) then
+       dtdt_dcon(:,:,:) = 0.0
+       if (hydrostatic) then
+          do j=js,je
+             do k=1,n_con
+                do i=is,ie
+                   cp_eff = cp_air
+                   if (GEOS_MLT) then
+                      p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
+                      if (p_layer <= mlt_pressure_cutoff_pa) cp_eff = cp_mlt_dyn(i,j,k)
+                   endif
+                   dtmp = heat_source(i,j,k) / (cp_eff * delp(i,j,k))
+                   if (k >= 3) dtmp = sign(min(abs(bdt) * flagstruct%delt_max, abs(dtmp)), dtmp)
+                   dtdt_dcon(i,j,k) = dtmp / max(abs(bdt), 1.0e-12)
+                enddo
+             enddo
+          enddo
+       else
+          do k=1,n_con
+             delt = abs(bdt*flagstruct%delt_max)
+             if ( k == 1 ) delt = 0.1*delt
+             if ( k == 2 ) delt = 0.5*delt
+             do j=js,je
+                do i=is,ie
+                   dtmp = heat_source(i,j,k) / (cv_air*delp(i,j,k))
+                   dtdt_dcon(i,j,k) = sign(min(delt, abs(dtmp)), dtmp) / max(abs(bdt), 1.0e-12)
+                enddo
+             enddo
+          enddo
+       endif
+    endif
 
 ! Note: pt here is cp*(Virtual_Temperature/pkz)
     if ( hydrostatic ) then
@@ -1204,41 +1392,40 @@ contains
 !
 
 !$OMP parallel do default(none) &
-!$OMP shared(flagstruct,is,ie,js,je,n_con,npz,pt,heat_source,delp,pkz,bdt,heat_tc,GEOS_MLT,pe) &
-!$OMP private(i,j,k,dtmp,p_layer)
+!$OMP shared(flagstruct,is,ie,js,je,n_con,npz,pt,heat_source,delp,pkz,bdt,GEOS_MLT,pe,cp_mlt_dyn) &
+!$OMP private(i,j,k,dtmp,p_layer,cp_eff)
       do j=js,je
          do k=1,n_con
             if ( k < 3 ) then
                do i=is,ie
+                  cp_eff = cp_air
+                  if ( GEOS_MLT ) then
+                     p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
+                     if ( p_layer <= mlt_pressure_cutoff_pa ) then
+                        cp_eff = cp_mlt_dyn(i,j,k)
+                     endif
+                  endif
+
                   pt(i,j,k) = pt(i,j,k) + heat_source(i,j,k) / &
-                       (cp_air * delp(i,j,k) * pkz(i,j,k))
+                       (cp_eff * delp(i,j,k) * pkz(i,j,k))
                enddo
             else
                do i=is,ie
-                  dtmp = heat_source(i,j,k) / (cp_air * delp(i,j,k))
+                  cp_eff = cp_air
+                  if ( GEOS_MLT ) then
+                     p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
+                     if ( p_layer <= mlt_pressure_cutoff_pa ) then
+                        cp_eff = cp_mlt_dyn(i,j,k)
+                     endif
+                  endif
+
+                  dtmp = heat_source(i,j,k) / (cp_eff * delp(i,j,k))
                   pt(i,j,k) = pt(i,j,k) + &
                        sign(min(abs(bdt) * flagstruct%delt_max, abs(dtmp)), dtmp) / &
                        pkz(i,j,k)
                enddo
             endif
          enddo
-
-         if ( GEOS_MLT ) then
-            do k=1,npz
-               do i=is,ie
-                  ! Layer-center pressure from edge pressures.
-                  ! pe is in Pa; 1.0 Pa = 0.01 hPa.
-                  p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
-                  if ( p_layer <= mlt_pressure_cutoff_pa ) then
-                  !if ( p_layer <= 0.05 ) then ! 0.05 Pa = 0.0005 hPa
-                     ! heat_tc is dT/dt in K/s.
-                     ! pt is temperature divided by pkz, so convert dT to dpt.
-                     pt(i,j,k) = pt(i,j,k) + heat_tc(i,j,k)*bdt / pkz(i,j,k)
-                  endif
-               enddo
-            enddo
-         endif
-
       enddo
 !$OMP end parallel do
 
@@ -1267,10 +1454,41 @@ contains
     endif
 
   endif
+  ! Apply GEOS-MLT thermal conduction independently of native FV3
+  ! dissipative heating. This keeps thermal conduction active 
+  if ( GEOS_MLT ) then
+!$OMP parallel do default(none) &
+!$OMP shared(is,ie,js,je,npz,pt,heat_tc,bdt,pkz,pe) &
+!$OMP private(i,j,k,p_layer)
+     do k=1,npz
+        do j=js,je
+           do i=is,ie
+              ! Layer-center pressure from edge pressures.
+              ! pe is in Pa; 1.0 Pa = 0.01 hPa.
+              p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
+
+              if ( p_layer <= mlt_pressure_cutoff_pa ) then
+                 ! heat_tc is dT/dt in K/s.
+                 ! pt is temperature divided by pkz, so convert dT to dpt.
+                 pt(i,j,k) = pt(i,j,k) + heat_tc(i,j,k)*bdt / pkz(i,j,k)
+              endif
+           enddo
+        enddo
+     enddo
+!$OMP end parallel do
+  endif
+
+
   if (allocated(heat_source)) deallocate( heat_source ) !If ncon == 0 but d_con > 1.e-5, this would not be deallocated in earlier versions of the code
-  ! +++ awlee
   if (allocated(heat_tc)) deallocate(heat_tc)
-  ! --- awlee
+  if (allocated(kappa_mlt_dyn)) deallocate(kappa_mlt_dyn)
+  if (allocated(cp_mlt_dyn))    deallocate(cp_mlt_dyn)
+  if (allocated(lambda_mlt_dyn)) deallocate(lambda_mlt_dyn)
+  if (allocated(rho_mlt_dyn))    deallocate(rho_mlt_dyn)
+  if (allocated(alpha_mlt_dyn))  deallocate(alpha_mlt_dyn)
+  if (allocated(u_momdiff_tend)) deallocate(u_momdiff_tend)
+  if (allocated(v_momdiff_tend)) deallocate(v_momdiff_tend)
+  if (allocated(momdiff_ke_heat_tend)) deallocate(momdiff_ke_heat_tend)
 
 
   if ( end_step ) then
@@ -2123,8 +2341,8 @@ do 1000 j=jfirst,jlast
 
 !>@brief The subroutine 'geopk' calculates geopotential and pressure to the kappa.
  subroutine geopk(ptop, pe, peln, delp, pk, gz, hs, pt, q_con, pkz, km, akap, CG, nested, computehalo, npx, npy, a2b_ord, bd, &
-         GEOS_MLT, pfull, year, month, day, hour, minute, second, gridstruct, delz_mlt,&
-         Kappa_MLT_out, Cp_MLT_out)
+         GEOS_MLT, pfull, year, doy, ut_seconds, gridstruct, delz_mlt,& 
+         Kappa_MLT_out, Cp_MLT_out, Lambda_MLT_out, Rho_MLT_out, Alpha_MLT_out)
 
    integer, intent(IN) :: km, npx, npy, a2b_ord
    real   , intent(IN) :: akap, ptop
@@ -2137,10 +2355,13 @@ do 1000 j=jfirst,jlast
    logical, intent(IN) :: CG, nested, computehalo
   
    logical, intent(IN) :: GEOS_MLT                                ! GEOS_MLT 
-   integer, intent(IN) :: year, month, day, hour, minute, second  ! GEOS_MLT
+   integer, intent(IN) :: year, doy, ut_seconds                   ! GEOS_MLT
    real, intent(IN),  dimension(km):: pfull                       ! GEOS_MLT
    real, intent(OUT), optional, dimension(bd%isd:bd%ied, bd%jsd:bd%jed, km) :: Kappa_MLT_out
    real, intent(OUT), optional, dimension(bd%isd:bd%ied, bd%jsd:bd%jed, km) :: Cp_MLT_out
+   real, intent(INOUT), optional, dimension(bd%isd:bd%ied, bd%jsd:bd%jed, km) :: Lambda_MLT_out
+   real, intent(INOUT), optional, dimension(bd%isd:bd%ied, bd%jsd:bd%jed, km) :: Rho_MLT_out
+   real, intent(INOUT), optional, dimension(bd%isd:bd%ied, bd%jsd:bd%jed, km) :: Alpha_MLT_out
 
    ! !OUTPUT PARAMETERS
    real, intent(OUT), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,km+1):: gz, pk
@@ -2166,6 +2387,14 @@ do 1000 j=jfirst,jlast
    integer i, j, k
    integer ifirst, ilast
    integer jfirst, jlast
+
+   ! GEOS_MLT dKappa hydrostatic work variables.
+   real :: geos_mlt_dk_kappa_top
+   real :: geos_mlt_dk_kappa_bot
+   real :: geos_mlt_dk_delta_kappa
+   real :: geos_mlt_dk_logp_mid
+   real :: geos_mlt_dk_pk_mid
+   real :: geos_mlt_dk_dphi_extra
 
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
@@ -2260,9 +2489,10 @@ do 1000 j=jfirst,jlast
          endif   
       enddo
            
-      call calc_gas_specific_heat_MLT(is, ie, js, je, isd, ied, jsd, jed, km, pfull, &
-           gridstruct, Cp_MLT, Kappa_MLT, year, month, day, hour, minute, second, &
-           ifirst, ilast, jfirst, jlast, z_layer_km)
+      call calc_mlt_thermo_state(is, ie, js, je, isd, ied, jsd, jed, km, pfull, &
+           gridstruct, Cp_MLT, Kappa_MLT, year, doy, ut_seconds, & 
+           ifirst, ilast, jfirst, jlast, z_layer_km, &
+           Lambda_MLT=Lambda_MLT_out, Rho_MLT=Rho_MLT_out, Alpha_MLT=Alpha_MLT_out)
       if (present(Kappa_MLT_out)) then
          Kappa_MLT_out(:,:,:) = Kappa_MLT(:,:,:)
       endif
@@ -2274,7 +2504,9 @@ do 1000 j=jfirst,jlast
 
 !$OMP parallel do default(none) shared(jfirst,jlast,ifirst,ilast,pk,km,gz,hs,ptop,ptk, &
 !$OMP                                  js,je,is,ie,peln,peln1,pe,delp,akap,pt,CG,pkz,q_con,Cp_MLT,Kappa_MLT,GEOS_MLT) &
-!$OMP                          private(peg, pkg, p1d, g1d, logp, p_layer)
+!$OMP                          private(peg, pkg, p1d, g1d, logp, p_layer) &
+!$OMP                          private(geos_mlt_dk_kappa_top, geos_mlt_dk_kappa_bot, geos_mlt_dk_delta_kappa) &
+!$OMP                          private(geos_mlt_dk_logp_mid, geos_mlt_dk_pk_mid, geos_mlt_dk_dphi_extra)
    do 2000 j=jfirst,jlast
 
       do i=ifirst, ilast
@@ -2355,18 +2587,62 @@ do 1000 j=jfirst,jlast
                if (p_layer <= mlt_pressure_cutoff_pa) then ! 1.0 Pa = 0.01 hPa
                   ! Recompute interface pk values with this layer's kappa for thermodynamic consistency.
                   ! pk_top and pk_bot use the same kappa as Cp_MLT(i,j,k) = Rd/Kappa_MLT(i,j,k).
+                  geos_mlt_dk_dphi_extra = 0.0
+                  if (geos_mlt_apply_explicit_dk_hydro) then
+                     if (k == 1) then
+                        geos_mlt_dk_kappa_top = Kappa_MLT(i,j,k)
+                     else
+                        geos_mlt_dk_kappa_top = 0.5*(Kappa_MLT(i,j,k-1) + Kappa_MLT(i,j,k))
+                     endif
+
+                     if (k == km) then
+                        geos_mlt_dk_kappa_bot = Kappa_MLT(i,j,k)
+                     else
+                        geos_mlt_dk_kappa_bot = 0.5*(Kappa_MLT(i,j,k) + Kappa_MLT(i,j,k+1))
+                     endif
+
+                     geos_mlt_dk_delta_kappa = geos_mlt_dk_kappa_bot - geos_mlt_dk_kappa_top
+                     geos_mlt_dk_logp_mid = 0.5*(log(peg(i,k)) + log(peg(i,k+1)))
+                     geos_mlt_dk_pk_mid = exp(Kappa_MLT(i,j,k)*geos_mlt_dk_logp_mid)
+                     geos_mlt_dk_dphi_extra = Cp_MLT(i,j,k)*pt(i,j,k)*geos_mlt_dk_pk_mid * &
+                          geos_mlt_dk_logp_mid*geos_mlt_dk_delta_kappa
+                  endif
+
                   g1d(i) = g1d(i) + Cp_MLT(i,j,k)*pt(i,j,k) * &
                            (exp(Kappa_MLT(i,j,k)*log(peg(i,k+1))) - &
-                            exp(Kappa_MLT(i,j,k)*log(peg(i,k  ))))
+                            exp(Kappa_MLT(i,j,k)*log(peg(i,k  )))) + &
+                           geos_mlt_dk_dphi_extra
                else
                   g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pkg(i,k+1)-pkg(i,k))
                endif
  #else
                p_layer = exp(0.5*(logp(i,k) + logp(i,k+1)))
                if (p_layer <= mlt_pressure_cutoff_pa) then ! 1.0 Pa = 0.01 hPa
+                  geos_mlt_dk_dphi_extra = 0.0
+                  if (geos_mlt_apply_explicit_dk_hydro) then
+                     if (k == 1) then
+                        geos_mlt_dk_kappa_top = Kappa_MLT(i,j,k)
+                     else
+                        geos_mlt_dk_kappa_top = 0.5*(Kappa_MLT(i,j,k-1) + Kappa_MLT(i,j,k))
+                     endif
+
+                     if (k == km) then
+                        geos_mlt_dk_kappa_bot = Kappa_MLT(i,j,k)
+                     else
+                        geos_mlt_dk_kappa_bot = 0.5*(Kappa_MLT(i,j,k) + Kappa_MLT(i,j,k+1))
+                     endif
+
+                     geos_mlt_dk_delta_kappa = geos_mlt_dk_kappa_bot - geos_mlt_dk_kappa_top
+                     geos_mlt_dk_logp_mid = 0.5*(logp(i,k) + logp(i,k+1))
+                     geos_mlt_dk_pk_mid = exp(Kappa_MLT(i,j,k)*geos_mlt_dk_logp_mid)
+                     geos_mlt_dk_dphi_extra = Cp_MLT(i,j,k)*pt(i,j,k)*geos_mlt_dk_pk_mid * &
+                          geos_mlt_dk_logp_mid*geos_mlt_dk_delta_kappa
+                  endif
+
                   g1d(i) = g1d(i) + Cp_MLT(i,j,k)*pt(i,j,k) * &
-                  (exp(Kappa_MLT(i,j,k)*logp(i,k+1)) - &   ! ← logp covers halos
-                   exp(Kappa_MLT(i,j,k)*logp(i,k  )))
+                  (exp(Kappa_MLT(i,j,k)*logp(i,k+1)) - &   ! logp covers halos
+                   exp(Kappa_MLT(i,j,k)*logp(i,k  ))) + &
+                  geos_mlt_dk_dphi_extra
                else
                   g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
                endif
@@ -2422,6 +2698,7 @@ do 1000 j=jfirst,jlast
       endif
 
 2000  continue
+
  end subroutine geopk
 
 !>@brief The subroutine 'del2-cubed' filters the omega field for the physics.
@@ -2780,3 +3057,7 @@ do 1000 j=jfirst,jlast
 
 
 end module dyn_core_mod
+
+
+
+

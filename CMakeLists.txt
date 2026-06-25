@@ -24,6 +24,7 @@ set (srcs
   model/cond_driver_mod.F90
   model/cond_z_tend_mod.F90
   model/thermcond_mod.F90
+  model/mol_mom_diff_mod.F90
   model/fv_mapz.F90
   tools/fv_surf_map.F90
   model/fv_update_phys.F90

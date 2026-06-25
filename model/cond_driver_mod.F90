@@ -120,7 +120,7 @@ contains
   ! Full driver called from dyn_core
   !------------------------------------------------------------
   subroutine cond_driver_apply(agrid, gz, pt, pkz, heat_tc, ng, &
-                               year_msis, mon_msis, day_msis, hour_msis)
+                               year_msis, doy_msis, ut_seconds_msis)
     use msis_wrapper, only : msis_point
     implicit none
 
@@ -131,14 +131,14 @@ contains
     real, intent(out)   :: heat_tc(:,:,:)        ! dTdt (K/s)
     integer, intent(in) :: ng                    ! halo width
 
-    integer, intent(in), optional :: year_msis, mon_msis, day_msis, hour_msis
+    integer, intent(in), optional :: year_msis, doy_msis, ut_seconds_msis
 
     integer :: ilb,iub,jlb,jub,klb,kub
     integer :: is,ie,js,je,ks,ke
     integer :: ni,nj,nk
     integer :: ii,jj,kkL
     integer :: i,j,kk
-    integer :: y,m,d,hh
+    integer :: y, doy, utsec
 
     real, parameter :: pi = 3.14159265358979323846
     real, parameter :: rad2deg = 180.0/pi
@@ -176,11 +176,13 @@ contains
       return
     end if
 
-    y  = 2017; m = 1; d = 14; hh = 0
-    if (present(year_msis)) y  = year_msis
-    if (present(mon_msis))  m  = mon_msis
-    if (present(day_msis))  d  = day_msis
-    if (present(hour_msis)) hh = hour_msis
+    y     = 2017
+    doy   = 14
+    utsec = 0
+    
+    if (present(year_msis))       y     = year_msis
+    if (present(doy_msis))        doy   = doy_msis
+    if (present(ut_seconds_msis)) utsec = ut_seconds_msis
 
     allocate(Tcol(1:ni, 1:nj, 1:nk))
     allocate(dzcol(1:ni, 1:nj, 1:nk))
@@ -255,12 +257,12 @@ contains
 
           lon_deg = modulo(agrid(i,j,1) * rad2deg, 360.0)
           lat_deg = agrid(i,j,2) * rad2deg
-          stl_hr  = modulo(real(hh) + lon_deg/15.0, 24.0)
+          stl_hr  = modulo(real(utsec)/3600.0 + lon_deg/15.0, 24.0)
 
           alt_km = 0.5*(gz(i,j,kk) + gz(i,j,kk+1)) / grav / 1000.0
           if (alt_km < 0.0) alt_km = 0.0
 
-          call msis_point(y, m, d, hh, alt_km, lat_deg, lon_deg, stl_hr, &
+          call msis_point(y, doy, utsec, alt_km, lat_deg, lon_deg, stl_hr, &
                           O_cm3, N2_cm3, O2_cm3, Tmsis)
 
           msis_ok = (O_cm3 > 0.0 .or. O2_cm3 > 0.0 .or. N2_cm3 > 0.0)
@@ -281,12 +283,12 @@ contains
     
         lon_deg = modulo(agrid(i,j,1) * rad2deg, 360.0)
         lat_deg = agrid(i,j,2) * rad2deg
-        stl_hr  = modulo(real(hh) + lon_deg/15.0, 24.0)
+        stl_hr  = modulo(real(utsec)/3600.0 + lon_deg/15.0, 24.0)
     
         ! model top altitude from gz at k=ks
         z_top_km(i,j) = 0.5*(gz(i,j,ks) + gz(i,j,ks+1)) / grav / 1000.0
     
-        call msis_point(y, m, d, hh, 220.0, lat_deg, lon_deg, stl_hr, &
+        call msis_point(y, doy, utsec, 220.0, lat_deg, lon_deg, stl_hr, &
                         O_cm3, N2_cm3, O2_cm3, Tmsis)
         T_ext_ref(i,j) = Tmsis
         !print *,'MSIS external temperature: ', T_ext_ref(i,j)

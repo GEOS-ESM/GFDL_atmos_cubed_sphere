@@ -163,13 +163,14 @@ contains
   subroutine fv_dynamics(npx, npy, npz, nq_tot,  ng, bdt, consv_te, fill,    &
                         reproduce_sum, kappa, cp_air, zvir, ptop, ks, ncnst, &
                         k_split, n_split,                                    &
-                        q_split, u, v, w, delz, hydrostatic, GEOS_MLT, year, month, day, hour, minute, second, &
-                        pt, delp, q, ps, pe, pk, peln, pkz, phis, varflt, q_con, omga, ua, va, uc, vc,          &
-                        ak, bk, mfx, mfy, cx, cy, ze0, hybrid_z, &
-                        gridstruct, flagstruct, neststruct, idiag, bd, &
-                        parent_grid, domain, diss_est, &
-                        dudt_rf, dvdt_rf, dwdt_rf, dtdt_rf, &
-                        time_total, dtdt_tc)
+                        q_split, u, v, w, delz, hydrostatic,                 &
+                        pt, delp, q, ps, pe, pk, peln, pkz, phis, varflt, q_con, omga, ua, va, uc, vc, &
+                        ak, bk, mfx, mfy, cx, cy, ze0, hybrid_z,             &
+                        gridstruct, flagstruct, neststruct, idiag, bd,       &
+                        parent_grid, domain, diss_est,                       &
+                        dudt_rf, dvdt_rf, dwdt_rf, dtdt_rf,                  &
+                        time_total, dtdt_tc, dtdt_molke, dtdt_dcon, dtdt_consvte, &
+                        dudt_moldiff, dvdt_moldiff, GEOS_MLT, year, doy, ut_seconds) 
 
     real, intent(IN) :: bdt  !< Large time-step
     real, intent(IN) :: consv_te
@@ -191,8 +192,10 @@ contains
     logical, intent(IN) :: reproduce_sum
     logical, intent(IN) :: hydrostatic
     
-    logical, intent(IN) :: GEOS_MLT
-    integer, intent(IN) :: year, month, day, hour, minute, second    
+    logical, intent(IN), optional :: GEOS_MLT
+    integer, intent(IN), optional :: year, doy, ut_seconds 
+    logical :: GEOS_MLT_use
+    integer :: year_use, doy_use, ut_seconds_use 
     logical, intent(IN) :: hybrid_z       !< Using hybrid_z for remapping
 
     type(fv_grid_bounds_type), intent(IN) :: bd
@@ -211,6 +214,11 @@ contains
     real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dwdt_rf ! W      tendency from Rayleigh friction
     real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dtdt_rf ! Temp   tendency from Rayleigh friction
     real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_tc ! GEOS-MLT thermal conduction heat
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_molke ! molecular KE-loss heating diagnostic
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_dcon ! native d_con heating diagnostic
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_consvte ! consv_te global fixer diagnostic
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dudt_moldiff ! molecular momentum diffusion U tendency
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dvdt_moldiff ! molecular momentum diffusion V tendency
 
 !-----------------------------------------------------------------------
 ! Auxilliary pressure arrays:    
@@ -304,6 +312,17 @@ contains
       mfy = 0.0
        cx = 0.0
        cy = 0.0
+
+! Resolve optional GEOS-MLT inputs.
+      GEOS_MLT_use   = .false.
+      year_use       = 2017
+      doy_use        = 14
+      ut_seconds_use = 0
+      
+      if (present(GEOS_MLT))   GEOS_MLT_use   = GEOS_MLT
+      if (present(year))       year_use       = year
+      if (present(doy))        doy_use        = doy
+      if (present(ut_seconds)) ut_seconds_use = ut_seconds
 
 !     cv_air =  cp_air - rdgas
       agrav = 1. / grav
@@ -638,8 +657,8 @@ contains
     endif
 
                                            call timing_on('DYN_CORE')
-      call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, GEOS_MLT, &
-                    year, month, day, hour, minute, second, u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
+      call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, GEOS_MLT_use, &
+                    year_use, doy_use, ut_seconds_use, u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
                     uc, vc, &
 #ifdef SINGLE_FV
                     mfxR8, mfyR8, cxR8, cyR8, &
@@ -648,7 +667,9 @@ contains
 #endif
                     pkz, peln, q_con, ak, bk, dpx, ks, &
                     gridstruct, flagstruct, neststruct, idiag, bd, &
-                    domain, n_map==1, i_pack, last_step, diss_est,time_total, dtdt_tc=dtdt_tc)
+                    domain, n_map==1, i_pack, last_step, diss_est,time_total, dtdt_tc=dtdt_tc, &
+                    dtdt_molke=dtdt_molke, dtdt_dcon=dtdt_dcon, dudt_moldiff=dudt_moldiff, &
+                    dvdt_moldiff=dvdt_moldiff)
                                            call timing_off('DYN_CORE')
 
 
@@ -764,10 +785,11 @@ contains
                      kord_tracer, flagstruct%kord_tm, peln, te_2d,               &
                      ng, ua, va, omga, dp1, ws, fill, reproduce_sum,             &
                      idiag%id_mdt>0, dtdt_m, ptop, ak, bk, pfull, flagstruct, gridstruct, domain,   &
-                     flagstruct%do_sat_adj, hydrostatic, GEOS_MLT, year, month, day, hour, minute, second, &
+                     flagstruct%do_sat_adj,hydrostatic, GEOS_MLT_use, year_use, doy_use, ut_seconds_use, & 
                      flagstruct%mol_diffusion_k_top, flagstruct%mol_diffusion_k_bot, hybrid_z, do_omega,     &
                      flagstruct%adiabatic, do_adiabatic_init, &
-                     mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap)
+                     mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap, &
+                     dtdt_consvte=dtdt_consvte)
 
 #ifdef AVEC_TIMERS
                                                   call avec_timer_stop(6)
@@ -1416,3 +1438,4 @@ contains
  end subroutine compute_aam
 
 end module fv_dynamics_mod
+

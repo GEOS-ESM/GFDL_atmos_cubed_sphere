@@ -2,7 +2,7 @@ module msis_wrapper
   ! Simple MSIS wrapper:
   ! - reads F10.7/AP from file 'F107_ap_appended.txt'
   ! - initialize MSIS via msisinit('msis21.parm')
-  ! - call msis_point(year,month,doy,alt,lat,lon,slt, O,N2,O2,T)
+  ! - call msis_point(year,doy,ut_seconds,alt,lat,lon,slt, O,N2,O2,T)
 
   use msis_init, only : msisinit
 
@@ -29,7 +29,7 @@ module msis_wrapper
   interface
     subroutine gtd8d(iyd,ut,alt,glat,glong,stl,f107a,f107,ap,mass,d,t)
       integer, intent(in)      :: iyd
-      real(4), intent(in)      :: ut          ! UT in hours
+      real(4), intent(in)      :: ut          ! UT in seconds
       real(4), intent(in)      :: alt, glat, glong, stl, f107a, f107
       real(4), intent(in)      :: ap(7)
       integer, intent(in)      :: mass
@@ -54,20 +54,20 @@ contains
     end if  
   end subroutine msis_wrapper_init
 
-  subroutine msis_point(year, month, day, hour, alt, glat, glong, stl, &
+  subroutine msis_point(year, doy, ut_seconds, alt, glat, glong, stl, &
                         O_out, N2_out, O2_out, T_out)
-    integer, intent(in) :: year, month, day, hour
+    integer, intent(in) :: year, doy, ut_seconds
     real(4), intent(in) :: alt, glat, glong, stl
     real(4), intent(out):: O_out, N2_out, O2_out, T_out
 
-    integer :: doy, iyd, idx
+    integer :: iyd, idx, hour
     real(4) :: ut, ap(7), d(10), t(2)
     integer :: mass, i
     real(4) :: apv, f107v, f107av
 
     ! Compute day-of-year / iyd even if file not loaded 
-    doy = day_of_year(year, month, day)
     iyd = year*1000 + doy
+    hour = max(0, min(23, ut_seconds / 3600))
 
     ! Determine F107/AP values using F107_ap_appended.txt otherwise use defaults
     if (loaded) then
@@ -90,8 +90,8 @@ contains
       f107av = DEFAULT_F107A
     end if
 
-    ! Prepare inputs and call MSIS: UT passed in hours
-    ut = real(hour, kind=4)
+    ! Prepare inputs and call MSIS: UT passed in seconds
+    ut = real(ut_seconds, kind=4)
     mass = 1
     do i = 1, 7
       ap(i) = apv
