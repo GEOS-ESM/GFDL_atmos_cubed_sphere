@@ -3,6 +3,7 @@ module calc_gas_specific_heat_mlt_mod
     use fv_arrays_mod, only: fv_grid_type
     use msis_wrapper, only: msis_point
     use constants_mod, only: rdgas, cp_air
+    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
 
     implicit none
     private
@@ -10,6 +11,12 @@ module calc_gas_specific_heat_mlt_mod
     public :: calc_gas_specific_heat_mlt
     public :: calc_mlt_thermo_state
     public :: mlt_mixture_thermo_from_number_density
+
+    real, parameter :: SAFE_MSIS_ALT_MIN_KM = 0.0
+    real, parameter :: SAFE_MSIS_ALT_MAX_KM = 1000.0
+    integer, parameter :: MAX_BAD_ALT_WARNINGS = 20
+    integer, save :: bad_alt_warn_count = 0
+    integer, save :: bad_msis_warn_count = 0
 
 contains
 
@@ -140,6 +147,9 @@ contains
         real :: estz
         real :: stl
         real :: ut_hour
+        logical :: valid_alt
+        logical :: valid_msis
+        logical :: use_geom_alt
 
         ! --- Local array ---
         real :: z_approx(km)
@@ -197,15 +207,62 @@ contains
 
               do k = 1, km
 
-                 if (present(z_layer_km)) then
+                 ! Use geometric altitude only on physical interior cells.
+                 ! Halo/corner values of z_layer_km can contain FV3 edge or
+                 ! sentinel-like values, so use the pressure-based fallback there.
+                 use_geom_alt = present(z_layer_km) .and. &
+                      i >= is .and. i <= ie .and. j >= js .and. j <= je
+
+                 if (use_geom_alt) then
                     estz = z_layer_km(i,j,k)
                  else
                     estz = z_approx(k)
                  endif
 
+                 valid_alt = ieee_is_finite(estz) .and. &
+                      estz >= SAFE_MSIS_ALT_MIN_KM .and. estz <= SAFE_MSIS_ALT_MAX_KM
+
+                 if (.not. valid_alt) then
+                    if (use_geom_alt .and. bad_alt_warn_count < MAX_BAD_ALT_WARNINGS) then
+                       print *, 'GEOS_MLT_BAD_INTERIOR_ALT_THERMO_FALLBACK: i,j,k,alt,z_approx,pfull=', &
+                                i, j, k, estz, z_approx(k), pfull(k)
+                    endif
+                    if (use_geom_alt) bad_alt_warn_count = bad_alt_warn_count + 1
+
+                    ! Fall back to pressure-based altitude before calling MSIS.
+                    estz = z_approx(k)
+                    valid_alt = ieee_is_finite(estz) .and. &
+                         estz >= SAFE_MSIS_ALT_MIN_KM .and. estz <= SAFE_MSIS_ALT_MAX_KM
+                 endif
+
+                 if (.not. valid_alt) then
+                    if (bad_alt_warn_count < MAX_BAD_ALT_WARNINGS) then
+                       print *, 'GEOS_MLT_BAD_ALT_THERMO_AFTER_FALLBACK: i,j,k,alt,pfull=', &
+                                i, j, k, estz, pfull(k)
+                    endif
+                    bad_alt_warn_count = bad_alt_warn_count + 1
+                    cycle
+                 endif
+
+                 estz = min(max(estz, SAFE_MSIS_ALT_MIN_KM), SAFE_MSIS_ALT_MAX_KM)
+
                  call msis_point(year, doy, ut_seconds, estz, &
                       real(lat_deg, 4), real(lon_deg, 4), stl, &
                       Om_k, N2m_k, O2m_k, T_k)
+
+                 valid_msis = ieee_is_finite(Om_k) .and. ieee_is_finite(N2m_k) .and. &
+                      ieee_is_finite(O2m_k) .and. ieee_is_finite(T_k)
+                 if (.not. valid_msis) then
+                    if (bad_msis_warn_count < MAX_BAD_ALT_WARNINGS) then
+                       print *, 'GEOS_MLT_BAD_MSIS_THERMO: i,j,k,alt,O,N2,O2,T=', &
+                                i, j, k, estz, Om_k, N2m_k, O2m_k, T_k
+                    endif
+                    bad_msis_warn_count = bad_msis_warn_count + 1
+                    Om_k = 0.0_4
+                    N2m_k = 0.0_4
+                    O2m_k = 0.0_4
+                    T_k = 0.0_4
+                 endif
 
                  call mlt_mixture_thermo_from_number_density(real(Om_k), real(N2m_k), real(O2m_k), &
                                                              R_mix, Cp_mix, Cv_mix, Kappa_mix, &
@@ -283,4 +340,5 @@ contains
     end subroutine calc_gas_specific_heat_MLT
 
 end module calc_gas_specific_heat_mlt_mod
+
 

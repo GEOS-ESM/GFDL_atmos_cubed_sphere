@@ -104,7 +104,8 @@ module dyn_core_mod
 ! </table>
 
   use constants_mod,      only: rdgas, radius, cp_air, pi
-  use mpp_mod,            only: mpp_pe 
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+  use mpp_mod,            only: mpp_pe, mpp_min, mpp_max 
   use mpp_domains_mod,    only: CGRID_NE, DGRID_NE, AGRID, mpp_get_boundary, mpp_update_domains,  &
                                 domain2d
   use mpp_parameter_mod,  only: CORNER
@@ -171,6 +172,8 @@ public :: dyn_core, del2_cubed, init_ijk_mem
   ! GEOS_MLT baseline: runtime-controlled molecular momentum diffusion.
   ! The coefficients are stored in flagstruct and are read from fv_core_nml.
   integer :: geos_mlt_momdiff_call_count = 0
+  integer :: geos_mlt_alt_diag_call_count = 0
+  real, parameter :: geos_mlt_gz_sentinel_thresh = 1.0e7
 
 contains
 
@@ -275,6 +278,13 @@ contains
     real, allocatable, dimension(:,:,:) :: t_phys_sync
     real :: p_layer
     real :: cp_eff
+    real :: dT_tc
+    real :: dTdt_tc
+    real :: dT_limit
+    real :: z_layer_diag
+    real :: zmin_diag
+    real :: zmax_diag
+    integer :: k_diag
     ! --- geos_mlt
 
 
@@ -418,12 +428,12 @@ contains
     endif
 
     ! Thermal conduction is a GEOS-MLT physics tendency.
-    if ( GEOS_MLT ) then
+    if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
          allocate( heat_tc(isd:ied, jsd:jed, npz) ) ! include halo
          call init_ijk_mem(isd, ied, jsd, jed, npz, heat_tc, 0.)
-         if (present(dtdt_tc)) then
-            dtdt_tc(:,:,:) = 0.0
-         endif
+    endif
+    if ( GEOS_MLT .and. present(dtdt_tc) ) then
+         dtdt_tc(:,:,:) = 0.0
     endif
 
 
@@ -503,6 +513,9 @@ contains
        deallocate(t_phys_sync)
 
        if (is_master()) then
+          write(*,*) 'GEOS_MLT_THERMCOND apply=', flagstruct%geos_mlt_thermcond_enable, &
+               ' limit=', flagstruct%geos_mlt_thermcond_limit, &
+               ' dtmax_kps=', flagstruct%geos_mlt_thermcond_dtmax
           write(*,*) 'GEOS_MLT_MOMDIFF apply=', flagstruct%geos_mlt_momdiff_enable, &
                ' diag=', flagstruct%geos_mlt_momdiff_diag, &
                ' heat=', flagstruct%geos_mlt_momdiff_heat, &
@@ -511,6 +524,41 @@ contains
                ' pmax_pa=', flagstruct%geos_mlt_momdiff_pmax_pa, &
                ' kmax=', flagstruct%geos_mlt_momdiff_kmax, &
                ' rmax=', flagstruct%geos_mlt_momdiff_rmax
+       endif
+
+       if (flagstruct%geos_mlt_alt_diag) then
+          geos_mlt_alt_diag_call_count = geos_mlt_alt_diag_call_count + 1
+          if (mod(geos_mlt_alt_diag_call_count-1, &
+               max(1, flagstruct%geos_mlt_alt_diag_print_stride)) == 0) then
+             do k_diag = 1, min(npz, max(1, flagstruct%geos_mlt_alt_diag_kmax))
+                zmin_diag = huge(1.0)
+                zmax_diag = -huge(1.0)
+                do j = js, je
+                   do i = is, ie
+                      if (gz(i,j,k_diag) < geos_mlt_gz_sentinel_thresh .and. &
+                          gz(i,j,k_diag+1) < geos_mlt_gz_sentinel_thresh) then
+                         z_layer_diag = 0.5*(gz(i,j,k_diag) + gz(i,j,k_diag+1)) / grav / 1000.0
+                         zmin_diag = min(zmin_diag, z_layer_diag)
+                         zmax_diag = max(zmax_diag, z_layer_diag)
+                      endif
+                   enddo
+                enddo
+                call mpp_min(zmin_diag)
+                call mpp_max(zmax_diag)
+                if (is_master()) then
+                   if (zmin_diag < 0.5*huge(1.0)) then
+                      write(*,'(A,I7,A,I4,A,F11.3,A,F11.3,A)') &
+                           'GEOS_MLT_ALT_DIAG call=', geos_mlt_alt_diag_call_count, &
+                           ' k=', k_diag, ' zmin_km=', zmin_diag, &
+                           ' zmax_km=', zmax_diag, ' km'
+                   else
+                      write(*,'(A,I7,A,I4,A)') &
+                           'GEOS_MLT_ALT_DIAG call=', geos_mlt_alt_diag_call_count, &
+                           ' k=', k_diag, ' no valid altitude'
+                   endif
+                endif
+             enddo
+          endif
        endif
 
        ! Restart the grouped halo update because pt has been changed.
@@ -1140,7 +1188,8 @@ contains
 
       if (present(dudt_moldiff)) dudt_moldiff(:,:,:) = u_momdiff_tend(is:ie,js:je,:)
       if (present(dvdt_moldiff)) dvdt_moldiff(:,:,:) = v_momdiff_tend(is:ie,js:je,:)
-      if (present(dtdt_molke)) dtdt_molke(:,:,:) = momdiff_ke_heat_tend(is:ie,js:je,:)
+      ! DTDT_Mol should represent applied heating only. Do not write the
+      ! hypothetical KE-loss heating diagnostic when geos_mlt_momdiff_heat is false.
 
       if (flagstruct%geos_mlt_momdiff_enable) then
          call update_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, dt, &
@@ -1169,6 +1218,19 @@ contains
             enddo
          enddo
 !$OMP end parallel do
+
+         ! Accumulate the applied molecular-diffusion heating increment.
+         ! It is converted to a time-mean tendency after the split loop.
+         if (present(dtdt_molke)) then
+            do k=1,npz
+               do j=js,je
+                  do i=is,ie
+                     dtdt_molke(i,j,k) = dtdt_molke(i,j,k) + &
+                          dt*momdiff_ke_heat_tend(i,j,k)
+                  enddo
+               enddo
+            enddo
+         endif
       endif
    endif
    ! --- GEOS_MLT v13.2 runtime-controlled molecular momentum diffusion
@@ -1336,14 +1398,18 @@ contains
        if(is_master()) write(*,*) 'End of n_split loop'
   endif
 
+  ! Convert accumulated molecular-diffusion heating increments to the
+  ! time-mean applied tendency over this dynamics call. If molecular heating
+  ! is disabled, this remains zero.
+  if ( GEOS_MLT .and. present(dtdt_molke) ) then
+     dtdt_molke(:,:,:) = dtdt_molke(:,:,:) / max(abs(bdt), 1.0e-12)
+  endif
 
 
-  if ( GEOS_MLT ) then
-     call cond_driver_apply(gridstruct%agrid, gz, pt, pkz, heat_tc, &
-          ng, year, doy, ut_seconds)
-     if (present(dtdt_tc)) then
-        dtdt_tc(:,:,:) = heat_tc(is:ie,js:je,:)
-     endif
+
+  if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
+     call cond_driver_apply(gridstruct%agrid, gz, pe, pt, pkz, heat_tc, &
+          ng, mlt_pressure_cutoff_pa, year, doy, ut_seconds)
   endif
 
 
@@ -1455,11 +1521,13 @@ contains
 
   endif
   ! Apply GEOS-MLT thermal conduction independently of native FV3
-  ! dissipative heating. This keeps thermal conduction active 
-  if ( GEOS_MLT ) then
+  ! dissipative heating. The limiter is expressed as a tendency [K/s],
+  ! matching the convention of delt_max. DTDT_TC stores the applied, limited
+  ! tendency, not the raw tendency returned by the conduction driver.
+  if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
 !$OMP parallel do default(none) &
-!$OMP shared(is,ie,js,je,npz,pt,heat_tc,bdt,pkz,pe) &
-!$OMP private(i,j,k,p_layer)
+!$OMP shared(flagstruct,is,ie,js,je,npz,pt,heat_tc,bdt,pkz,pe,dtdt_tc) &
+!$OMP private(i,j,k,p_layer,dT_tc,dTdt_tc,dT_limit)
      do k=1,npz
         do j=js,je
            do i=is,ie
@@ -1467,10 +1535,19 @@ contains
               ! pe is in Pa; 1.0 Pa = 0.01 hPa.
               p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
 
-              if ( p_layer <= mlt_pressure_cutoff_pa ) then
-                 ! heat_tc is dT/dt in K/s.
-                 ! pt is temperature divided by pkz, so convert dT to dpt.
-                 pt(i,j,k) = pt(i,j,k) + heat_tc(i,j,k)*bdt / pkz(i,j,k)
+              if ( p_layer <= mlt_pressure_cutoff_pa .and. &
+                   ieee_is_finite(heat_tc(i,j,k)) .and. &
+                   ieee_is_finite(pkz(i,j,k)) .and. pkz(i,j,k) > 0.0 ) then
+                 ! heat_tc is raw dT/dt in K/s. Limit the applied tendency
+                 ! directly in K/s, then convert to dT for the explicit update.
+                 dTdt_tc = heat_tc(i,j,k)
+                 if (flagstruct%geos_mlt_thermcond_limit) then
+                    dT_limit = max(0.0, flagstruct%geos_mlt_thermcond_dtmax)
+                    dTdt_tc = sign(min(abs(dTdt_tc), dT_limit), dTdt_tc)
+                 endif
+                 dT_tc = dTdt_tc * bdt
+                 pt(i,j,k) = pt(i,j,k) + dT_tc / pkz(i,j,k)
+                 if (present(dtdt_tc)) dtdt_tc(i,j,k) = dTdt_tc
               endif
            enddo
         enddo
@@ -3057,6 +3134,7 @@ do 1000 j=jfirst,jlast
 
 
 end module dyn_core_mod
+
 
 
 

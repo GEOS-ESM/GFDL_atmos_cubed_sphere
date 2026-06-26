@@ -107,7 +107,8 @@ contains
 !!-one for the GFDL physics
  subroutine fv_subgrid_z( isd, ied, jsd, jed, is, ie, js, je, km, nq, dt,    &
                          tau, nwat, delp, pe, peln, pkz, ta, qa, ua, va,  &
-                         hydrostatic, w, delz, u_dt, v_dt, t_dt, w_dt, k_bot )
+                         hydrostatic, w, delz, u_dt, v_dt, t_dt, w_dt,    &
+                         k_bot, GEOS_MLT )
 ! Dry convective adjustment-mixing
 !-------------------------------------------
       integer, intent(in):: is, ie, js, je, km, nq, nwat
@@ -121,6 +122,7 @@ contains
       real, intent(in)::  pkz(is:ie,js:je,km)
       logical, intent(in)::  hydrostatic
       integer, intent(in), optional:: k_bot
+      logical, intent(in), optional:: GEOS_MLT
 ! 
       real, intent(inout):: ua(isd:ied,jsd:jed,km)
       real, intent(inout):: va(isd:ied,jsd:jed,km)
@@ -141,6 +143,8 @@ contains
       integer i, j, k, kk, n, m, iq, km1, im, kbot
       real, parameter:: ustar2 = 1.E-4
       real:: cv_air, xvir
+      logical :: GEOS_MLT_use
+      real :: mlt_temp_guard_pcut_pa
       integer :: sphum, liq_wat, rainwat, snowwat, graupel, ice_wat, cld_amt
 
       cv_air = cp_air - rdgas ! = rdgas * (7/2-1) = 2.5*rdgas=717.68
@@ -151,6 +155,16 @@ contains
 
       rdt = 1./ dt
       im = ie-is+1
+
+! GEOS_MLT option for L190/high-top runs.
+! If GEOS_MLT is enabled, the original lower-atmosphere temperature
+! guard is disabled above this pressure cutoff, but Ri/shear filtering
+! remains active.
+      GEOS_MLT_use = .false.
+      if ( present(GEOS_MLT) ) GEOS_MLT_use = GEOS_MLT
+
+! 1 Pa = 0.01 hPa. This is a first-test cutoff for the MLT/thermosphere.
+      mlt_temp_guard_pcut_pa = 1.0
 
       if ( present(k_bot) ) then
            if ( k_bot < 3 ) return
@@ -164,7 +178,7 @@ contains
            t_min = t2_min
       endif
 
-      if ( k_bot < min(km,24)  ) then
+      if ( kbot < min(km,24)  ) then
          t_max = t2_max
       else
          t_max = t3_max
@@ -232,7 +246,8 @@ contains
 !$OMP parallel do default(none) shared(im,is,ie,js,je,nq,kbot,qa,ta,sphum,ua,va,delp,peln,   &
 !$OMP                                  hydrostatic,pe,delz,g2,w,liq_wat,rainwat,ice_wat,     &
 !$OMP                                  snowwat,cv_air,m,graupel,pkz,rk,rz,fra, t_max, t_min, &
-!$OMP                                  rdt,u_dt,v_dt,t_dt,w_dt,xvir,nwat)                    &
+!$OMP                                  rdt,u_dt,v_dt,t_dt,w_dt,xvir,nwat,GEOS_MLT_use,       &
+!$OMP                                  mlt_temp_guard_pcut_pa)                               &
 !$OMP                          private(kk,lcp2,icp2,tcp3,dh,dq,den,qs,qsw,dqsdt,qcon,q0,     &
 !$OMP                                  t0,u0,v0,w0,h0,pm,gzh,tvm,tmp,cpm,cvm,q_liq,q_sol,    &
 !$OMP                                  tv,gz,hd,te,ratio,pt1,pt2,tv1,tv2,ri_ref, ri,mc,km1)
@@ -393,11 +408,24 @@ contains
 !
             ri = (gz(i,km1)-gz(i,k))*(pt1-pt2)/( 0.5*(pt1+pt2)*        &
                  ((u0(i,km1)-u0(i,k))**2+(v0(i,km1)-v0(i,k))**2+ustar2) )
-            if ( tv1>t_max .and. tv1>tv2 ) then
-! top layer unphysically warm
-               ri = 0.
-            elseif ( tv2<t_min ) then
-               ri = min(ri, 0.1)
+! GEOS_MLT modification:
+! In the MLT/thermosphere, neutral temperature can physically exceed
+! the original lower-atmosphere temperature thresholds. Therefore,
+! when GEOS_MLT is enabled and the local pressure is below the cutoff,
+! do not force extra 2-dz mixing only because T is above t_max.
+!
+! The Richardson-number/shear-based filter is still active because
+! ri is already computed above this block.
+            if ( GEOS_MLT_use .and.                                      &
+                 min(pm(i,km1), pm(i,k)) <= mlt_temp_guard_pcut_pa ) then
+               continue
+            else
+               if ( tv1 > t_max .and. tv1 > tv2 ) then
+! Original lower-atmosphere temperature guard.
+                  ri = 0.
+               elseif ( tv2 < t_min ) then
+                  ri = min(ri, 0.1)
+               endif
             endif
 ! Adjustment for K-H instability:
 ! Compute equivalent mass flux: mc
@@ -1641,3 +1669,4 @@ real, dimension(is:ie,js:je):: pt2, qv2, ql2, qi2, qs2, qr2, qg2, dp2, p2, icpk,
 
 
 end module fv_sg_mod
+

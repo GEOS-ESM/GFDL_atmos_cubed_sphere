@@ -10,6 +10,7 @@
 !======================================================================
 
 module cond_driver_mod
+  use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
   implicit none
   private
   public :: cond_driver_from_msis
@@ -31,6 +32,12 @@ module cond_driver_mod
   ! k-by-k counts of pkz<=0 on the local conduction domain (saved until printed)
   integer, save :: diag_ks = 0, diag_ke = -1
   integer, allocatable, save :: diag_pkz0_by_k(:)
+
+  real, parameter :: SAFE_MSIS_ALT_MIN_KM = 0.0
+  real, parameter :: SAFE_MSIS_ALT_MAX_KM = 1000.0
+  integer, parameter :: MAX_COND_WARNINGS = 20
+  integer, save :: bad_cond_alt_warn_count = 0
+  integer, save :: bad_cond_state_warn_count = 0
 
 contains
 
@@ -119,17 +126,20 @@ contains
   !------------------------------------------------------------
   ! Full driver called from dyn_core
   !------------------------------------------------------------
-  subroutine cond_driver_apply(agrid, gz, pt, pkz, heat_tc, ng, &
+  subroutine cond_driver_apply(agrid, gz, pe, pt, pkz, heat_tc, ng, &
+                               mlt_pressure_cutoff_pa, &
                                year_msis, doy_msis, ut_seconds_msis)
     use msis_wrapper, only : msis_point
     implicit none
 
     real, intent(in)    :: agrid(:,:,:)          ! lon/lat radians (local storage)
     real, intent(in)    :: gz(:,:,:)             ! interface geopotential (m^2/s^2)
+    real, intent(in)    :: pe(:,:,:)             ! interface pressure (Pa), indexed as pe(i,k,j)
     real, intent(in)    :: pt(:,:,:)             ! temperature-like
     real, intent(in)    :: pkz(:,:,:)            ! Exner-like factor
     real, intent(out)   :: heat_tc(:,:,:)        ! dTdt (K/s)
     integer, intent(in) :: ng                    ! halo width
+    real, intent(in)    :: mlt_pressure_cutoff_pa ! upper-atmosphere cutoff pressure (Pa)
 
     integer, intent(in), optional :: year_msis, doy_msis, ut_seconds_msis
 
@@ -139,6 +149,7 @@ contains
     integer :: ii,jj,kkL
     integer :: i,j,kk
     integer :: y, doy, utsec
+    integer :: last_active
 
     real, parameter :: pi = 3.14159265358979323846
     real, parameter :: rad2deg = 180.0/pi
@@ -146,11 +157,13 @@ contains
 
     real, allocatable :: Tcol(:,:,:), dzcol(:,:,:), dzifcol(:,:,:)
     real, allocatable :: nO(:,:,:), nO2(:,:,:), nN2(:,:,:)
+    logical, allocatable :: active_mask(:,:,:)
     real, allocatable :: T_ext_ref(:,:), z_top_km(:,:)
 
-    real :: lon_deg, lat_deg, stl_hr, alt_km
+    real :: lon_deg, lat_deg, stl_hr, alt_km, p_layer
     real :: O_cm3, N2_cm3, O2_cm3, Tmsis
     logical :: msis_ok
+    logical :: valid_alt
     real :: T_here
 
     ! Always define output everywhere (including halos)
@@ -190,6 +203,7 @@ contains
     allocate(nO(1:ni, 1:nj, 1:nk))
     allocate(nO2(1:ni, 1:nj, 1:nk))
     allocate(nN2(1:ni, 1:nj, 1:nk))
+    allocate(active_mask(1:ni, 1:nj, 1:nk))
 
     Tcol(:,:,:)    = 0.0
     dzcol(:,:,:)   = 0.0
@@ -197,11 +211,32 @@ contains
     nO(:,:,:)      = 0.0
     nO2(:,:,:)     = 0.0
     nN2(:,:,:)     = 0.0
+    active_mask(:,:,:) = .false.
 
     allocate(T_ext_ref(is:ie, js:je))
     allocate(z_top_km(is:ie, js:je))
     T_ext_ref(:,:) = 0.0
     z_top_km(:,:)  = 0.0
+
+    ! Thermal conduction is only computed in the GEOS-MLT upper-atmosphere
+    ! pressure region. This avoids using invalid near-surface/low-level
+    ! geopotential heights in MSIS and prevents the raw tendency diagnostic
+    ! from including levels where the tendency will never be applied.
+    do kk = ks, ke
+      kkL = kk - ks + 1
+      do jj = 1, nj
+        j = js + jj - 1
+        do ii = 1, ni
+          i = is + ii - 1
+          if (kk+1 > ubound(pe,2)) cycle
+          if (.not. ieee_is_finite(pe(i,kk,j)) .or. &
+              .not. ieee_is_finite(pe(i,kk+1,j))) cycle
+          if (pe(i,kk,j) <= 0.0 .or. pe(i,kk+1,j) <= 0.0) cycle
+          p_layer = sqrt(pe(i,kk,j) * pe(i,kk+1,j))
+          active_mask(ii,jj,kkL) = p_layer <= mlt_pressure_cutoff_pa
+        end do
+      end do
+    end do
 
     do kk = ks, ke
       kkL = kk - ks + 1
@@ -210,6 +245,9 @@ contains
         do ii = 1, ni
           i = is + ii - 1
     
+          ! Skip levels outside the upper-atmosphere conduction region.
+          if (.not. active_mask(ii,jj,kkL)) cycle
+
           ! Skip if this or next interface is sentinel
           if (kk+1 > ubound(gz,3)) cycle
              if (gz(i,j,kk)   >= GZ_SENTINEL_THRESH) then
@@ -226,6 +264,21 @@ contains
       end do
     end do
 
+    ! Set a zero-flux lower boundary at the pressure cutoff by copying the
+    ! layer thickness just below the last active layer. This prevents the
+    ! finite-difference operator from seeing an artificial zero-thickness layer.
+    do jj = 1, nj
+      do ii = 1, ni
+        last_active = 0
+        do kkL = 1, nk
+          if (active_mask(ii,jj,kkL)) last_active = kkL
+        end do
+        if (last_active > 0 .and. last_active < nk) then
+          dzcol(ii,jj,last_active+1) = max(dzcol(ii,jj,last_active), 100.0)
+        end if
+      end do
+    end do
+
     do kkL = 1, nk-1
       dzifcol(:,:,kkL) = 0.5*(dzcol(:,:,kkL) + dzcol(:,:,kkL+1))
     end do
@@ -237,9 +290,33 @@ contains
         j = js + jj - 1
         do ii = 1, ni
           i = is + ii - 1
+          if (.not. active_mask(ii,jj,kkL)) cycle
           T_here = pt(i,j,kk) * pkz(ii,jj,kk)
+          if (.not. ieee_is_finite(T_here) .or. T_here <= 0.0) then
+            if (bad_cond_state_warn_count < MAX_COND_WARNINGS) then
+              print *, 'GEOS_MLT_BAD_COND_T: i,j,k,T,pt,pkz=', &
+                       i, j, kk, T_here, pt(i,j,kk), pkz(ii,jj,kk)
+            end if
+            bad_cond_state_warn_count = bad_cond_state_warn_count + 1
+            cycle
+          end if
           Tcol(ii,jj,kkL) = T_here
         end do
+      end do
+    end do
+
+    ! Copy temperature just below the pressure cutoff so the conduction
+    ! stencil has a zero-gradient lower boundary. Species remain zero there,
+    ! so no tendency is applied below the cutoff.
+    do jj = 1, nj
+      do ii = 1, ni
+        last_active = 0
+        do kkL = 1, nk
+          if (active_mask(ii,jj,kkL)) last_active = kkL
+        end do
+        if (last_active > 0 .and. last_active < nk) then
+          Tcol(ii,jj,last_active+1) = Tcol(ii,jj,last_active)
+        end if
       end do
     end do
 
@@ -251,6 +328,7 @@ contains
         do ii = 1, ni
           i = is + ii - 1
 
+          if (.not. active_mask(ii,jj,kkL)) cycle
           if (kk+1 > ubound(gz,3)) cycle
           if (gz(i,j,kk)   >= GZ_SENTINEL_THRESH) cycle
           if (gz(i,j,kk+1) >= GZ_SENTINEL_THRESH) cycle
@@ -260,7 +338,18 @@ contains
           stl_hr  = modulo(real(utsec)/3600.0 + lon_deg/15.0, 24.0)
 
           alt_km = 0.5*(gz(i,j,kk) + gz(i,j,kk+1)) / grav / 1000.0
-          if (alt_km < 0.0) alt_km = 0.0
+          valid_alt = ieee_is_finite(alt_km) .and. &
+               alt_km >= SAFE_MSIS_ALT_MIN_KM .and. alt_km <= SAFE_MSIS_ALT_MAX_KM
+          if (.not. valid_alt) then
+            if (bad_cond_alt_warn_count < MAX_COND_WARNINGS) then
+              print *, 'GEOS_MLT_BAD_ALT_COND: i,j,k,alt,gz1,gz2=', &
+                       i, j, kk, alt_km, gz(i,j,kk), gz(i,j,kk+1)
+            end if
+            bad_cond_alt_warn_count = bad_cond_alt_warn_count + 1
+            cycle
+          end if
+
+          alt_km = min(max(alt_km, SAFE_MSIS_ALT_MIN_KM), SAFE_MSIS_ALT_MAX_KM)
 
           call msis_point(y, doy, utsec, alt_km, lat_deg, lon_deg, stl_hr, &
                           O_cm3, N2_cm3, O2_cm3, Tmsis)
@@ -287,6 +376,7 @@ contains
     
         ! model top altitude from gz at k=ks
         z_top_km(i,j) = 0.5*(gz(i,j,ks) + gz(i,j,ks+1)) / grav / 1000.0
+        if (.not. ieee_is_finite(z_top_km(i,j))) z_top_km(i,j) = 0.0
     
         call msis_point(y, doy, utsec, 220.0, lat_deg, lon_deg, stl_hr, &
                         O_cm3, N2_cm3, O2_cm3, Tmsis)
@@ -299,8 +389,9 @@ contains
     call cond_driver_from_msis(Tcol, nO, nO2, nN2, dzcol, dzifcol, heat_tc(is:ie, js:je, ks:ke), &
                                T_ext_ref, z_top_km)
 
-    deallocate(Tcol, dzcol, dzifcol, nO, nO2, nN2, T_ext_ref, z_top_km)
+    deallocate(Tcol, dzcol, dzifcol, nO, nO2, nN2, active_mask, T_ext_ref, z_top_km)
 
   end subroutine cond_driver_apply
 
 end module cond_driver_mod
+

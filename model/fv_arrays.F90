@@ -982,6 +982,17 @@ module fv_arrays_mod
 
    real :: prandtl_number = 1.0           !< Tuning parameter for molecular diffusion -- based on thermal conduction
 
+   ! GEOS-MLT thermal conduction controls. These can be set from
+   ! fv_core_nml or from GEOS resources through FV_StateMod.F90.
+   logical :: geos_mlt_thermcond_enable = .true.    !< Apply GEOS-MLT thermal conduction
+   logical :: geos_mlt_thermcond_limit = .true.     !< Limit explicit thermal-conduction dT
+   real :: geos_mlt_thermcond_dtmax = 2.0e-3        !< Max |dT/dt| from thermal conduction [K/s]
+
+   ! Temporary GEOS-MLT altitude diagnostics for the top few layers.
+   logical :: geos_mlt_alt_diag = .true.            !< Print top-layer altitude diagnostics
+   integer :: geos_mlt_alt_diag_kmax = 5            !< Number of top layers to print
+   integer :: geos_mlt_alt_diag_print_stride = 20   !< Print every N dyn_core calls
+
    ! GEOS-MLT molecular momentum diffusion controls. These can be set from
    ! fv_core_nml or from GEOS resources through FV_StateMod.F90.
    logical :: geos_mlt_momdiff_enable = .true.      !< Apply molecular momentum diffusion to U/V
@@ -2157,4 +2168,5 @@ end subroutine deallocate_fv_nest_BC_type_3d
 
 
 end module fv_arrays_mod
+
 
