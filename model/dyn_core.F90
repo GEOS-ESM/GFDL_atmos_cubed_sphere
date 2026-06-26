@@ -1195,6 +1195,12 @@ contains
          call update_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, dt, &
               u_momdiff_tend, v_momdiff_tend, u, v, gridstruct, npx, npy, npz, domain)
 
+         ! GEOS-MLT molecular diffusion updates the D-grid winds outside
+         ! the standard FV3 wind-update sequence. Refresh the D-grid halos
+         ! immediately so downstream diagnostics and later operations do
+         ! not see processor/tile-edge stale values.
+         call mpp_update_domains(u, v, domain, gridtype=DGRID_NE, complete=.true.)
+
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,ua,va,u_momdiff_tend,v_momdiff_tend,dt) &
 !$OMP                          private(i,j,k)
          do k=1,npz
@@ -1206,6 +1212,10 @@ contains
             enddo
          enddo
 !$OMP end parallel do
+
+         ! The A-grid winds are also updated for consistency with the D-grid
+         ! update. Refresh A-grid halos before any later diagnostic/state copy.
+         call mpp_update_domains(ua, va, domain, gridtype=AGRID, complete=.true.)
       endif
 
       if (flagstruct%geos_mlt_momdiff_heat) then
@@ -1218,6 +1228,11 @@ contains
             enddo
          enddo
 !$OMP end parallel do
+
+         ! Molecular-diffusion heating updates pt outside the standard FV3
+         ! thermodynamic update sequence. Refresh pt halos before later
+         ! state copies or diagnostics.
+         call mpp_update_domains(pt, domain, complete=.true.)
 
          ! Accumulate the applied molecular-diffusion heating increment.
          ! It is converted to a time-mean tendency after the split loop.
@@ -1554,6 +1569,10 @@ contains
      enddo
 !$OMP end parallel do
 
+     ! Thermal conduction updates pt after the regular FV3 thermodynamic
+     ! halo exchanges. Refresh pt halos so temperature diagnostics/history
+     ! do not show stale processor/tile-edge values.
+     call mpp_update_domains(pt, domain, complete=.true.)
   endif
 
 
@@ -3135,3 +3154,9 @@ do 1000 j=jfirst,jlast
 
 
 end module dyn_core_mod
+
+
+
+
+
+

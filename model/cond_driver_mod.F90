@@ -3,8 +3,7 @@
 !
 ! Thermal conduction driver (local-domain indexing):
 !  - Build T = pt * pkz on the local owned interior (exclude halos via ng)
-!  - Use the same halo-aware i,j indices for pt and pkz.
-!    Do not use local packed ii,jj indices for model-state arrays.
+!  - Use halo-aware i,j for pt, but local ii,jj for pkz.
 !  - Use gz interfaces to form altitude for MSIS sampling
 !  - Compute dT/dt from thermal conduction and return in heat_tc (K/s)
 !
@@ -149,6 +148,7 @@ contains
     integer :: ni,nj,nk
     integer :: ii,jj,kkL
     integer :: i,j,kk
+    integer :: ig,jg,ip,jp,ipe,jpe
     integer :: y, doy, utsec
     integer :: last_active
 
@@ -157,6 +157,7 @@ contains
     real, parameter :: grav = 9.80665
 
     real, allocatable :: Tcol(:,:,:), dzcol(:,:,:), dzifcol(:,:,:)
+    real, allocatable :: heat_col(:,:,:)
     real, allocatable :: nO(:,:,:), nO2(:,:,:), nN2(:,:,:)
     logical, allocatable :: active_mask(:,:,:)
     real, allocatable :: T_ext_ref(:,:), z_top_km(:,:)
@@ -201,6 +202,7 @@ contains
     allocate(Tcol(1:ni, 1:nj, 1:nk))
     allocate(dzcol(1:ni, 1:nj, 1:nk))
     allocate(dzifcol(1:ni, 1:nj, 1:nk))
+    allocate(heat_col(1:ni, 1:nj, 1:nk))
     allocate(nO(1:ni, 1:nj, 1:nk))
     allocate(nO2(1:ni, 1:nj, 1:nk))
     allocate(nN2(1:ni, 1:nj, 1:nk))
@@ -209,15 +211,14 @@ contains
     Tcol(:,:,:)    = 0.0
     dzcol(:,:,:)   = 0.0
     dzifcol(:,:,:) = 0.0
+    heat_col(:,:,:) = 0.0
     nO(:,:,:)      = 0.0
     nO2(:,:,:)     = 0.0
     nN2(:,:,:)     = 0.0
     active_mask(:,:,:) = .false.
 
-    ! These packed-column arrays must use the same horizontal bounds as Tcol.
-    ! cond_driver_from_msis loops over lbound(Tcol):ubound(Tcol), so using
-    ! model-domain bounds (is:ie,js:je) here can read the wrong memory and
-    ! produce processor/tile-edge artifacts in the top thermal-conduction flux.
+    ! These arrays are packed-column arrays and must use the same
+    ! horizontal index space as Tcol, dzcol, and heat_col.
     allocate(T_ext_ref(1:ni, 1:nj))
     allocate(z_top_km(1:ni, 1:nj))
     T_ext_ref(:,:) = 0.0
@@ -232,12 +233,18 @@ contains
       do jj = 1, nj
         j = js + jj - 1
         do ii = 1, ni
-          i = is + ii - 1
+          ig  = is + ii - 1
+          jg  = js + jj - 1
+          ipe = ii + 1
+          jpe = jj + 1
+
           if (kk+1 > ubound(pe,2)) cycle
-          if (.not. ieee_is_finite(pe(i,kk,j)) .or. &
-              .not. ieee_is_finite(pe(i,kk+1,j))) cycle
-          if (pe(i,kk,j) <= 0.0 .or. pe(i,kk+1,j) <= 0.0) cycle
-          p_layer = sqrt(pe(i,kk,j) * pe(i,kk+1,j))
+          if (ipe < lbound(pe,1) .or. ipe > ubound(pe,1)) cycle
+          if (jpe < lbound(pe,3) .or. jpe > ubound(pe,3)) cycle
+          if (.not. ieee_is_finite(pe(ipe,kk,jpe)) .or. &
+              .not. ieee_is_finite(pe(ipe,kk+1,jpe))) cycle
+          if (pe(ipe,kk,jpe) <= 0.0 .or. pe(ipe,kk+1,jpe) <= 0.0) cycle
+          p_layer = sqrt(pe(ipe,kk,jpe) * pe(ipe,kk+1,jpe))
           active_mask(ii,jj,kkL) = p_layer <= mlt_pressure_cutoff_pa
         end do
       end do
@@ -248,23 +255,24 @@ contains
       do jj = 1, nj
         j = js + jj - 1
         do ii = 1, ni
-          i = is + ii - 1
+          ig = is + ii - 1
+          jg = js + jj - 1
     
           ! Skip levels outside the upper-atmosphere conduction region.
           if (.not. active_mask(ii,jj,kkL)) cycle
 
           ! Skip if this or next interface is sentinel
           if (kk+1 > ubound(gz,3)) cycle
-             if (gz(i,j,kk)   >= GZ_SENTINEL_THRESH) then
+             if (gz(ig,jg,kk)   >= GZ_SENTINEL_THRESH) then
                 dzcol(ii,jj,kkL) = 0.0  ! Mark as invalid
                 cycle
              end if
-          if (gz(i,j,kk+1) >= GZ_SENTINEL_THRESH) then
+          if (gz(ig,jg,kk+1) >= GZ_SENTINEL_THRESH) then
              dzcol(ii,jj,kkL) = 0.0  ! Mark as invalid
              cycle
           end if
     
-          dzcol(ii,jj,kkL) = abs(gz(i,j,kk) - gz(i,j,kk+1)) / grav
+          dzcol(ii,jj,kkL) = abs(gz(ig,jg,kk) - gz(ig,jg,kk+1)) / grav
         end do
       end do
     end do
@@ -294,13 +302,16 @@ contains
       do jj = 1, nj
         j = js + jj - 1
         do ii = 1, ni
-          i = is + ii - 1
+          ig = is + ii - 1
+          jg = js + jj - 1
+          ip = ii
+          jp = jj
           if (.not. active_mask(ii,jj,kkL)) cycle
-          T_here = pt(i,j,kk) * pkz(i,j,kk)
+          T_here = pt(ig,jg,kk) * pkz(ip,jp,kk)
           if (.not. ieee_is_finite(T_here) .or. T_here <= 0.0) then
             if (bad_cond_state_warn_count < MAX_COND_WARNINGS) then
               print *, 'GEOS_MLT_BAD_COND_T: i,j,k,T,pt,pkz=', &
-                       i, j, kk, T_here, pt(i,j,kk), pkz(i,j,kk)
+                       ig, jg, kk, T_here, pt(ig,jg,kk), pkz(ip,jp,kk)
             end if
             bad_cond_state_warn_count = bad_cond_state_warn_count + 1
             cycle
@@ -331,24 +342,25 @@ contains
       do jj = 1, nj
         j = js + jj - 1
         do ii = 1, ni
-          i = is + ii - 1
+          ig = is + ii - 1
+          jg = js + jj - 1
 
           if (.not. active_mask(ii,jj,kkL)) cycle
           if (kk+1 > ubound(gz,3)) cycle
-          if (gz(i,j,kk)   >= GZ_SENTINEL_THRESH) cycle
-          if (gz(i,j,kk+1) >= GZ_SENTINEL_THRESH) cycle
+          if (gz(ig,jg,kk)   >= GZ_SENTINEL_THRESH) cycle
+          if (gz(ig,jg,kk+1) >= GZ_SENTINEL_THRESH) cycle
 
-          lon_deg = modulo(agrid(i,j,1) * rad2deg, 360.0)
-          lat_deg = agrid(i,j,2) * rad2deg
+          lon_deg = modulo(agrid(ig,jg,1) * rad2deg, 360.0)
+          lat_deg = agrid(ig,jg,2) * rad2deg
           stl_hr  = modulo(real(utsec)/3600.0 + lon_deg/15.0, 24.0)
 
-          alt_km = 0.5*(gz(i,j,kk) + gz(i,j,kk+1)) / grav / 1000.0
+          alt_km = 0.5*(gz(ig,jg,kk) + gz(ig,jg,kk+1)) / grav / 1000.0
           valid_alt = ieee_is_finite(alt_km) .and. &
                alt_km >= SAFE_MSIS_ALT_MIN_KM .and. alt_km <= SAFE_MSIS_ALT_MAX_KM
           if (.not. valid_alt) then
             if (bad_cond_alt_warn_count < MAX_COND_WARNINGS) then
               print *, 'GEOS_MLT_BAD_ALT_COND: i,j,k,alt,gz1,gz2=', &
-                       i, j, kk, alt_km, gz(i,j,kk), gz(i,j,kk+1)
+                       ig, jg, kk, alt_km, gz(ig,jg,kk), gz(ig,jg,kk+1)
             end if
             bad_cond_alt_warn_count = bad_cond_alt_warn_count + 1
             cycle
@@ -373,14 +385,16 @@ contains
     do jj = 1, nj
       j = js + jj - 1
       do ii = 1, ni
-        i = is + ii - 1
+        ig = is + ii - 1
+        jg = js + jj - 1
     
-        lon_deg = modulo(agrid(i,j,1) * rad2deg, 360.0)
-        lat_deg = agrid(i,j,2) * rad2deg
+        lon_deg = modulo(agrid(ig,jg,1) * rad2deg, 360.0)
+        lat_deg = agrid(ig,jg,2) * rad2deg
         stl_hr  = modulo(real(utsec)/3600.0 + lon_deg/15.0, 24.0)
     
-        ! model top altitude from gz at k=ks
-        z_top_km(ii,jj) = 0.5*(gz(i,j,ks) + gz(i,j,ks+1)) / grav / 1000.0
+        ! Model top altitude from gz at k=ks. Store this in the packed
+        ! horizontal index space used by Tcol and heat_col.
+        z_top_km(ii,jj) = 0.5*(gz(ig,jg,ks) + gz(ig,jg,ks+1)) / grav / 1000.0
         if (.not. ieee_is_finite(z_top_km(ii,jj))) z_top_km(ii,jj) = 0.0
     
         call msis_point(y, doy, utsec, 220.0, lat_deg, lon_deg, stl_hr, &
@@ -391,27 +405,31 @@ contains
     end do
 
 
-    call cond_driver_from_msis(Tcol, nO, nO2, nN2, dzcol, dzifcol, heat_tc(is:ie, js:je, ks:ke), &
+    call cond_driver_from_msis(Tcol, nO, nO2, nN2, dzcol, dzifcol, heat_col, &
                                T_ext_ref, z_top_km)
 
-    ! Be explicit: no thermal-conduction tendency is returned below the
-    ! pressure cutoff. This prevents inactive packed-column entries from
-    ! appearing in diagnostics or from being accidentally applied later.
+    ! Scatter packed tendencies back to the halo-aware FV3 storage. Keep
+    ! heat_tc exactly zero outside the pressure cutoff and outside owned cells.
     do kk = ks, ke
       kkL = kk - ks + 1
       do jj = 1, nj
-        j = js + jj - 1
+        jg = js + jj - 1
         do ii = 1, ni
-          i = is + ii - 1
-          if (.not. active_mask(ii,jj,kkL)) heat_tc(i,j,kk) = 0.0
+          ig = is + ii - 1
+          if (active_mask(ii,jj,kkL)) then
+            heat_tc(ig,jg,kk) = heat_col(ii,jj,kkL)
+          else
+            heat_tc(ig,jg,kk) = 0.0
+          end if
         end do
       end do
     end do
 
-    deallocate(Tcol, dzcol, dzifcol, nO, nO2, nN2, active_mask, T_ext_ref, z_top_km)
+    deallocate(Tcol, dzcol, dzifcol, heat_col, nO, nO2, nN2, active_mask, T_ext_ref, z_top_km)
 
   end subroutine cond_driver_apply
 
 end module cond_driver_mod
+
 
 
