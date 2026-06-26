@@ -3,7 +3,8 @@
 !
 ! Thermal conduction driver (local-domain indexing):
 !  - Build T = pt * pkz on the local owned interior (exclude halos via ng)
-!  - Use halo-aware i,j for pt, but local ii,jj for pkz.
+!  - Use the same halo-aware i,j indices for pt and pkz.
+!    Do not use local packed ii,jj indices for model-state arrays.
 !  - Use gz interfaces to form altitude for MSIS sampling
 !  - Compute dT/dt from thermal conduction and return in heat_tc (K/s)
 !
@@ -291,11 +292,11 @@ contains
         do ii = 1, ni
           i = is + ii - 1
           if (.not. active_mask(ii,jj,kkL)) cycle
-          T_here = pt(i,j,kk) * pkz(ii,jj,kk)
+          T_here = pt(i,j,kk) * pkz(i,j,kk)
           if (.not. ieee_is_finite(T_here) .or. T_here <= 0.0) then
             if (bad_cond_state_warn_count < MAX_COND_WARNINGS) then
               print *, 'GEOS_MLT_BAD_COND_T: i,j,k,T,pt,pkz=', &
-                       i, j, kk, T_here, pt(i,j,kk), pkz(ii,jj,kk)
+                       i, j, kk, T_here, pt(i,j,kk), pkz(i,j,kk)
             end if
             bad_cond_state_warn_count = bad_cond_state_warn_count + 1
             cycle
@@ -394,4 +395,5 @@ contains
   end subroutine cond_driver_apply
 
 end module cond_driver_mod
+
 

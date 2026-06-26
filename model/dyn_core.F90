@@ -279,7 +279,7 @@ contains
     real :: p_layer
     real :: cp_eff
     real :: dT_tc
-    real :: dTdt_tc
+    real :: tc_tend_limited
     real :: dT_limit
     real :: z_layer_diag
     real :: zmin_diag
@@ -1527,7 +1527,7 @@ contains
   if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
 !$OMP parallel do default(none) &
 !$OMP shared(flagstruct,is,ie,js,je,npz,pt,heat_tc,bdt,pkz,pe,dtdt_tc) &
-!$OMP private(i,j,k,p_layer,dT_tc,dTdt_tc,dT_limit)
+!$OMP private(i,j,k,p_layer,dT_tc,tc_tend_limited,dT_limit)
      do k=1,npz
         do j=js,je
            do i=is,ie
@@ -1540,19 +1540,20 @@ contains
                    ieee_is_finite(pkz(i,j,k)) .and. pkz(i,j,k) > 0.0 ) then
                  ! heat_tc is raw dT/dt in K/s. Limit the applied tendency
                  ! directly in K/s, then convert to dT for the explicit update.
-                 dTdt_tc = heat_tc(i,j,k)
+                 tc_tend_limited = heat_tc(i,j,k)
                  if (flagstruct%geos_mlt_thermcond_limit) then
                     dT_limit = max(0.0, flagstruct%geos_mlt_thermcond_dtmax)
-                    dTdt_tc = sign(min(abs(dTdt_tc), dT_limit), dTdt_tc)
+                    tc_tend_limited = sign(min(abs(tc_tend_limited), dT_limit), tc_tend_limited)
                  endif
-                 dT_tc = dTdt_tc * bdt
+                 dT_tc = tc_tend_limited * bdt
                  pt(i,j,k) = pt(i,j,k) + dT_tc / pkz(i,j,k)
-                 if (present(dtdt_tc)) dtdt_tc(i,j,k) = dTdt_tc
+                 if (present(dtdt_tc)) dtdt_tc(i,j,k) = tc_tend_limited
               endif
            enddo
         enddo
      enddo
 !$OMP end parallel do
+
   endif
 
 
@@ -3134,8 +3135,3 @@ do 1000 j=jfirst,jlast
 
 
 end module dyn_core_mod
-
-
-
-
-
