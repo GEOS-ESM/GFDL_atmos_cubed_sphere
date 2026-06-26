@@ -214,8 +214,12 @@ contains
     nN2(:,:,:)     = 0.0
     active_mask(:,:,:) = .false.
 
-    allocate(T_ext_ref(is:ie, js:je))
-    allocate(z_top_km(is:ie, js:je))
+    ! These packed-column arrays must use the same horizontal bounds as Tcol.
+    ! cond_driver_from_msis loops over lbound(Tcol):ubound(Tcol), so using
+    ! model-domain bounds (is:ie,js:je) here can read the wrong memory and
+    ! produce processor/tile-edge artifacts in the top thermal-conduction flux.
+    allocate(T_ext_ref(1:ni, 1:nj))
+    allocate(z_top_km(1:ni, 1:nj))
     T_ext_ref(:,:) = 0.0
     z_top_km(:,:)  = 0.0
 
@@ -376,19 +380,33 @@ contains
         stl_hr  = modulo(real(utsec)/3600.0 + lon_deg/15.0, 24.0)
     
         ! model top altitude from gz at k=ks
-        z_top_km(i,j) = 0.5*(gz(i,j,ks) + gz(i,j,ks+1)) / grav / 1000.0
-        if (.not. ieee_is_finite(z_top_km(i,j))) z_top_km(i,j) = 0.0
+        z_top_km(ii,jj) = 0.5*(gz(i,j,ks) + gz(i,j,ks+1)) / grav / 1000.0
+        if (.not. ieee_is_finite(z_top_km(ii,jj))) z_top_km(ii,jj) = 0.0
     
         call msis_point(y, doy, utsec, 220.0, lat_deg, lon_deg, stl_hr, &
                         O_cm3, N2_cm3, O2_cm3, Tmsis)
-        T_ext_ref(i,j) = Tmsis
-        !print *,'MSIS external temperature: ', T_ext_ref(i,j)
+        T_ext_ref(ii,jj) = Tmsis
+        !print *,'MSIS external temperature: ', T_ext_ref(ii,jj)
       end do
     end do
 
 
     call cond_driver_from_msis(Tcol, nO, nO2, nN2, dzcol, dzifcol, heat_tc(is:ie, js:je, ks:ke), &
                                T_ext_ref, z_top_km)
+
+    ! Be explicit: no thermal-conduction tendency is returned below the
+    ! pressure cutoff. This prevents inactive packed-column entries from
+    ! appearing in diagnostics or from being accidentally applied later.
+    do kk = ks, ke
+      kkL = kk - ks + 1
+      do jj = 1, nj
+        j = js + jj - 1
+        do ii = 1, ni
+          i = is + ii - 1
+          if (.not. active_mask(ii,jj,kkL)) heat_tc(i,j,kk) = 0.0
+        end do
+      end do
+    end do
 
     deallocate(Tcol, dzcol, dzifcol, nO, nO2, nN2, active_mask, T_ext_ref, z_top_km)
 
