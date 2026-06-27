@@ -207,11 +207,9 @@ contains
 
               do k = 1, km
 
-                 ! Use geometric altitude only on physical interior cells.
-                 ! Halo/corner values of z_layer_km can contain FV3 edge or
-                 ! sentinel-like values, so use the pressure-based fallback there.
-                 use_geom_alt = present(z_layer_km) .and. &
-                      i >= is .and. i <= ie .and. j >= js .and. j <= je
+                 ! Use geometric altitude everywhere that this routine is asked to
+                 ! diagnose MSIS thermodynamics, including halo cells.  
+                 use_geom_alt = present(z_layer_km)
 
                  if (use_geom_alt) then
                     estz = z_layer_km(i,j,k)
@@ -224,12 +222,13 @@ contains
 
                  if (.not. valid_alt) then
                     if (use_geom_alt .and. bad_alt_warn_count < MAX_BAD_ALT_WARNINGS) then
-                       print *, 'GEOS_MLT_BAD_INTERIOR_ALT_THERMO_FALLBACK: i,j,k,alt,z_approx,pfull=', &
+                       print *, 'GEOS_MLT_BAD_ALT_THERMO_FALLBACK: i,j,k,alt,z_approx,pfull=', &
                                 i, j, k, estz, z_approx(k), pfull(k)
                     endif
                     if (use_geom_alt) bad_alt_warn_count = bad_alt_warn_count + 1
 
-                    ! Fall back to pressure-based altitude before calling MSIS.
+                    ! Fall back to pressure-based altitude only when the provided
+                    ! geometric altitude is outside the safe MSIS range.
                     estz = z_approx(k)
                     valid_alt = ieee_is_finite(estz) .and. &
                          estz >= SAFE_MSIS_ALT_MIN_KM .and. estz <= SAFE_MSIS_ALT_MAX_KM
@@ -340,5 +339,6 @@ contains
     end subroutine calc_gas_specific_heat_MLT
 
 end module calc_gas_specific_heat_mlt_mod
+
 
 

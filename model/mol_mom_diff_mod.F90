@@ -61,6 +61,10 @@ contains
     real, parameter :: MIN_LAMBDA = 0.0
     real, parameter :: MIN_PRESSURE = 1.0e-30
     real, parameter :: SECONDS_PER_DAY = 86400.0
+    ! Smooth pressure taper to avoid a binary on/off layer near pmax_pa.
+    ! Width is in natural-log pressure units. log(10) gives about one decade.
+    real, parameter :: TAPER_DLOGP = 2.302585093
+    real, parameter :: MIN_TAPER = 1.0e-6
 
     integer :: i, j, k
     integer :: kend
@@ -68,6 +72,8 @@ contains
     integer :: limited_count
     logical :: limited_here
     real :: p_layer
+    real :: taper_fac
+    real :: log_ratio
     real :: z_here, z_above, z_below
     real :: dz_layer, dz_up, dz_down
     real :: nu_here, nu_above, nu_below
@@ -121,7 +127,13 @@ contains
 
           if (pe(i,k,j) <= MIN_PRESSURE .or. pe(i,k+1,j) <= MIN_PRESSURE) cycle
           p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
-          if (p_layer > pmax_pa) cycle
+          if (pmax_pa > MIN_PRESSURE) then
+             log_ratio = log(max(p_layer, MIN_PRESSURE) / max(pmax_pa, MIN_PRESSURE))
+             taper_fac = 0.5 * (1.0 - tanh(log_ratio / max(TAPER_DLOGP, 1.0e-6)))
+          else
+             taper_fac = 1.0
+          endif
+          if (taper_fac < MIN_TAPER) cycle
 
           dz_layer = abs(gz(i,j,k) - gz(i,j,k+1)) / GRAV0
           if (dz_layer < MIN_DZ) cycle
@@ -168,9 +180,9 @@ contains
             endif
           endif
 
-          u_t = (u_flux_up + u_flux_down) / dz_layer
-          v_t = (v_flux_up + v_flux_down) / dz_layer
-          ke_heat_ks = ke_heat_rate / max(MIN_CP, cp_mlt(i,j,k))
+          u_t = taper_fac * (u_flux_up + u_flux_down) / dz_layer
+          v_t = taper_fac * (v_flux_up + v_flux_down) / dz_layer
+          ke_heat_ks = taper_fac * ke_heat_rate / max(MIN_CP, cp_mlt(i,j,k))
 
           u_tend(i,j,k) = u_t
           v_tend(i,j,k) = v_t
@@ -263,5 +275,6 @@ contains
   end subroutine mol_mom_diff_compute_tend
 
 end module mol_mom_diff_mod
+
 
 

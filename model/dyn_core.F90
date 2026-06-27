@@ -164,10 +164,8 @@ public :: dyn_core, del2_cubed, init_ijk_mem
   integer :: kmax=1
   real, parameter :: mlt_pressure_cutoff_pa = 1.0  ! 1.0 Pa = 0.01 hPa
 
-  ! GEOS_MLT baseline: explicit dKappa hydrostatic contribution.
-  ! The dKappa term is applied to the MLT hydrostatic geopotential update.
-  ! The discrete estimate uses interface-averaged Kappa from neighboring layers.
-  logical, parameter :: geos_mlt_apply_explicit_dk_hydro = .true.
+  ! GEOS_MLT
+  logical, parameter :: geos_mlt_apply_explicit_dk_hydro = .false.
 
   ! GEOS_MLT baseline: runtime-controlled molecular momentum diffusion.
   ! The coefficients are stored in flagstruct and are read from fv_core_nml.
@@ -1186,6 +1184,9 @@ contains
            mod(geos_mlt_momdiff_call_count-1, &
            max(1, flagstruct%geos_mlt_momdiff_print_stride)) == 0)
 
+      ! update_dwinds_phys interpolates A-grid tendencies to D-grid edges 
+      call mpp_update_domains(u_momdiff_tend, v_momdiff_tend, domain, gridtype=AGRID, complete=.true.)
+
       if (present(dudt_moldiff)) dudt_moldiff(:,:,:) = u_momdiff_tend(is:ie,js:je,:)
       if (present(dvdt_moldiff)) dvdt_moldiff(:,:,:) = v_momdiff_tend(is:ie,js:je,:)
       ! DTDT_Mol should represent applied heating only. Do not write the
@@ -1195,10 +1196,7 @@ contains
          call update_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, dt, &
               u_momdiff_tend, v_momdiff_tend, u, v, gridstruct, npx, npy, npz, domain)
 
-         ! GEOS-MLT molecular diffusion updates the D-grid winds outside
-         ! the standard FV3 wind-update sequence. Refresh the D-grid halos
-         ! immediately so downstream diagnostics and later operations do
-         ! not see processor/tile-edge stale values.
+         ! GEOS-MLT molecular diffusion updates the D-grid winds 
          call mpp_update_domains(u, v, domain, gridtype=DGRID_NE, complete=.true.)
 
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,ua,va,u_momdiff_tend,v_momdiff_tend,dt) &
@@ -1423,8 +1421,8 @@ contains
 
 
   if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
-     call cond_driver_apply(gridstruct%agrid, gz, pe, pt, pkz, heat_tc, &
-          ng, mlt_pressure_cutoff_pa, year, doy, ut_seconds)
+     call cond_driver_apply(gridstruct%agrid, gz, pt, pkz, heat_tc, &
+          ng, year, doy, ut_seconds)
   endif
 
 
@@ -3154,6 +3152,9 @@ do 1000 j=jfirst,jlast
 
 
 end module dyn_core_mod
+
+
+
 
 
 
