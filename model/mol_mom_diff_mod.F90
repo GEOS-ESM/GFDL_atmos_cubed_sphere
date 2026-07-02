@@ -7,12 +7,6 @@
 !   alpha = lambda / (rho * cp)
 !   nu    = Pr * alpha
 !
-! The applied diffusivity can be scaled at runtime using nu_factor. The final
-! diffusivity is still capped by an explicit-diffusion stability number.
-!
-! The module also diagnoses a positive-definite shear-dissipation heating
-! estimate. dyn_core.F90 can optionally add that KE-loss heating to the
-! thermodynamic state through geos_mlt_momdiff_heat.
 
 module mol_mom_diff_mod
 
@@ -79,7 +73,8 @@ contains
     real :: nu_here, nu_above, nu_below
     real :: nu_base_here, nu_factored_here, nu_used_here
     real :: nu_base_tmp, nu_factored_tmp
-    real :: nu_if
+    real :: rho_here, rho_above, rho_below
+    real :: mu_if
     real :: du_dz, dv_dz
     real :: u_flux_up, u_flux_down
     real :: v_flux_up, v_flux_down
@@ -144,6 +139,7 @@ contains
           if (nu_used_here <= 0.0) cycle
 
           nu_here = nu_used_here
+          rho_here = max(rho_mlt(i,j,k), MIN_RHO)
           u_flux_up = 0.0
           u_flux_down = 0.0
           v_flux_up = 0.0
@@ -156,12 +152,16 @@ contains
             if (dz_up >= MIN_DZ) then
               call calc_nu(i, j, k-1, dz_up, nu_base_tmp, nu_factored_tmp, &
                            nu_above, limited_here)
-              nu_if = 0.5 * (nu_here + nu_above)
-              du_dz = (ua(i,j,k-1) - ua(i,j,k)) / dz_up
-              dv_dz = (va(i,j,k-1) - va(i,j,k)) / dz_up
-              u_flux_up = nu_if * du_dz
-              v_flux_up = nu_if * dv_dz
-              ke_heat_rate = ke_heat_rate + 0.5 * nu_if * (du_dz*du_dz + dv_dz*dv_dz)
+              if (nu_above > 0.0 .and. rho_mlt(i,j,k-1) > MIN_RHO) then
+                rho_above = max(rho_mlt(i,j,k-1), MIN_RHO)
+                mu_if = 0.5 * (rho_here * nu_here + rho_above * nu_above)
+                du_dz = (ua(i,j,k-1) - ua(i,j,k)) / dz_up
+                dv_dz = (va(i,j,k-1) - va(i,j,k)) / dz_up
+                u_flux_up = mu_if * du_dz
+                v_flux_up = mu_if * dv_dz
+                ke_heat_rate = ke_heat_rate + 0.5 * (mu_if / rho_here) * &
+                               (du_dz*du_dz + dv_dz*dv_dz)
+              endif
             endif
           endif
 
@@ -171,17 +171,21 @@ contains
             if (dz_down >= MIN_DZ) then
               call calc_nu(i, j, k+1, dz_down, nu_base_tmp, nu_factored_tmp, &
                            nu_below, limited_here)
-              nu_if = 0.5 * (nu_here + nu_below)
-              du_dz = (ua(i,j,k+1) - ua(i,j,k)) / dz_down
-              dv_dz = (va(i,j,k+1) - va(i,j,k)) / dz_down
-              u_flux_down = nu_if * du_dz
-              v_flux_down = nu_if * dv_dz
-              ke_heat_rate = ke_heat_rate + 0.5 * nu_if * (du_dz*du_dz + dv_dz*dv_dz)
+              if (nu_below > 0.0 .and. rho_mlt(i,j,k+1) > MIN_RHO) then
+                rho_below = max(rho_mlt(i,j,k+1), MIN_RHO)
+                mu_if = 0.5 * (rho_here * nu_here + rho_below * nu_below)
+                du_dz = (ua(i,j,k+1) - ua(i,j,k)) / dz_down
+                dv_dz = (va(i,j,k+1) - va(i,j,k)) / dz_down
+                u_flux_down = mu_if * du_dz
+                v_flux_down = mu_if * dv_dz
+                ke_heat_rate = ke_heat_rate + 0.5 * (mu_if / rho_here) * &
+                               (du_dz*du_dz + dv_dz*dv_dz)
+              endif
             endif
           endif
 
-          u_t = taper_fac * (u_flux_up + u_flux_down) / dz_layer
-          v_t = taper_fac * (v_flux_up + v_flux_down) / dz_layer
+          u_t = taper_fac * (u_flux_up + u_flux_down) / (rho_here * dz_layer)
+          v_t = taper_fac * (v_flux_up + v_flux_down) / (rho_here * dz_layer)
           ke_heat_ks = taper_fac * ke_heat_rate / max(MIN_CP, cp_mlt(i,j,k))
 
           u_tend(i,j,k) = u_t
@@ -275,6 +279,7 @@ contains
   end subroutine mol_mom_diff_compute_tend
 
 end module mol_mom_diff_mod
+
 
 
 

@@ -94,6 +94,7 @@ module fv_mapz_mod
   use fv_cmp_mod,        only: qs_init, fv_sat_adj
   use calc_gas_specific_heat_mlt_mod, only: calc_gas_specific_heat_mlt, calc_mlt_thermo_state
   use ESMF, only: ESMF_Clock, ESMF_Time, ESMF_ClockGet, ESMF_TimeGet
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
 
   implicit none
   real, parameter:: consv_min= 0.001         !< below which no correction applies
@@ -110,7 +111,11 @@ module fv_mapz_mod
   real, parameter:: cp_vap = cp_vapor        !< 1846.
   real, parameter:: tice = 273.16
   real, parameter :: mlt_pressure_cutoff_pa = 1.0  ! 1.0 Pa = 0.01 hPa
-
+  real, parameter :: geos_mlt_max_abs_delz_m = 2.0e5
+  real, parameter :: geos_mlt_max_firstpass_alt_km = 1000.0
+  real, parameter :: geos_mlt_pressure_alt_scale_km = 7.0
+  real, parameter :: geos_mlt_pressure_alt_ref_hpa = 1000.0
+  real, parameter :: geos_mlt_min_pressure_pa = 1.0e-12
 
   logical, parameter :: w_limiter = .true.
   real, parameter :: w_max = 90.
@@ -176,6 +181,10 @@ contains
   type(domain2d), intent(INOUT) :: domain
 
   integer, intent(in) :: year, doy, ut_seconds   ! Need for GEOS_MLT
+  real :: p_safe
+  real :: z_pressure_mlt(km)
+  real(kind=8) :: z_bot_m, z_top_m, z_mid_km
+  logical :: use_delz_height
   integer ifirst, ilast, jfirst, jlast
 
 ! INPUT/OUTPUT
@@ -355,39 +364,67 @@ contains
    jfirst = js
    jlast  = je
 
-  if ( GEOS_MLT ) then
-
-     ! Estimate layer-center geometric height [km] for the MSIS call.
-     ! This avoids using the crude pressure-only height approximation inside
-     ! calc_gas_specific_heat_MLT.
-     z_layer_km(:,:,:) = 0.0
-
-     do j = js, je
-        do i = is, ie
-           gz(i) = hs(i,j)
-        enddo
-
-        do k = km, 1, -1
-           do i = is, ie
-              pk_top = exp(akap * log(pe(i,k,  j)))
-              pk_bot = exp(akap * log(pe(i,k+1,j)))
-
-              g_bot_mlt = gz(i)
-              g_top_mlt = g_bot_mlt + cp_air * pt(i,j,k) * (pk_bot - pk_top)
-
-              z_layer_km(i,j,k) = 0.5 * real(g_top_mlt + g_bot_mlt) / grav / 1000.0
-              z_layer_km(i,j,k) = max(0.0, z_layer_km(i,j,k))
-
-              gz(i) = real(g_top_mlt)
-           enddo
-        enddo
-     enddo
-
-     call calc_mlt_thermo_state(is,ie,js,je,isd,ied,jsd,jed,km,pfull,gridstruct, &
-                                     Cp_MLT,Kappa_MLT,year,doy,ut_seconds, &
-                                     ifirst,ilast,jfirst,jlast,z_layer_km)
-  endif    
-
+   if ( GEOS_MLT ) then
+   
+      ! Build a safe pressure-based fallback height for every level.
+      ! This is used only when delz is unavailable or unsafe.
+      do k = 1, km
+         p_safe = max(pfull(k), geos_mlt_min_pressure_pa)
+         z_pressure_mlt(k) = -geos_mlt_pressure_alt_scale_km * &
+              log(p_safe*0.01 / geos_mlt_pressure_alt_ref_hpa)
+         z_pressure_mlt(k) = max(0.0, &
+              min(z_pressure_mlt(k), geos_mlt_max_firstpass_alt_km))
+      enddo
+   
+      ! Initialize the full local array with the safe fallback.
+      ! calc_mlt_thermo_state currently diagnoses only owned columns in fv_mapz.
+      do j = jsd, jed
+         do k = 1, km
+            do i = isd, ied
+               z_layer_km(i,j,k) = z_pressure_mlt(k)
+            enddo
+         enddo
+      enddo
+   
+      ! For owned columns, use geometric layer thickness when it is valid.
+      ! This keeps fv_mapz consistent with the safer geopk altitude path.
+      do j = jfirst, jlast
+         do i = ifirst, ilast
+   
+            z_bot_m = real(hs(i,j), kind=8) / real(grav, kind=8)
+   
+            do k = km, 1, -1
+               use_delz_height = .false.
+   
+               if (ieee_is_finite(delz(i,j,k))) then
+                  if (delz(i,j,k) < 0.0 .and. &
+                      abs(delz(i,j,k)) <= geos_mlt_max_abs_delz_m) then
+   
+                     z_top_m = z_bot_m - real(delz(i,j,k), kind=8)
+                     z_mid_km = 0.5d0 * (z_top_m + z_bot_m) * 0.001d0
+   
+                     if (ieee_is_finite(z_mid_km) .and. &
+                         z_mid_km >= 0.0d0 .and. &
+                         z_mid_km <= real(geos_mlt_max_firstpass_alt_km, kind=8)) then
+   
+                        z_layer_km(i,j,k) = real(z_mid_km)
+                        z_bot_m = z_top_m
+                        use_delz_height = .true.
+                     endif
+                  endif
+               endif
+   
+               ! If one layer is unsafe, stop using delz above this point.
+               ! The fallback pressure-based height remains in z_layer_km.
+               if (.not. use_delz_height) exit
+            enddo
+         enddo
+      enddo
+   
+      call calc_mlt_thermo_state(is,ie,js,je,isd,ied,jsd,jed,km,pfull,gridstruct, &
+                                      Cp_MLT,Kappa_MLT,year,doy,ut_seconds, &
+                                      ifirst,ilast,jfirst,jlast,z_layer_km)
+   endif
 
 !$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,kord_tm,remap_t, &
 !$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic,GEOS_MLT,mol_diffusion_k_top,mol_diffusion_k_bot, &
