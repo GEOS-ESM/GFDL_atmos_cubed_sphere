@@ -119,6 +119,7 @@ module dyn_core_mod
   use fv_timing_mod,      only: timing_on, timing_off
   use fv_diagnostics_mod, only: prt_maxmin, fv_time, prt_mxm
   use fv_update_phys_mod, only: update_dwinds_phys
+  use fv_grid_utils_mod,  only: cubed_to_latlon
 #if defined (ADA_NUDGE)
   use fv_ada_nudge_mod,   only: breed_slp_inline_ada
 #else
@@ -272,6 +273,8 @@ contains
     real, allocatable, dimension(:,:,:) :: alpha_mlt_dyn
     real, allocatable, dimension(:,:,:) :: u_momdiff_tend
     real, allocatable, dimension(:,:,:) :: v_momdiff_tend
+    real, allocatable, dimension(:,:,:) :: ua_momdiff
+    real, allocatable, dimension(:,:,:) :: va_momdiff
     real, allocatable, dimension(:,:,:) :: momdiff_ke_heat_tend
     real, allocatable, dimension(:,:,:) :: t_phys_sync
     real :: p_layer
@@ -458,6 +461,8 @@ contains
     allocate(alpha_mlt_dyn(isd:ied, jsd:jed, npz))
     allocate(u_momdiff_tend(isd:ied, jsd:jed, npz))
     allocate(v_momdiff_tend(isd:ied, jsd:jed, npz))
+    allocate(ua_momdiff(isd:ied, jsd:jed, npz))
+    allocate(va_momdiff(isd:ied, jsd:jed, npz))
     allocate(momdiff_ke_heat_tend(isd:ied, jsd:jed, npz))
     
     kappa_mlt_dyn(:,:,:) = akap
@@ -467,6 +472,8 @@ contains
     alpha_mlt_dyn(:,:,:) = 0.0
     u_momdiff_tend(:,:,:) = 0.0
     v_momdiff_tend(:,:,:) = 0.0
+    ua_momdiff(:,:,:) = 0.0
+    va_momdiff(:,:,:) = 0.0
     momdiff_ke_heat_tend(:,:,:) = 0.0
     if (present(dtdt_molke)) dtdt_molke(:,:,:) = 0.0
     if (present(dtdt_dcon)) dtdt_dcon(:,:,:) = 0.0
@@ -1198,86 +1205,6 @@ contains
    endif
                                        call timing_off('PG_D')
 
-   ! GEOS_MLT molecular momentum diffusion
-   if ( GEOS_MLT .and. (flagstruct%geos_mlt_momdiff_enable .or. &
-        flagstruct%geos_mlt_momdiff_diag .or. flagstruct%geos_mlt_momdiff_heat) ) then
-      geos_mlt_momdiff_call_count = geos_mlt_momdiff_call_count + 1
-
-      call mol_mom_diff_compute_tend('GEOS_MLT_MOMDIFF_AFTER_PGRAD', &
-           is, ie, js, je, isd, ied, jsd, jed, npz, &
-           dt, flagstruct%geos_mlt_momdiff_pr, flagstruct%geos_mlt_momdiff_pmax_pa, &
-           flagstruct%geos_mlt_momdiff_kmax, flagstruct%geos_mlt_momdiff_rmax, &
-           flagstruct%geos_mlt_momdiff_nu_max, flagstruct%geos_mlt_momdiff_nu_scale, &
-           pe, gz, ua, va, lambda_mlt_dyn, rho_mlt_dyn, cp_mlt_dyn, &
-           u_momdiff_tend, v_momdiff_tend, momdiff_ke_heat_tend, &
-           flagstruct%geos_mlt_momdiff_diag .and. is_master() .and. &
-           mod(geos_mlt_momdiff_call_count-1, &
-           max(1, flagstruct%geos_mlt_momdiff_print_stride)) == 0)
-
-      ! update_dwinds_phys interpolates A-grid tendencies to D-grid edges 
-      call mpp_update_domains(u_momdiff_tend, v_momdiff_tend, domain, gridtype=AGRID, complete=.true.)
-
-      if (present(dudt_moldiff)) dudt_moldiff(:,:,:) = u_momdiff_tend(is:ie,js:je,:)
-      if (present(dvdt_moldiff)) dvdt_moldiff(:,:,:) = v_momdiff_tend(is:ie,js:je,:)
-      ! DTDT_Mol should represent applied heating only. Do not write the
-      ! hypothetical KE-loss heating diagnostic when geos_mlt_momdiff_heat is false.
-
-      if (flagstruct%geos_mlt_momdiff_enable) then
-         call update_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, dt, &
-              u_momdiff_tend, v_momdiff_tend, u, v, gridstruct, npx, npy, npz, domain)
-
-         ! GEOS-MLT molecular diffusion updates the D-grid winds 
-         call mpp_update_domains(u, v, domain, gridtype=DGRID_NE, complete=.true.)
-
-!$OMP parallel do default(none) shared(is,ie,js,je,npz,ua,va,u_momdiff_tend,v_momdiff_tend,dt) &
-!$OMP                          private(i,j,k)
-         do k=1,npz
-            do j=js,je
-               do i=is,ie
-                  ua(i,j,k) = ua(i,j,k) + dt*u_momdiff_tend(i,j,k)
-                  va(i,j,k) = va(i,j,k) + dt*v_momdiff_tend(i,j,k)
-               enddo
-            enddo
-         enddo
-!$OMP end parallel do
-
-         ! The A-grid winds are also updated for consistency with the D-grid
-         ! update. Refresh A-grid halos before any later diagnostic/state copy.
-         call mpp_update_domains(ua, va, domain, gridtype=AGRID, complete=.true.)
-      endif
-
-      if (flagstruct%geos_mlt_momdiff_heat) then
-!$OMP parallel do default(none) shared(is,ie,js,je,npz,pt,pkz,momdiff_ke_heat_tend,dt) private(i,j,k)
-         do k=1,npz
-            do j=js,je
-               do i=is,ie
-                  pt(i,j,k) = pt(i,j,k) + dt*momdiff_ke_heat_tend(i,j,k)/max(1.0e-12, pkz(i,j,k))
-               enddo
-            enddo
-         enddo
-!$OMP end parallel do
-
-         ! Molecular-diffusion heating updates pt outside the standard FV3
-         ! thermodynamic update sequence. Refresh pt halos before later
-         ! state copies or diagnostics.
-         call mpp_update_domains(pt, domain, complete=.true.)
-
-         ! Accumulate the applied molecular-diffusion heating increment.
-         ! It is converted to a time-mean tendency after the split loop.
-         if (present(dtdt_molke)) then
-            do k=1,npz
-               do j=js,je
-                  do i=is,ie
-                     dtdt_molke(i,j,k) = dtdt_molke(i,j,k) + &
-                          dt*momdiff_ke_heat_tend(i,j,k)
-                  enddo
-               enddo
-            enddo
-         endif
-      endif
-   endif
-   ! --- GEOS_MLT molecular momentum diffusion
-
 ! *** Inline Rayleigh friction here?
    if( flagstruct%RF_fast .and. flagstruct%tau > 0. )  &
    call Ray_fast(abs(dt), npx, npy, npz, pfull, flagstruct%tau, u, v, w,  &
@@ -1440,6 +1367,91 @@ contains
   if ( flagstruct%fv_debug ) then
        if(is_master()) write(*,*) 'End of n_split loop'
   endif
+
+  ! GEOS_MLT vertical molecular momentum diffusion.
+  ! This is intentionally outside the acoustic n_split loop and uses bdt,
+  ! matching the placement of the GEOS-MLT thermal-conduction tendency below.
+  if ( GEOS_MLT .and. (flagstruct%geos_mlt_momdiff_enable .or. &
+       flagstruct%geos_mlt_momdiff_diag .or. flagstruct%geos_mlt_momdiff_heat) ) then
+     geos_mlt_momdiff_call_count = geos_mlt_momdiff_call_count + 1
+
+     ! At this point ua/va were last used by c_sw/d_sw and are local
+     ! cubed-sphere A-grid components, not eastward/northward winds.
+     ! Molecular momentum diffusion and its MAPL diagnostics should be based
+     ! on true longitude/latitude winds, because update_dwinds_phys expects
+     ! physics-grid eastward/northward tendencies.
+     call cubed_to_latlon(u, v, ua_momdiff, va_momdiff, gridstruct, &
+          npx, npy, npz, 1, gridstruct%grid_type, domain, gridstruct%nested, &
+          flagstruct%c2l_ord, bd)
+
+     call mol_mom_diff_compute_tend('GEOS_MLT_MOMDIFF_NEAR_THERMCOND', &
+          is, ie, js, je, isd, ied, jsd, jed, npz, &
+          bdt, flagstruct%geos_mlt_momdiff_pr, flagstruct%geos_mlt_momdiff_pmax_pa, &
+          flagstruct%geos_mlt_momdiff_kmax, flagstruct%geos_mlt_momdiff_rmax, &
+          flagstruct%geos_mlt_momdiff_nu_max, flagstruct%geos_mlt_momdiff_nu_scale, &
+          pe, gz, ua_momdiff, va_momdiff, lambda_mlt_dyn, rho_mlt_dyn, cp_mlt_dyn, &
+          u_momdiff_tend, v_momdiff_tend, momdiff_ke_heat_tend, &
+          flagstruct%geos_mlt_momdiff_diag .and. is_master() .and. &
+          mod(geos_mlt_momdiff_call_count-1, &
+          max(1, flagstruct%geos_mlt_momdiff_print_stride)) == 0)
+
+     ! update_dwinds_phys interpolates eastward/northward A-grid tendencies
+     ! to D-grid edges. Fill halo values the same way fv_update_phys fills
+     ! physics wind-tendency halos. Do not use AGRID vector rotation here.
+     if (gridstruct%square_domain) then
+        call mpp_update_domains(u_momdiff_tend, domain, &
+             whalo=1, ehalo=1, shalo=1, nhalo=1, complete=.false.)
+        call mpp_update_domains(v_momdiff_tend, domain, &
+             whalo=1, ehalo=1, shalo=1, nhalo=1, complete=.true.)
+     else
+        call mpp_update_domains(u_momdiff_tend, domain, complete=.false.)
+        call mpp_update_domains(v_momdiff_tend, domain, complete=.true.)
+     endif
+
+     if (present(dudt_moldiff)) dudt_moldiff(:,:,:) = u_momdiff_tend(is:ie,js:je,:)
+     if (present(dvdt_moldiff)) dvdt_moldiff(:,:,:) = v_momdiff_tend(is:ie,js:je,:)
+     ! DTDT_Mol should represent applied heating only. Do not write the
+     ! hypothetical KE-loss heating diagnostic when geos_mlt_momdiff_heat is false.
+
+     if (flagstruct%geos_mlt_momdiff_enable) then
+        call update_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, bdt, &
+             u_momdiff_tend, v_momdiff_tend, u, v, gridstruct, npx, npy, npz, domain)
+
+        ! GEOS-MLT molecular diffusion updates the D-grid winds.
+        call mpp_update_domains(u, v, domain, gridtype=DGRID_NE, complete=.true.)
+     endif
+
+     if (flagstruct%geos_mlt_momdiff_heat) then
+!$OMP parallel do default(none) shared(is,ie,js,je,npz,pt,pkz,momdiff_ke_heat_tend,bdt) private(i,j,k)
+        do k=1,npz
+           do j=js,je
+              do i=is,ie
+                 pt(i,j,k) = pt(i,j,k) + bdt*momdiff_ke_heat_tend(i,j,k)/max(1.0e-12, pkz(i,j,k))
+              enddo
+           enddo
+        enddo
+!$OMP end parallel do
+
+        ! Molecular-diffusion heating updates pt outside the standard FV3
+        ! thermodynamic update sequence. Refresh pt halos before later
+        ! state copies or diagnostics.
+        call mpp_update_domains(pt, domain, complete=.true.)
+
+        ! Accumulate the applied molecular-diffusion heating increment.
+        ! It is converted to a time-mean tendency before thermal conduction.
+        if (present(dtdt_molke)) then
+           do k=1,npz
+              do j=js,je
+                 do i=is,ie
+                    dtdt_molke(i,j,k) = dtdt_molke(i,j,k) + &
+                         bdt*momdiff_ke_heat_tend(i,j,k)
+                 enddo
+              enddo
+           enddo
+        endif
+     endif
+  endif
+  ! --- GEOS_MLT vertical molecular momentum diffusion
 
   ! Convert accumulated molecular-diffusion heating increments to the
   ! time-mean applied tendency over this dynamics call. If molecular heating
@@ -1613,6 +1625,8 @@ contains
   if (allocated(alpha_mlt_dyn))  deallocate(alpha_mlt_dyn)
   if (allocated(u_momdiff_tend)) deallocate(u_momdiff_tend)
   if (allocated(v_momdiff_tend)) deallocate(v_momdiff_tend)
+  if (allocated(ua_momdiff)) deallocate(ua_momdiff)
+  if (allocated(va_momdiff)) deallocate(va_momdiff)
   if (allocated(momdiff_ke_heat_tend)) deallocate(momdiff_ke_heat_tend)
 
 
@@ -3195,13 +3209,5 @@ do 1000 j=jfirst,jlast
 
 
 end module dyn_core_mod
-
-
-
-
-
-
-
-
 
 

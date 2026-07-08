@@ -18,6 +18,17 @@ module cond_driver_mod
   ! Sentinel threshold (huge_r=1e8 in R4 builds)
   real, parameter :: GZ_SENTINEL_THRESH = 1.0e7
 
+  ! GEOS-MLT thermal conduction only needs MSIS in the upper atmosphere.
+  ! Layers below this altitude are skipped; very high altitudes are clamped
+  ! to keep MSIS inputs bounded.
+  real,    parameter :: GEOS_MLT_MSIS_ALT_MIN_KM = 70.0
+  real,    parameter :: GEOS_MLT_MSIS_ALT_MAX_KM = 400.0
+  integer, parameter :: GEOS_MLT_MSIS_LOOKUP_KMAX = 40
+
+  ! Diagnostic isolation switch for the top thermal-conduction boundary.
+  ! .true. gives zero external heat flux at the model top.
+  logical, parameter :: GEOS_MLT_TC_ZERO_TOP_FLUX = .true.
+
   ! One-time prints per MPI rank (per process)
   logical, save :: printed_minmax = .false.
 
@@ -86,20 +97,27 @@ contains
 
     call tc_calc(T, nO, nO2, nN2, K_tc, alpha)
 
-    do j = js, je
-      do i = is, ie
-        ! dz between model top and reference altitude (meters)
-        dz_ref_m = (z_ref_km - z_top_km(i,j)) * 1000.0
-!        print *, 'dz_ref_m', dz_ref_m
-!        print *, 'z_top_km(i,j)', z_top_km(i,j), i, j
-        if (dz_ref_m > 1.0) then
-          ! F_up = -K_top * (T_top - T_ext)/dz
-          top_flux_ij(i,j) = -K_tc(i,j,ks) * ( T(i,j,ks) - T_ext_ref(i,j) ) / dz_ref_m
-        else
-          top_flux_ij(i,j) = 0.0
-        end if
+    if (GEOS_MLT_TC_ZERO_TOP_FLUX) then
+      ! Diagnostic isolation: use a zero external heat flux at the model top.
+      ! This prevents the MSIS 220-km temperature reservoir from forcing the
+      ! top layer while we diagnose thermal/geometric stability.
+      top_flux_ij(:,:) = 0.0
+    else
+      do j = js, je
+        do i = is, ie
+          ! dz between model top and reference altitude (meters)
+          dz_ref_m = (z_ref_km - z_top_km(i,j)) * 1000.0
+          if (is_finite_real(dz_ref_m) .and. is_finite_real(T_ext_ref(i,j)) .and. &
+              dz_ref_m > 1.0) then
+            ! F_up = -K_top * (T_top - T_ext)/dz
+            top_flux_ij(i,j) = -K_tc(i,j,ks) * &
+                 (T(i,j,ks) - T_ext_ref(i,j)) / dz_ref_m
+          else
+            top_flux_ij(i,j) = 0.0
+          end if
+        end do
       end do
-    end do
+    end if
 
     do kk = ks, ke
       do j = js, je
@@ -148,7 +166,7 @@ contains
     real, allocatable :: nO(:,:,:), nO2(:,:,:), nN2(:,:,:)
     real, allocatable :: T_ext_ref(:,:), z_top_km(:,:)
 
-    real :: lon_deg, lat_deg, stl_hr, alt_km
+    real :: lon_deg, lat_deg, stl_hr, alt_km, raw_alt_km
     real :: O_cm3, N2_cm3, O2_cm3, Tmsis
     logical :: msis_ok
     real :: T_here
@@ -210,8 +228,10 @@ contains
         do ii = 1, ni
           i = is + ii - 1
     
-          ! Skip if this or next interface is sentinel
+          ! Skip if this or next interface is invalid or sentinel.
           if (kk+1 > ubound(gz,3)) cycle
+          if (.not. is_finite_real(gz(i,j,kk))) cycle
+          if (.not. is_finite_real(gz(i,j,kk+1))) cycle
              if (gz(i,j,kk)   >= GZ_SENTINEL_THRESH) then
                 dzcol(ii,jj,kkL) = 0.0  ! Mark as invalid
                 cycle
@@ -237,8 +257,16 @@ contains
         j = js + jj - 1
         do ii = 1, ni
           i = is + ii - 1
-          T_here = pt(i,j,kk) * pkz(ii,jj,kk)
-          Tcol(ii,jj,kkL) = T_here
+          if (is_finite_real(pt(i,j,kk)) .and. is_finite_real(pkz(ii,jj,kk))) then
+            T_here = pt(i,j,kk) * pkz(ii,jj,kk)
+            if (is_finite_real(T_here)) then
+              Tcol(ii,jj,kkL) = T_here
+            else
+              Tcol(ii,jj,kkL) = 0.0
+            end if
+          else
+            Tcol(ii,jj,kkL) = 0.0
+          end if
         end do
       end do
     end do
@@ -252,15 +280,28 @@ contains
           i = is + ii - 1
 
           if (kk+1 > ubound(gz,3)) cycle
+          if (.not. is_finite_real(gz(i,j,kk))) cycle
+          if (.not. is_finite_real(gz(i,j,kk+1))) cycle
           if (gz(i,j,kk)   >= GZ_SENTINEL_THRESH) cycle
           if (gz(i,j,kk+1) >= GZ_SENTINEL_THRESH) cycle
+
+          ! Thermal conduction/MSIS coupling is only active in the upper
+          ! atmosphere.  Do not call NRLMSIS in lower model layers, because
+          ! terrain-following or near-surface gz can be slightly negative and
+          ! creates misleading low-altitude warnings.
+          if (kkL > GEOS_MLT_MSIS_LOOKUP_KMAX) cycle
 
           lon_deg = modulo(agrid(i,j,1) * rad2deg, 360.0)
           lat_deg = agrid(i,j,2) * rad2deg
           stl_hr  = modulo(real(utsec)/3600.0 + lon_deg/15.0, 24.0)
 
-          alt_km = 0.5*(gz(i,j,kk) + gz(i,j,kk+1)) / grav / 1000.0
-          if (alt_km < 0.0) alt_km = 0.0
+          raw_alt_km = 0.5*(gz(i,j,kk) + gz(i,j,kk+1)) / grav / 1000.0
+          if (.not. is_finite_real(raw_alt_km)) cycle
+          if (raw_alt_km < GEOS_MLT_MSIS_ALT_MIN_KM) cycle
+          alt_km = min(raw_alt_km, GEOS_MLT_MSIS_ALT_MAX_KM)
+
+          if (.not. is_finite_real(lat_deg) .or. .not. is_finite_real(lon_deg) .or. &
+              .not. is_finite_real(stl_hr)) cycle
 
           call msis_point(y, doy, utsec, alt_km, lat_deg, lon_deg, stl_hr, &
                           O_cm3, N2_cm3, O2_cm3, Tmsis)
@@ -285,12 +326,33 @@ contains
         lat_deg = agrid(i,j,2) * rad2deg
         stl_hr  = modulo(real(utsec)/3600.0 + lon_deg/15.0, 24.0)
     
-        ! model top altitude from gz at k=ks
-        z_top_km(i,j) = 0.5*(gz(i,j,ks) + gz(i,j,ks+1)) / grav / 1000.0
-    
-        call msis_point(y, doy, utsec, 220.0, lat_deg, lon_deg, stl_hr, &
-                        O_cm3, N2_cm3, O2_cm3, Tmsis)
-        T_ext_ref(i,j) = Tmsis
+        if (GEOS_MLT_TC_ZERO_TOP_FLUX) then
+          ! No external top flux is used, so the reference temperature and
+          ! top altitude are not used by cond_driver_from_msis.
+          T_ext_ref(i,j) = Tcol(ii,jj,1)
+          z_top_km(i,j)  = 0.0
+        else
+          if (ks+1 <= ubound(gz,3) .and. is_finite_real(gz(i,j,ks)) .and. &
+              is_finite_real(gz(i,j,ks+1))) then
+            raw_alt_km = 0.5*(gz(i,j,ks) + gz(i,j,ks+1)) / grav / 1000.0
+            if (is_finite_real(raw_alt_km)) then
+              z_top_km(i,j) = min(max(raw_alt_km, 0.0), GEOS_MLT_MSIS_ALT_MAX_KM)
+            else
+              z_top_km(i,j) = 0.0
+            end if
+          else
+            z_top_km(i,j) = 0.0
+          end if
+
+          if (is_finite_real(lat_deg) .and. is_finite_real(lon_deg) .and. &
+              is_finite_real(stl_hr)) then
+            call msis_point(y, doy, utsec, 220.0, lat_deg, lon_deg, stl_hr, &
+                            O_cm3, N2_cm3, O2_cm3, Tmsis)
+            T_ext_ref(i,j) = Tmsis
+          else
+            T_ext_ref(i,j) = Tcol(ii,jj,1)
+          end if
+        end if
         !print *,'MSIS external temperature: ', T_ext_ref(i,j)
       end do
     end do
@@ -303,5 +365,21 @@ contains
 
   end subroutine cond_driver_apply
 
+
+  !------------------------------------------------------------
+  ! Safety helpers for MSIS input
+  !------------------------------------------------------------
+  logical function is_finite_real(x)
+    implicit none
+    real, intent(in) :: x
+
+    ! This avoids an explicit IEEE module dependency and catches NaN/Inf.
+    is_finite_real = (x == x) .and. (abs(x) < huge(x))
+  end function is_finite_real
+
+
+
+
 end module cond_driver_mod
+
 

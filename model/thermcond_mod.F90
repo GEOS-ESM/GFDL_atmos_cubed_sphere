@@ -25,6 +25,7 @@ contains
 
     real :: rho, rhoO, rhoO2, rhoN2
     real :: phiO, phiO2, phiN2
+    real :: xO, xO2, xN2, ntot
     real :: cp, Tloc, Kloc
 
     is = lbound(T,1); ie = ubound(T,1)
@@ -56,6 +57,7 @@ contains
             cycle
           end if
 
+          ! Use mass fractions for Cp because Cp is mass-specific.
           phiO  = rhoO  / rho
           phiO2 = rhoO2 / rho
           phiN2 = rhoN2 / rho
@@ -64,7 +66,20 @@ contains
               + 3.5 * (kB/mO2) * phiO2 &
               + 3.5 * (kB/mN2) * phiN2
 
-          Kloc = (56.0*(phiO2 + phiN2) + 75.9*phiO) * (Tloc**0.69) * 1.0e-5
+          ! Use number fractions for thermal conductivity because K_tc is a
+          ! molecular transport coefficient. Keep the original alpha interface.
+          ntot = nO(i,j,kk) + nO2(i,j,kk) + nN2(i,j,kk)
+          if (ntot <= 0.0) then
+            K_tc(i,j,kk)  = 0.0
+            alpha(i,j,kk) = 0.0
+            cycle
+          end if
+
+          xO  = nO(i,j,kk)  / ntot
+          xO2 = nO2(i,j,kk) / ntot
+          xN2 = nN2(i,j,kk) / ntot
+
+          Kloc = (75.9*xO + 56.0*(xO2 + xN2)) * (Tloc**0.69) * 1.0e-5
 
           K_tc(i,j,kk)  = Kloc
           alpha(i,j,kk) = Kloc / max(1.0e-30, (rho * cp))
@@ -76,5 +91,6 @@ contains
   end subroutine tc_calc
 
 end module thermcond_mod
+
 
 
