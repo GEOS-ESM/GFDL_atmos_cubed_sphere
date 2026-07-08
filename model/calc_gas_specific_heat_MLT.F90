@@ -144,6 +144,7 @@ contains
         real :: phiO, phiN2, phiO2
         real :: rhoO, rhoN2, rhoO2, rho_mix
         real :: lambda_mix, alpha_mix
+        real :: ntot, xO, xN2, xO2
         real :: estz
         real :: stl
         real :: ut_hour
@@ -274,9 +275,15 @@ contains
                  rho_mix = rhoO + rhoN2 + rhoO2
 
                  ! Thermal conductivity [W m-1 K-1], matching thermcond_mod.
-                 ! Mass fractions are from the same O/N2/O2 mixture used for Cp/Kappa.
-                 if (real(T_k) > 0.0 .and. rho_mix > 0.0 .and. Cp_mix > 0.0) then
-                    lambda_mix = (56.0*(phiO2 + phiN2) + 75.9*phiO) * (real(T_k)**0.69) * 1.0e-5
+                 ! Use number fractions because lambda is a molecular transport coefficient.
+                 ntot = real(Om_k) + real(N2m_k) + real(O2m_k)
+                 if (real(T_k) > 0.0 .and. rho_mix > 0.0 .and. Cp_mix > 0.0 .and. &
+                     ntot > 0.0) then
+                    xO  = real(Om_k)  / ntot
+                    xN2 = real(N2m_k) / ntot
+                    xO2 = real(O2m_k) / ntot
+
+                    lambda_mix = (75.9*xO + 56.0*(xO2 + xN2)) * (real(T_k)**0.69) * 1.0e-5
                     alpha_mix  = lambda_mix / max(1.0e-30, rho_mix * Cp_mix)
                  else
                     lambda_mix = 0.0
@@ -339,6 +346,5 @@ contains
     end subroutine calc_gas_specific_heat_MLT
 
 end module calc_gas_specific_heat_mlt_mod
-
 
 

@@ -135,7 +135,6 @@ module dyn_core_mod
   use calc_gas_specific_heat_mlt_mod, only: calc_gas_specific_heat_mlt, calc_mlt_thermo_state
   use ESMF, only: ESMF_Clock, ESMF_Time, ESMF_ClockGet, ESMF_TimeGet
 
-  use cond_driver_mod, only : cond_driver_from_msis
   use cond_driver_mod, only : cond_driver_apply
   use mol_mom_diff_mod, only : mol_mom_diff_compute_tend
 ! +++ GEOS_MLT
@@ -1463,8 +1462,8 @@ contains
 
 
   if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
-     call cond_driver_apply(gridstruct%agrid, gz, pt, pkz, heat_tc, &
-          ng, year, doy, ut_seconds)
+     call cond_driver_apply(gz, pt, pkz, lambda_mlt_dyn, rho_mlt_dyn, cp_mlt_dyn, &
+          heat_tc, ng)
   endif
 
 
@@ -3209,5 +3208,4 @@ do 1000 j=jfirst,jlast
 
 
 end module dyn_core_mod
-
 
