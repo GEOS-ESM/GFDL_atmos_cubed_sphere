@@ -4,8 +4,9 @@
 ! for A-grid horizontal winds. The base diffusivity is diagnosed from
 ! thermal conductivity using
 !
-!   alpha = lambda / (rho * cp)
-!   nu    = Pr * alpha
+!   lambda = lambda_coef * T_GEOS**0.69
+!   alpha  = lambda / (rho * cp)
+!   nu     = Pr * alpha
 !
 
 module mol_mom_diff_mod
@@ -20,7 +21,7 @@ contains
   subroutine mol_mom_diff_compute_tend(label, is, ie, js, je, isd, ied, jsd, jed, npz, &
                                       dt, pr_mol, pmax_pa, kmax_apply, rmax, nu_max, &
                                       nu_factor, pe, gz, ua, va, lambda_mlt, rho_mlt, &
-                                      cp_mlt, u_tend, v_tend, ke_heat_tend, diag_enabled)
+                                      cp_mlt, pt, pkz, u_tend, v_tend, ke_heat_tend, diag_enabled)
 
     implicit none
 
@@ -40,9 +41,11 @@ contains
     real, intent(in) :: gz(isd:ied, jsd:jed, npz+1)
     real, intent(in) :: ua(isd:ied, jsd:jed, npz)
     real, intent(in) :: va(isd:ied, jsd:jed, npz)
-    real, intent(in) :: lambda_mlt(isd:ied, jsd:jed, npz)
+    real, intent(in) :: lambda_mlt(isd:ied, jsd:jed, npz)  ! conductivity coefficient
     real, intent(in) :: rho_mlt(isd:ied, jsd:jed, npz)
     real, intent(in) :: cp_mlt(isd:ied, jsd:jed, npz)
+    real, intent(in) :: pt(isd:ied, jsd:jed, npz)
+    real, intent(in) :: pkz(is:ie, js:je, npz)
     real, intent(out) :: u_tend(isd:ied, jsd:jed, npz)
     real, intent(out) :: v_tend(isd:ied, jsd:jed, npz)
     real, intent(out) :: ke_heat_tend(isd:ied, jsd:jed, npz)
@@ -254,6 +257,8 @@ contains
       logical, intent(out) :: limited
       real :: nu_cap
       real :: safe_factor
+      real :: T_geos
+      real :: lambda_here
 
       nu_base = 0.0
       nu_factored = 0.0
@@ -263,8 +268,24 @@ contains
       if (lambda_mlt(ii,jj,kk) <= MIN_LAMBDA) return
       if (rho_mlt(ii,jj,kk) <= MIN_RHO) return
       if (cp_mlt(ii,jj,kk) <= MIN_CP) return
+      if (.not. is_finite_real(lambda_mlt(ii,jj,kk))) return
+      if (.not. is_finite_real(rho_mlt(ii,jj,kk))) return
+      if (.not. is_finite_real(cp_mlt(ii,jj,kk))) return
+      if (.not. is_finite_real(pt(ii,jj,kk))) return
+      if (.not. is_finite_real(pkz(ii,jj,kk))) return
 
-      nu_base = pr_mol * lambda_mlt(ii,jj,kk) / (rho_mlt(ii,jj,kk) * cp_mlt(ii,jj,kk))
+      T_geos = pt(ii,jj,kk) * pkz(ii,jj,kk)
+      if (.not. is_finite_real(T_geos)) return
+      if (T_geos <= 0.0) return
+
+      ! Lambda_MLT stores only the composition coefficient. Apply the
+      ! prognostic GEOS/FV3 temperature dependence before deriving nu.
+      lambda_here = lambda_mlt(ii,jj,kk) * T_geos**0.69
+      if (.not. is_finite_real(lambda_here)) return
+      if (lambda_here <= MIN_LAMBDA) return
+
+      nu_base = pr_mol * lambda_here / (rho_mlt(ii,jj,kk) * cp_mlt(ii,jj,kk))
+      if (.not. is_finite_real(nu_base)) return
       if (nu_base <= 0.0) return
 
       safe_factor = max(0.0, nu_factor)
@@ -276,10 +297,14 @@ contains
       limited = nu_used < nu_factored * (1.0 - 1.0e-6)
     end subroutine calc_nu
 
+    logical function is_finite_real(x)
+      implicit none
+      real, intent(in) :: x
+
+      is_finite_real = (x == x) .and. (abs(x) < huge(x))
+    end function is_finite_real
+
   end subroutine mol_mom_diff_compute_tend
 
 end module mol_mom_diff_mod
-
-
-
 

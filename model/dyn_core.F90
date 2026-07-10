@@ -1389,7 +1389,7 @@ contains
           flagstruct%geos_mlt_momdiff_kmax, flagstruct%geos_mlt_momdiff_rmax, &
           flagstruct%geos_mlt_momdiff_nu_max, flagstruct%geos_mlt_momdiff_nu_scale, &
           pe, gz, ua_momdiff, va_momdiff, lambda_mlt_dyn, rho_mlt_dyn, cp_mlt_dyn, &
-          u_momdiff_tend, v_momdiff_tend, momdiff_ke_heat_tend, &
+          pt, pkz, u_momdiff_tend, v_momdiff_tend, momdiff_ke_heat_tend, &
           flagstruct%geos_mlt_momdiff_diag .and. is_master() .and. &
           mod(geos_mlt_momdiff_call_count-1, &
           max(1, flagstruct%geos_mlt_momdiff_print_stride)) == 0)
@@ -1462,8 +1462,8 @@ contains
 
 
   if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
-     call cond_driver_apply(gz, pt, pkz, lambda_mlt_dyn, rho_mlt_dyn, cp_mlt_dyn, &
-          heat_tc, ng)
+     call cond_driver_apply(gridstruct%agrid, gz, pt, pkz, heat_tc, &
+          ng, year, doy, ut_seconds)
   endif
 
 

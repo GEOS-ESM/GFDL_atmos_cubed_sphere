@@ -268,22 +268,31 @@ contains
                                                              R_mix, Cp_mix, Cv_mix, Kappa_mix, &
                                                              phiO, phiN2, phiO2)
 
+                 ntot = real(Om_k) + real(N2m_k) + real(O2m_k)
+                 xO  = real(Om_k)  / ntot
+                 xN2 = real(N2m_k) / ntot
+                 xO2 = real(O2m_k) / ntot
+
                  ! Convert MSIS number densities from cm-3 to m-3 for mass density.
                  rhoO    = real(Om_k)  * 1.0e6 * mO
                  rhoN2   = real(N2m_k) * 1.0e6 * mN2
                  rhoO2   = real(O2m_k) * 1.0e6 * mO2
                  rho_mix = rhoO + rhoN2 + rhoO2
 
-                 ! Thermal conductivity [W m-1 K-1], matching thermcond_mod.
-                 ! Use number fractions because lambda is a molecular transport coefficient.
-                 ntot = real(Om_k) + real(N2m_k) + real(O2m_k)
-                 if (real(T_k) > 0.0 .and. rho_mix > 0.0 .and. Cp_mix > 0.0 .and. &
-                     ntot > 0.0) then
-                    xO  = real(Om_k)  / ntot
-                    xN2 = real(N2m_k) / ntot
-                    xO2 = real(O2m_k) / ntot
+                 ! Thermal-conductivity coefficient [W m-1 K-1 K^-0.69].
+                 ! GEOS-MLT keeps the composition dependence here, but applies
+                 ! the prognostic GEOS temperature dependence in the consumer:
+                 !
+                 !   lambda = lambda_mix * T_GEOS**0.69
+                 !
+                 ! Use mass fractions here to preserve the previous GEOS-MLT
+                 ! conduction behavior during this diagnostic test.
+                 if (rho_mix > 0.0 .and. Cp_mix > 0.0) then
+                    lambda_mix = (56.0*(xO2+ xN2) + 75.9*xO) * 1.0e-5
+                    !lambda_mix = (56.0*(phiO2 + phiN2) + 75.9*phiO) * 1.0e-5
 
-                    lambda_mix = (75.9*xO + 56.0*(xO2 + xN2)) * (real(T_k)**0.69) * 1.0e-5
+                    ! Alpha_MLT is now a thermal-diffusivity coefficient:
+                    !   alpha = alpha_mix * T_GEOS**0.69
                     alpha_mix  = lambda_mix / max(1.0e-30, rho_mix * Cp_mix)
                  else
                     lambda_mix = 0.0
@@ -346,5 +355,3 @@ contains
     end subroutine calc_gas_specific_heat_MLT
 
 end module calc_gas_specific_heat_mlt_mod
-
-
