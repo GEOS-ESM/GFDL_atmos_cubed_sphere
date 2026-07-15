@@ -404,10 +404,9 @@ contains
                      z_mid_km = 0.5d0 * (z_top_m + z_bot_m) * 0.001d0
    
                      if (ieee_is_finite(z_mid_km) .and. &
-                         z_mid_km >= 0.0d0 .and. &
                          z_mid_km <= real(geos_mlt_max_firstpass_alt_km, kind=8)) then
    
-                        z_layer_km(i,j,k) = real(z_mid_km)
+                        z_layer_km(i,j,k) = real(max(0.0d0, z_mid_km))
                         z_bot_m = z_top_m
                         use_delz_height = .true.
                      endif
