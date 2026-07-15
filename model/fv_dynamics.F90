@@ -791,6 +791,11 @@ contains
                      mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap, &
                      dtdt_consvte=dtdt_consvte)
 
+         ! Synchronize the final Eulerian GEOS-MLT layer thickness.
+         if (hydrostatic .and. GEOS_MLT_use) then
+            call mpp_update_domains(delz, domain, complete=.true.)
+         endif
+
 #ifdef AVEC_TIMERS
                                                   call avec_timer_stop(6)
 #endif

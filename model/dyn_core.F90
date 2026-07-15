@@ -479,9 +479,6 @@ contains
     if (present(dudt_moldiff)) dudt_moldiff(:,:,:) = 0.0
     if (present(dvdt_moldiff)) dvdt_moldiff(:,:,:) = 0.0
 
-
-
-    ! +++ geos_mlt
     if ( GEOS_MLT .and. hydrostatic ) then
 
        ! Synchronize the GEOS-side dry PKZ convention with the MLT-aware
@@ -496,6 +493,7 @@ contains
 
        allocate(t_phys_sync(is:ie, js:je, npz))
 
+       ! Preserve physical temperature using the newly diagnosed pkz_mlt.
        do k=1,npz
           do j=js,je
              do i=is,ie
@@ -511,14 +509,13 @@ contains
                   Lambda_MLT_out=lambda_mlt_dyn, Rho_MLT_out=rho_mlt_dyn, Alpha_MLT_out=alpha_mlt_dyn)
 
        ! GEOS-MLT: make the diagnosed thermodynamic fields halo-consistent.
-       if (GEOS_MLT) then
-          call mpp_update_domains(kappa_mlt_dyn, domain, complete=.true.)
-          call mpp_update_domains(cp_mlt_dyn,     domain, complete=.true.)
-          call mpp_update_domains(lambda_mlt_dyn, domain, complete=.true.)
-          call mpp_update_domains(rho_mlt_dyn,    domain, complete=.true.)
-          call mpp_update_domains(alpha_mlt_dyn,  domain, complete=.true.)
-       endif
+       call mpp_update_domains(kappa_mlt_dyn, domain, complete=.true.)
+       call mpp_update_domains(cp_mlt_dyn,     domain, complete=.true.)
+       call mpp_update_domains(lambda_mlt_dyn, domain, complete=.true.)
+       call mpp_update_domains(rho_mlt_dyn,    domain, complete=.true.)
+       call mpp_update_domains(alpha_mlt_dyn,  domain, complete=.true.)
 
+       ! Ensure physical temperature is preserved with the second-pass pkz. 
        do k=1,npz
           do j=js,je
              do i=is,ie
@@ -526,6 +523,22 @@ contains
              enddo
           enddo
        enddo
+
+       ! Update hydrostatic layer thickness from the second-pass geopotential.
+!$OMP parallel do default(none) &
+!$OMP shared(delz,gz,grav,npz,bd) &
+!$OMP private(i,j,k)
+       do k = 1, npz
+          do j = bd%js, bd%je
+             do i = bd%is, bd%ie
+                delz(i,j,k) = &
+                     (gz(i,j,k+1) - gz(i,j,k)) / grav
+             enddo
+          enddo
+       enddo
+!$OMP end parallel do
+
+       call mpp_update_domains(delz, domain, complete=.true.)
 
        deallocate(t_phys_sync)
 
@@ -1067,7 +1080,26 @@ contains
                   Lambda_MLT_out=lambda_mlt_dyn, Rho_MLT_out=rho_mlt_dyn, Alpha_MLT_out=alpha_mlt_dyn)
         ! GEOS-MLT: make the diagnosed thermodynamic fields halo-consistent.
         if (GEOS_MLT) then
-           call mpp_update_domains(kappa_mlt_dyn, domain, complete=.true.)
+           ! Update hydrostatic layer thickness (delz) from the final
+           ! Lagrangian-state geopotential.
+!$OMP parallel do default(none) &
+!$OMP shared(delz,gz,grav,npz,bd) &
+!$OMP private(i,j,k)
+           do k = 1, npz
+              do j = bd%js, bd%je
+                 do i = bd%is, bd%ie
+                    delz(i,j,k) = &
+                         (gz(i,j,k+1) - gz(i,j,k)) / grav
+                 enddo
+              enddo
+           enddo
+!$OMP end parallel do
+
+           ! Synchronize delz before vertical remapping.
+           call mpp_update_domains(delz, domain, complete=.true.)
+
+           ! Synchronize GEOS-MLT thermodynamic fields.
+           call mpp_update_domains(kappa_mlt_dyn,  domain, complete=.true.)
            call mpp_update_domains(cp_mlt_dyn,     domain, complete=.true.)
            call mpp_update_domains(lambda_mlt_dyn, domain, complete=.true.)
            call mpp_update_domains(rho_mlt_dyn,    domain, complete=.true.)

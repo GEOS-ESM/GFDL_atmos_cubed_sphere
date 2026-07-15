@@ -1178,7 +1178,8 @@ contains
 !$OMP                               ng,gridstruct,E_Flux,pdt,dtmp,reproduce_sum,q,      &
 !$OMP                               mdt,cld_amt,cappa,dtdt,out_dt,rrg,akap,do_sat_adj,  &
 !$OMP                               fast_mp_consv,kord_tm,Cp_MLT,Kappa_MLT,dtdt_consvte) &
-!$OMP                       private(pe0,pe1,pe2,pe3,cvm,gz,phis,tesum,zsum,dpln,dlnp,tmp)
+!$OMP                       private(pe0,pe1,pe2,pe3,cvm,gz,phis,tesum,zsum,dpln,dlnp,tmp, &
+!$OMP                               p_layer,rg_eff)
 
 dtmp = 0.
 if (present(dtdt_consvte)) dtdt_consvte(:,:,:) = 0.0
@@ -1346,6 +1347,37 @@ endif        ! end last_step check
            endif
                                            call timing_off('sat_adj2')
   endif   ! do_sat_adj
+
+  ! Diagnose the final Eulerian hydrostatic layer thickness.
+  ! At this point pt is virtual temperature. dtmp is the total-energy
+  ! correction and is zero unless it is active on the last step.
+  if (hydrostatic .and. GEOS_MLT) then
+!$OMP do
+     do k = 1, km
+        do j = js, je
+           do i = is, ie
+
+              ! Apply the same temperature correction that will be
+              ! included in the final pt update below.
+              tmp = pt(i,j,k) + dtmp*pkz(i,j,k)
+
+              p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
+
+              if (p_layer <= mlt_pressure_cutoff_pa) then
+                 ! Mixture gas constant: R_mix = Cp_mix * kappa_mix.
+                 rg_eff = Cp_MLT(i,j,k) * Kappa_MLT(i,j,k)
+              else
+                 rg_eff = rdgas
+              endif
+
+              ! FV3 delz is negative because k increases downward.
+              delz(i,j,k) = -rg_eff * tmp * &
+                   (peln(i,k+1,j) - peln(i,k,j)) / grav
+
+           enddo
+        enddo
+     enddo
+  endif
 
 
   if ( last_step .and. (.not. adiabatic) ) then
