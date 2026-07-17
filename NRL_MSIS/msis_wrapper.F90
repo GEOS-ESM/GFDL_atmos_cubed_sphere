@@ -10,7 +10,7 @@ module msis_wrapper
   
   private
   
-  public :: msis_wrapper_init, msis_point
+  public :: msis_wrapper_init, msis_prepare_time, msis_point
 
   ! --- Local Variables ---
   integer, allocatable :: r_iyd(:)    ! stored as year*1000 + doy
@@ -24,6 +24,19 @@ module msis_wrapper
   real(4), parameter :: DEFAULT_AP   = 10.0_4
   real(4), parameter :: DEFAULT_F107 = 150.0_4
   real(4), parameter :: DEFAULT_F107A= 150.0_4
+
+  ! --- Cached space-weather state ---
+  ! Only the hourly forcing indices are cached. MSIS itself is still called
+  ! for every requested time, location, and altitude.
+  logical, save :: index_cache_ready = .false.
+  integer, save :: cached_iyd  = -1
+  integer, save :: cached_hour = -1
+  real(4), save :: cached_ap    = DEFAULT_AP
+  real(4), save :: cached_f107  = DEFAULT_F107
+  real(4), save :: cached_f107a = DEFAULT_F107A
+
+  ! Enable only for a short verification run. Output is produced by each MPI rank.
+  logical, parameter :: DEBUG_MSIS_INDICES = .false.
 
   ! --- Explicit interface for external MSIS routine ---
   interface
@@ -42,6 +55,8 @@ contains
 
   subroutine msis_wrapper_init()
     ! Initialize MSIS and load f107_ap_appended.txt
+    if (msis_inited .and. loaded) return
+
     if (.not. msis_inited) then
       call msisinit(parmpath='./', parmfile='msis21.parm')
       msis_inited = .true.
@@ -50,9 +65,58 @@ contains
     call load_f107_file()
     
     if (.not. loaded) then
-      print *, 'Warning: F107/AP not loaded; using hard-coded defaults (ap=10,f107=150,f107a=150).'
-    end if  
+      print *, 'GEOS_MLT_MSIS_ERROR: F107/AP table was not loaded.'
+      error stop 'GEOS-MLT MSIS initialization failed'
+    end if
+
+    index_cache_ready = .false.
   end subroutine msis_wrapper_init
+
+
+  subroutine msis_prepare_time(year, doy, ut_seconds)
+    ! Select the time-varying space-weather indices once per model hour.
+    ! Subsequent msis_point calls reuse these scalar indices but still run MSIS.
+    integer, intent(in) :: year, doy, ut_seconds
+
+    integer :: requested_iyd, requested_hour, idx
+
+    requested_iyd  = year*1000 + doy
+    requested_hour = max(0, min(23, ut_seconds / 3600))
+
+    if (index_cache_ready) then
+      if (requested_iyd  == cached_iyd .and. &
+          requested_hour == cached_hour) return
+    end if
+
+    if (.not. loaded) then
+      print *, 'GEOS_MLT_MSIS_ERROR: index table is not loaded.'
+      print *, 'Requested year,doy,hour=', year, doy, requested_hour
+      error stop 'GEOS-MLT MSIS table was not initialized'
+    end if
+
+    ! This linear table search now occurs only when the model hour changes.
+    idx = find_record(requested_iyd, requested_hour)
+
+    if (idx < 1) then
+      print *, 'GEOS_MLT_MSIS_ERROR: no exact index record.'
+      print *, 'Requested year,doy,hour=', year, doy, requested_hour
+      error stop 'GEOS-MLT missing F107/AP record'
+    end if
+
+    cached_iyd   = requested_iyd
+    cached_hour  = requested_hour
+    cached_ap    = r_ap(idx)
+    cached_f107  = r_f107(idx)
+    cached_f107a = r_f107a(idx)
+    index_cache_ready = .true.
+
+    if (DEBUG_MSIS_INDICES) then
+      write(*,'(A,3(I0,1X),A,3(F10.3,1X))') &
+           'GEOS_MLT_MSIS_INDEX year,doy,hour=', &
+           year, doy, requested_hour, ' Ap,F107,F107A=', &
+           cached_ap, cached_f107, cached_f107a
+    end if
+  end subroutine msis_prepare_time
 
   subroutine msis_point(year, doy, ut_seconds, alt, glat, glong, stl, &
                         O_out, N2_out, O2_out, T_out)
@@ -60,47 +124,37 @@ contains
     real(4), intent(in) :: alt, glat, glong, stl
     real(4), intent(out):: O_out, N2_out, O2_out, T_out
 
-    integer :: iyd, idx, hour
+    integer :: iyd, hour
     real(4) :: ut, ap(7), d(10), t(2)
-    integer :: mass, i
-    real(4) :: apv, f107v, f107av
+    integer :: mass
 
     ! Compute day-of-year / iyd even if file not loaded 
     iyd = year*1000 + doy
     hour = max(0, min(23, ut_seconds / 3600))
 
-    ! Determine F107/AP values using F107_ap_appended.txt otherwise use defaults
-    if (loaded) then
-      idx = find_record(iyd, hour)
-      if (idx >= 1) then
-        apv = r_ap(idx); f107v = r_f107(idx); f107av = r_f107a(idx)
-      else
-        ! No matching date/hour found in file -> use defaults
-        apv = DEFAULT_AP
-        f107v = DEFAULT_F107
-        f107av = DEFAULT_F107A
-        print *, 'Warning: no F107/AP record found for', year, doy, hour, &
-                 '; using defaults ap=',apv,' f107=',f107v,' f107a=',f107av
-      end if
-    else
-      ! File not loaded -> use defaults (no error)
-     ! print *, 'File not loaded, using defaults'   
-      apv = DEFAULT_AP
-      f107v = DEFAULT_F107
-      f107av = DEFAULT_F107A
+    ! msis_prepare_time must be called before the grid-point/level MSIS loops.
+    if (.not. index_cache_ready) then
+      error stop 'Call msis_prepare_time before msis_point'
+    end if
+
+    ! Do not allow indices from a previous model hour to be used accidentally.
+    if (iyd /= cached_iyd .or. hour /= cached_hour) then
+      print *, 'GEOS_MLT_MSIS_ERROR: stale index cache.'
+      print *, 'Requested iyd,hour=', iyd, hour
+      print *, 'Cached    iyd,hour=', cached_iyd, cached_hour
+      error stop 'GEOS-MLT stale MSIS index cache'
     end if
 
     ! Prepare inputs and call MSIS: UT passed in seconds
     ut = real(ut_seconds, kind=4)
     mass = 1
-    do i = 1, 7
-      ap(i) = apv
-    end do
+    ap(:) = cached_ap
     
 ! Logging
-    !print *, 'F107, ap, stl, alt:', f107v, ap, stl, alt
+    !print *, 'F107, ap, stl, alt:', cached_f107, ap, stl, alt
     !print *, iyd, ut
-    call gtd8d(iyd, ut, alt, glat, glong, stl, f107av, f107v, ap, mass, d, t)
+    call gtd8d(iyd, ut, alt, glat, glong, stl, &
+               cached_f107a, cached_f107, ap, mass, d, t)
 
     !print *, 'MSIS Temperature:', t(2)
     O_out  = d(2)
@@ -229,13 +283,10 @@ contains
   integer function find_record(iyd, hour)
     integer, intent(in) :: iyd, hour
     integer :: i
-    integer(kind=8) :: target, rec_time, best_diff
-    integer :: best_idx
 
-    if (nrec <= 0) then
-      find_record = -1
-      return
-    end if
+    find_record = -1
+
+    if (nrec <= 0) return
 
     ! Find exact day of year and record
     do i = 1, nrec
@@ -245,18 +296,6 @@ contains
       end if
     end do
 
-    ! Otherwise nearest in time (comparing iyd*24 + hour)
-    target = int(iyd, kind=8) * 24_8 + int(hour, kind=8)
-    best_diff = huge(0_8)
-    best_idx = -1
-    do i = 1, nrec
-      rec_time = int(r_iyd(i), kind=8) * 24_8 + int(r_hour(i), kind=8)
-      if (abs(rec_time - target) < best_diff) then
-        best_diff = abs(rec_time - target)
-        best_idx = i
-      end if
-    end do
-    find_record = best_idx
   end function find_record
 
   function day_of_year(year, month, day) result(doy)

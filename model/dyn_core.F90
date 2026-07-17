@@ -137,6 +137,7 @@ module dyn_core_mod
 
   use cond_driver_mod, only : cond_driver_apply
   use mol_mom_diff_mod, only : mol_mom_diff_compute_tend
+  use msis_wrapper, only : msis_prepare_time
 ! +++ GEOS_MLT
 
 
@@ -335,6 +336,12 @@ contains
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
+
+    ! Select and cache F10.7/F10.7A/Ap once per model hour before
+    ! any grid-point, vertical-level, or OpenMP MSIS calculations.
+    if (GEOS_MLT) then
+       call msis_prepare_time(year, doy, ut_seconds)
+    endif
 
 #ifdef SW_DYNAMICS
     peln1 = 0.
@@ -3239,4 +3246,3 @@ do 1000 j=jfirst,jlast
 
 
 end module dyn_core_mod
-
