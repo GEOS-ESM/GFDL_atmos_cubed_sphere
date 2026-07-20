@@ -277,6 +277,7 @@ contains
     real, allocatable, dimension(:,:,:) :: va_momdiff
     real, allocatable, dimension(:,:,:) :: momdiff_ke_heat_tend
     real, allocatable, dimension(:,:,:) :: t_phys_sync
+    real, allocatable, dimension(:,:,:) :: gz_agrid_mlt
     real :: p_layer
     real :: cp_eff
     real :: dT_tc
@@ -441,6 +442,14 @@ contains
     endif
     if ( GEOS_MLT .and. present(dtdt_tc) ) then
          dtdt_tc(:,:,:) = 0.0
+    endif
+
+    ! one_grad_p converts gz from A-grid cell centers to B-grid corners in
+    ! place. Preserve the final A-grid geopotential for GEOS-MLT column
+    ! operators that are applied after the acoustic n_split loop.
+    if ( GEOS_MLT ) then 
+       allocate(gz_agrid_mlt(isd:ied, jsd:jed, npz+1))
+       call init_ijk_mem(isd, ied, jsd, jed, npz+1, gz_agrid_mlt, huge_r)
     endif
 
 
@@ -1188,6 +1197,14 @@ contains
 #endif SW_DYNAMICS
      endif    ! end hydro check
 
+     ! geopk (hydrostatic) or (nonhydrostatic) has
+     ! produced A-grid interface geopotential here. On the final acoustic
+     ! split, save it before the pressure-gradient routines replace gz with
+     ! its B-grid representation.
+     if ( it==n_split .and. allocated(gz_agrid_mlt) ) then
+        gz_agrid_mlt(:,:,:) = gz(:,:,:)
+     endif
+
 #ifdef SW_DYNAMICS
       if (test_case > 1) then
 #else
@@ -1407,7 +1424,7 @@ contains
   endif
 
   ! GEOS_MLT vertical molecular momentum diffusion.
-  ! This is intentionally outside the acoustic n_split loop and uses bdt,
+  ! This is outside the acoustic n_split loop and uses bdt,
   ! matching the placement of the GEOS-MLT thermal-conduction tendency below.
   if ( GEOS_MLT .and. (flagstruct%geos_mlt_momdiff_enable .or. &
        flagstruct%geos_mlt_momdiff_diag .or. flagstruct%geos_mlt_momdiff_heat) ) then
@@ -1427,7 +1444,7 @@ contains
           bdt, flagstruct%geos_mlt_momdiff_pr, flagstruct%geos_mlt_momdiff_pmax_pa, &
           flagstruct%geos_mlt_momdiff_kmax, flagstruct%geos_mlt_momdiff_rmax, &
           flagstruct%geos_mlt_momdiff_nu_max, flagstruct%geos_mlt_momdiff_nu_scale, &
-          pe, gz, ua_momdiff, va_momdiff, lambda_mlt_dyn, rho_mlt_dyn, cp_mlt_dyn, &
+          pe, gz_agrid_mlt, ua_momdiff, va_momdiff, lambda_mlt_dyn, rho_mlt_dyn, cp_mlt_dyn, &
           pt, pkz, u_momdiff_tend, v_momdiff_tend, momdiff_ke_heat_tend, &
           flagstruct%geos_mlt_momdiff_diag .and. is_master() .and. &
           mod(geos_mlt_momdiff_call_count-1, &
@@ -1501,7 +1518,7 @@ contains
 
 
   if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
-     call cond_driver_apply(gridstruct%agrid, gz, pt, pkz, heat_tc, &
+     call cond_driver_apply(gridstruct%agrid, gz_agrid_mlt, pt, pkz, heat_tc, &
           ng, year, doy, ut_seconds)
   endif
 
@@ -1666,6 +1683,7 @@ contains
   if (allocated(ua_momdiff)) deallocate(ua_momdiff)
   if (allocated(va_momdiff)) deallocate(va_momdiff)
   if (allocated(momdiff_ke_heat_tend)) deallocate(momdiff_ke_heat_tend)
+  if (allocated(gz_agrid_mlt)) deallocate(gz_agrid_mlt)
 
 
   if ( end_step ) then
@@ -2227,7 +2245,7 @@ real, dimension(bd%isd:bd%ied,bd%jsd:bd%jed):: wk
 real:: wk1(bd%is:bd%ie+1,bd%js:bd%je+1)
 real:: wk2(bd%is:bd%ie,bd%js:bd%je+1)
 real top_value
-integer i,j,k
+integer i,j,k,k_start
 
 integer :: is,  ie,  js,  je
 integer :: isd, ied, jsd, jed
@@ -2265,9 +2283,19 @@ else
    enddo
 endif
 
-!$OMP parallel do default(none) shared(npz,isd,jsd,pk,gridstruct,npx,npy,is,ie,js,je,ng,a2b_ord) &
+! For standard hydrostatic FV3, pk(:,:,1) is spatially constant and does not
+! require A-grid-to-B-grid interpolation.  In GEOS-MLT, however, geopk forms
+! pk(:,:,1) with the local Kappa_MLT field, so the top-interface pk varies
+! horizontally and must be interpolated just like the lower interfaces.
+if ( hydrostatic .and. GEOS_MLT ) then
+   k_start = 1
+else
+   k_start = 2
+endif
+
+!$OMP parallel do default(none) shared(npz,isd,jsd,pk,gridstruct,npx,npy,is,ie,js,je,ng,a2b_ord,k_start) &
 !$OMP                          private(wk)
-do k=2,npz+1
+do k=k_start,npz+1
    if ( a2b_ord==4 ) then
       call a2b_ord4(pk(isd,jsd,k), wk, gridstruct, npx, npy, is, ie, js, je, ng, .true.)
    else
