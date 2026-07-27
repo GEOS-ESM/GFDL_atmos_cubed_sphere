@@ -57,9 +57,9 @@ module cond_driver_mod
 contains
 
   !------------------------------------------------------------
-  ! Compute conduction temperature tendency (K/s)
+  ! Compute the backward-Euler conduction temperature tendency (K/s)
   !------------------------------------------------------------
-  subroutine cond_driver_from_msis(T, nO, nO2, nN2, dz, dz_if, dTdt, T_ext_ref, z_top_km)
+  subroutine cond_driver_from_msis(T, nO, nO2, nN2, dz, dz_if, dTdt, T_ext_ref, z_top_km, dt)
     use thermcond_mod,   only : tc_calc
     use cond_z_tend_mod, only : cond_z_tend
     implicit none
@@ -70,6 +70,7 @@ contains
     real, intent(in)  :: dz_if(:,:,:)
     real, intent(out) :: dTdt(:,:,:)
     real, intent(in) :: T_ext_ref(:,:), z_top_km(:,:)
+    real, intent(in) :: dt
 
     integer :: is,ie,js,je,ks,ke
     integer :: i,j,kk
@@ -139,7 +140,7 @@ contains
       end do
     end do
 
-    call cond_z_tend(T, K_tc, rho, cp, dz, dz_if, dTdt, top_flux_ij)
+    call cond_z_tend(T, K_tc, rho, cp, dz, dz_if, dTdt, dt, top_flux_ij)
 
     deallocate(K_tc, alpha, rho, cp, top_flux_ij)
   end subroutine cond_driver_from_msis
@@ -148,7 +149,7 @@ contains
   !------------------------------------------------------------
   ! Full driver called from dyn_core
   !------------------------------------------------------------
-  subroutine cond_driver_apply(agrid, gz, pt, pkz, heat_tc, ng, &
+  subroutine cond_driver_apply(agrid, gz, pt, pkz, heat_tc, dt, ng, &
                                year_msis, doy_msis, ut_seconds_msis)
     use msis_wrapper, only : msis_point
     implicit none
@@ -158,6 +159,7 @@ contains
     real, intent(in)    :: pt(:,:,:)             ! temperature-like
     real, intent(in)    :: pkz(:,:,:)            ! Exner-like factor
     real, intent(out)   :: heat_tc(:,:,:)        ! dTdt (K/s)
+    real, intent(in)    :: dt                     ! dynamics time step (s)
     integer, intent(in) :: ng                    ! halo width
 
     integer, intent(in), optional :: year_msis, doy_msis, ut_seconds_msis
@@ -389,7 +391,7 @@ contains
 
 
     call cond_driver_from_msis(Tcol, nO, nO2, nN2, dzcol, dzifcol, heat_tc(is:ie, js:je, ks:ke), &
-                               T_ext_ref, z_top_km)
+                               T_ext_ref, z_top_km, dt)
 
     deallocate(Tcol, dzcol, dzifcol, nO, nO2, nN2, T_ext_ref, z_top_km)
 
@@ -490,4 +492,3 @@ contains
 
 
 end module cond_driver_mod
-

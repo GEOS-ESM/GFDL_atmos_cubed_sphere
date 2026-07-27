@@ -165,9 +165,6 @@ public :: dyn_core, del2_cubed, init_ijk_mem
   integer :: kmax=1
   real, parameter :: mlt_pressure_cutoff_pa = 1.0  ! 1.0 Pa = 0.01 hPa
 
-  ! GEOS_MLT
-  logical, parameter :: geos_mlt_apply_explicit_dk_hydro = .false.
-
   ! GEOS_MLT baseline: runtime-controlled molecular momentum diffusion.
   ! The coefficients are stored in flagstruct and are read from fv_core_nml.
   integer :: geos_mlt_momdiff_call_count = 0
@@ -539,6 +536,14 @@ contains
              enddo
           enddo
        enddo
+
+       ! Recompute geopotential after pt has been adjusted to the MLT-aware
+       ! pkz. The preceding geopk call diagnosed pkz using the incoming pt,
+       ! so its gz field is not yet consistent with the updated pt.
+       call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
+                  gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                  year, doy, ut_seconds, gridstruct, delz, &
+                  Kappa_MLT_in=kappa_mlt_dyn, Cp_MLT_in=cp_mlt_dyn)
 
        ! Update hydrostatic layer thickness from the second-pass geopotential.
 !$OMP parallel do default(none) &
@@ -1519,7 +1524,7 @@ contains
 
   if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
      call cond_driver_apply(gridstruct%agrid, gz_agrid_mlt, pt, pkz, heat_tc, &
-          ng, year, doy, ut_seconds)
+          bdt, ng, year, doy, ut_seconds)
   endif
 
 
@@ -2244,7 +2249,8 @@ type(fv_grid_type), intent(INOUT), target :: gridstruct
 real, dimension(bd%isd:bd%ied,bd%jsd:bd%jed):: wk
 real:: wk1(bd%is:bd%ie+1,bd%js:bd%je+1)
 real:: wk2(bd%is:bd%ie,bd%js:bd%je+1)
-real top_value
+real, allocatable :: logp_pg(:,:,:)
+real top_value, p_interface
 integer i,j,k,k_start
 
 integer :: is,  ie,  js,  je
@@ -2303,6 +2309,32 @@ do k=k_start,npz+1
    endif
 enddo
 
+if ( hydrostatic .and. GEOS_MLT ) then
+   allocate(logp_pg(isd:ied,jsd:jed,npz+1))
+
+!$OMP parallel do default(none) shared(isd,ied,jsd,jed,npz,logp_pg,ptop,delp) private(i,j,k,p_interface)
+   do j=jsd,jed
+      do i=isd,ied
+         p_interface = ptop
+         logp_pg(i,j,1) = log(max(p_interface, tiny(p_interface)))
+         do k=2,npz+1
+            p_interface = p_interface + delp(i,j,k-1)
+            logp_pg(i,j,k) = log(max(p_interface, tiny(p_interface)))
+         enddo
+      enddo
+   enddo
+
+!$OMP parallel do default(none) shared(npz,isd,jsd,logp_pg,gridstruct,npx,npy,is,ie,js,je,ng,a2b_ord) &
+!$OMP                          private(wk)
+   do k=1,npz+1
+      if ( a2b_ord==4 ) then
+         call a2b_ord4(logp_pg(isd,jsd,k), wk, gridstruct, npx, npy, is, ie, js, je, ng, .true.)
+      else
+         call a2b_ord2(logp_pg(isd,jsd,k), wk, gridstruct, npx, npy, is, ie, js, je, ng, .true.)
+      endif
+   enddo
+endif
+
 !$OMP parallel do default(none) shared(npz,isd,jsd,gz,gridstruct,npx,npy,is,ie,js,je,ng,a2b_ord) &
 !$OMP                          private(wk)
 do k=1,npz+1
@@ -2344,16 +2376,25 @@ else
 endif
 
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,pk,delp,hydrostatic,a2b_ord,gridstruct, &
-!$OMP                                  npx,npy,isd,jsd,ng,u,v,wk2,dt,gz,wk1) &
+!$OMP                                  npx,npy,isd,jsd,ng,u,v,wk2,dt,gz,wk1,GEOS_MLT,logp_pg) &
 !$OMP                          private(wk)
 do k=1,npz
 
    if ( hydrostatic ) then
-      do j=js,je+1
-         do i=is,ie+1
-            wk(i,j) = pk(i,j,k+1) - pk(i,j,k)
+      !if ( GEOS_MLT ) then
+      if ( .false. ) then
+         do j=js,je+1
+            do i=is,ie+1
+               wk(i,j) = logp_pg(i,j,k+1) - logp_pg(i,j,k)
+            enddo
          enddo
-      enddo
+      else
+         do j=js,je+1
+            do i=is,ie+1
+               wk(i,j) = pk(i,j,k+1) - pk(i,j,k)
+            enddo
+         enddo
+      endif
    else
       if ( a2b_ord==4 ) then
          call a2b_ord4(delp(isd,jsd,k), wk, gridstruct, npx, npy, is, ie, js, je, ng)
@@ -2362,21 +2403,41 @@ do k=1,npz
       endif
    endif
 
-   do j=js,je+1
-      do i=is,ie
-         u(i,j,k) = gridstruct%rdx(i,j)*(wk2(i,j)+u(i,j,k) + dt/(wk(i,j)+wk(i+1,j)) * &
-                                 ((gz(i,j,k+1)-gz(i+1,j,k))*(pk(i+1,j,k+1)-pk(i,j,k)) &
-                                + (gz(i,j,k)-gz(i+1,j,k+1))*(pk(i,j,k+1)-pk(i+1,j,k))))
+   !if ( hydrostatic .and. GEOS_MLT ) then
+   if ( .false. ) then
+      do j=js,je+1
+         do i=is,ie
+            u(i,j,k) = gridstruct%rdx(i,j)*(wk2(i,j)+u(i,j,k) + dt/(wk(i,j)+wk(i+1,j)) * &
+                                    ((gz(i,j,k+1)-gz(i+1,j,k))*(logp_pg(i+1,j,k+1)-logp_pg(i,j,k)) &
+                                   + (gz(i,j,k)-gz(i+1,j,k+1))*(logp_pg(i,j,k+1)-logp_pg(i+1,j,k))))
+         enddo
       enddo
-   enddo
-   do j=js,je
-      do i=is,ie+1
-         v(i,j,k) = gridstruct%rdy(i,j)*(wk1(i,j)+v(i,j,k) + dt/(wk(i,j)+wk(i,j+1)) * &
-                                 ((gz(i,j,k+1)-gz(i,j+1,k))*(pk(i,j+1,k+1)-pk(i,j,k)) &
-                                + (gz(i,j,k)-gz(i,j+1,k+1))*(pk(i,j,k+1)-pk(i,j+1,k))))
+      do j=js,je
+         do i=is,ie+1
+            v(i,j,k) = gridstruct%rdy(i,j)*(wk1(i,j)+v(i,j,k) + dt/(wk(i,j)+wk(i,j+1)) * &
+                                    ((gz(i,j,k+1)-gz(i,j+1,k))*(logp_pg(i,j+1,k+1)-logp_pg(i,j,k)) &
+                                   + (gz(i,j,k)-gz(i,j+1,k+1))*(logp_pg(i,j,k+1)-logp_pg(i,j+1,k))))
+         enddo
       enddo
-   enddo
+   else
+      do j=js,je+1
+         do i=is,ie
+            u(i,j,k) = gridstruct%rdx(i,j)*(wk2(i,j)+u(i,j,k) + dt/(wk(i,j)+wk(i+1,j)) * &
+                                    ((gz(i,j,k+1)-gz(i+1,j,k))*(pk(i+1,j,k+1)-pk(i,j,k)) &
+                                   + (gz(i,j,k)-gz(i+1,j,k+1))*(pk(i,j,k+1)-pk(i+1,j,k))))
+         enddo
+      enddo
+      do j=js,je
+         do i=is,ie+1
+            v(i,j,k) = gridstruct%rdy(i,j)*(wk1(i,j)+v(i,j,k) + dt/(wk(i,j)+wk(i,j+1)) * &
+                                    ((gz(i,j,k+1)-gz(i,j+1,k))*(pk(i,j+1,k+1)-pk(i,j,k)) &
+                                   + (gz(i,j,k)-gz(i,j+1,k+1))*(pk(i,j,k+1)-pk(i,j+1,k))))
+         enddo
+      enddo
+   endif
 enddo    ! end k-loop
+
+if (allocated(logp_pg)) deallocate(logp_pg)
 
 end subroutine one_grad_p
 
@@ -2558,7 +2619,8 @@ do 1000 j=jfirst,jlast
 !>@brief The subroutine 'geopk' calculates geopotential and pressure to the kappa.
  subroutine geopk(ptop, pe, peln, delp, pk, gz, hs, pt, q_con, pkz, km, akap, CG, nested, computehalo, npx, npy, a2b_ord, bd, &
          GEOS_MLT, pfull, year, doy, ut_seconds, gridstruct, delz_mlt,& 
-         Kappa_MLT_out, Cp_MLT_out, Lambda_MLT_out, Rho_MLT_out, Alpha_MLT_out)
+         Kappa_MLT_out, Cp_MLT_out, Lambda_MLT_out, Rho_MLT_out, Alpha_MLT_out, &
+         Kappa_MLT_in, Cp_MLT_in)
 
    integer, intent(IN) :: km, npx, npy, a2b_ord
    real   , intent(IN) :: akap, ptop
@@ -2578,6 +2640,8 @@ do 1000 j=jfirst,jlast
    real, intent(INOUT), optional, dimension(bd%isd:bd%ied, bd%jsd:bd%jed, km) :: Lambda_MLT_out
    real, intent(INOUT), optional, dimension(bd%isd:bd%ied, bd%jsd:bd%jed, km) :: Rho_MLT_out
    real, intent(INOUT), optional, dimension(bd%isd:bd%ied, bd%jsd:bd%jed, km) :: Alpha_MLT_out
+   real, intent(IN), optional, dimension(bd%isd:bd%ied, bd%jsd:bd%jed, km) :: Kappa_MLT_in
+   real, intent(IN), optional, dimension(bd%isd:bd%ied, bd%jsd:bd%jed, km) :: Cp_MLT_in
 
    ! !OUTPUT PARAMETERS
    real, intent(OUT), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,km+1):: gz, pk
@@ -2611,14 +2675,6 @@ do 1000 j=jfirst,jlast
    integer ifirst, ilast
    integer jfirst, jlast
 
-   ! GEOS_MLT dKappa hydrostatic work variables.
-   real :: geos_mlt_dk_kappa_top
-   real :: geos_mlt_dk_kappa_bot
-   real :: geos_mlt_dk_delta_kappa
-   real :: geos_mlt_dk_logp_mid
-   real :: geos_mlt_dk_pk_mid
-   real :: geos_mlt_dk_dphi_extra
-
       integer :: is,  ie,  js,  je
       integer :: isd, ied, jsd, jed
 
@@ -2647,68 +2703,73 @@ do 1000 j=jfirst,jlast
    end if
 
    if ( GEOS_MLT ) then
+      if (present(Kappa_MLT_in) .and. present(Cp_MLT_in)) then
+         Kappa_MLT(:,:,:) = Kappa_MLT_in(:,:,:)
+         Cp_MLT(:,:,:) = Cp_MLT_in(:,:,:)
+      else
+         grav_mlt_work = 9.80665
 
-      grav_mlt_work = 9.80665
-
-      ! Start from a safe pressure-based altitude everywhere including
-      ! halos and cube-corner cells. Owned cells are overwritten below when
-      ! restart/state DZ is available and valid.
-      do k = 1, km
-         p_safe = max(pfull(k), geos_mlt_min_pressure_pa)
-         z_pressure_mlt(k) = -geos_mlt_pressure_alt_scale_km * &
-              log(p_safe*0.01 / geos_mlt_pressure_alt_ref_hpa)
-         z_pressure_mlt(k) = max(0.0, &
-              min(z_pressure_mlt(k), geos_mlt_max_firstpass_alt_km))
-      enddo
+         ! Start from a safe pressure-based altitude everywhere including
+         ! halos and cube-corner cells. Owned cells are overwritten below when
+         ! restart/state DZ is available and valid.
+         do k = 1, km
+            p_safe = max(pfull(k), geos_mlt_min_pressure_pa)
+            z_pressure_mlt(k) = -geos_mlt_pressure_alt_scale_km * &
+                 log(p_safe*0.01 / geos_mlt_pressure_alt_ref_hpa)
+            z_pressure_mlt(k) = max(0.0, &
+                 min(z_pressure_mlt(k), geos_mlt_max_firstpass_alt_km))
+         enddo
 
 !$OMP parallel do default(none) &
 !$OMP shared(isd,ied,jsd,jed,km,z_layer_km,z_pressure_mlt) &
 !$OMP private(i,j,k)
-      do j = jsd, jed
-         do k = 1, km
-            do i = isd, ied
-               z_layer_km(i,j,k) = z_pressure_mlt(k)
-            enddo
-         enddo
-      enddo
-
-      ! Use restart/state DZ
-      if (present(delz_mlt)) then
-!$OMP parallel do default(none) &
-!$OMP shared(ifirst,ilast,jfirst,jlast,km,hs,delz_mlt,z_layer_km,grav_mlt_work) &
-!$OMP private(i,j,k,z_bot_m,z_top_m,z_mid_km,use_delz_height)
-         do j = jfirst, jlast
-            do i = ifirst, ilast
-               z_bot_m = real(hs(i,j), kind=8) / real(grav_mlt_work, kind=8)
-
-               do k = km, 1, -1
-                  use_delz_height = .false.
-
-                  if (ieee_is_finite(delz_mlt(i,j,k))) then
-                     if (delz_mlt(i,j,k) < 0.0 .and. &
-                         abs(delz_mlt(i,j,k)) <= geos_mlt_max_abs_delz_m) then
-                        z_top_m = z_bot_m - real(delz_mlt(i,j,k), kind=8)
-                        z_mid_km = 0.5d0 * (z_top_m + z_bot_m) * 0.001d0
-
-                        if (ieee_is_finite(z_mid_km) .and. &
-                            z_mid_km <= geos_mlt_max_firstpass_alt_km) then
-                           z_layer_km(i,j,k) = real(max(0.0d0, z_mid_km))
-                           z_bot_m = z_top_m
-                           use_delz_height = .true.
-                        endif
-                     endif
-                  endif
-
-                  if (.not. use_delz_height) exit
+         do j = jsd, jed
+            do k = 1, km
+               do i = isd, ied
+                  z_layer_km(i,j,k) = z_pressure_mlt(k)
                enddo
             enddo
          enddo
+
+         ! Use restart/state DZ
+         if (present(delz_mlt)) then
+!$OMP parallel do default(none) &
+!$OMP shared(ifirst,ilast,jfirst,jlast,km,hs,delz_mlt,z_layer_km,grav_mlt_work) &
+!$OMP private(i,j,k,z_bot_m,z_top_m,z_mid_km,use_delz_height)
+            do j = jfirst, jlast
+               do i = ifirst, ilast
+                  z_bot_m = real(hs(i,j), kind=8) / real(grav_mlt_work, kind=8)
+
+                  do k = km, 1, -1
+                     use_delz_height = .false.
+
+                     if (ieee_is_finite(delz_mlt(i,j,k))) then
+                        if (delz_mlt(i,j,k) < 0.0 .and. &
+                            abs(delz_mlt(i,j,k)) <= geos_mlt_max_abs_delz_m) then
+                           z_top_m = z_bot_m - real(delz_mlt(i,j,k), kind=8)
+                           z_mid_km = 0.5d0 * (z_top_m + z_bot_m) * 0.001d0
+
+                           if (ieee_is_finite(z_mid_km) .and. &
+                               z_mid_km <= geos_mlt_max_firstpass_alt_km) then
+                              z_layer_km(i,j,k) = real(max(0.0d0, z_mid_km))
+                              z_bot_m = z_top_m
+                              use_delz_height = .true.
+                           endif
+                        endif
+                     endif
+
+                     if (.not. use_delz_height) exit
+                  enddo
+               enddo
+            enddo
+         endif
+
+         call calc_mlt_thermo_state(is, ie, js, je, isd, ied, jsd, jed, km, pfull, &
+              gridstruct, Cp_MLT, Kappa_MLT, year, doy, ut_seconds, &
+              ifirst, ilast, jfirst, jlast, z_layer_km, &
+              Lambda_MLT=Lambda_MLT_out, Rho_MLT=Rho_MLT_out, Alpha_MLT=Alpha_MLT_out)
       endif
 
-      call calc_mlt_thermo_state(is, ie, js, je, isd, ied, jsd, jed, km, pfull, &
-           gridstruct, Cp_MLT, Kappa_MLT, year, doy, ut_seconds, &
-           ifirst, ilast, jfirst, jlast, z_layer_km, &
-           Lambda_MLT=Lambda_MLT_out, Rho_MLT=Rho_MLT_out, Alpha_MLT=Alpha_MLT_out)
       if (present(Kappa_MLT_out)) then
          Kappa_MLT_out(:,:,:) = Kappa_MLT(:,:,:)
       endif
@@ -2721,9 +2782,7 @@ do 1000 j=jfirst,jlast
 
 !$OMP parallel do default(none) shared(jfirst,jlast,ifirst,ilast,pk,km,gz,hs,ptop,ptk, &
 !$OMP                                  js,je,is,ie,peln,peln1,pe,delp,akap,pt,CG,pkz,q_con,Cp_MLT,Kappa_MLT,GEOS_MLT) &
-!$OMP                          private(peg, pkg, p1d, g1d, logp, p_layer) &
-!$OMP                          private(geos_mlt_dk_kappa_top, geos_mlt_dk_kappa_bot, geos_mlt_dk_delta_kappa) &
-!$OMP                          private(geos_mlt_dk_logp_mid, geos_mlt_dk_pk_mid, geos_mlt_dk_dphi_extra)
+!$OMP                          private(peg, pkg, p1d, g1d, logp, p_layer)
    do 2000 j=jfirst,jlast
 
       do i=ifirst, ilast
@@ -2804,62 +2863,18 @@ do 1000 j=jfirst,jlast
                if (p_layer <= mlt_pressure_cutoff_pa) then ! 1.0 Pa = 0.01 hPa
                   ! Recompute interface pk values with this layer's kappa for thermodynamic consistency.
                   ! pk_top and pk_bot use the same kappa as Cp_MLT(i,j,k) = Rd/Kappa_MLT(i,j,k).
-                  geos_mlt_dk_dphi_extra = 0.0
-                  if (geos_mlt_apply_explicit_dk_hydro) then
-                     if (k == 1) then
-                        geos_mlt_dk_kappa_top = Kappa_MLT(i,j,k)
-                     else
-                        geos_mlt_dk_kappa_top = 0.5*(Kappa_MLT(i,j,k-1) + Kappa_MLT(i,j,k))
-                     endif
-
-                     if (k == km) then
-                        geos_mlt_dk_kappa_bot = Kappa_MLT(i,j,k)
-                     else
-                        geos_mlt_dk_kappa_bot = 0.5*(Kappa_MLT(i,j,k) + Kappa_MLT(i,j,k+1))
-                     endif
-
-                     geos_mlt_dk_delta_kappa = geos_mlt_dk_kappa_bot - geos_mlt_dk_kappa_top
-                     geos_mlt_dk_logp_mid = 0.5*(log(peg(i,k)) + log(peg(i,k+1)))
-                     geos_mlt_dk_pk_mid = exp(Kappa_MLT(i,j,k)*geos_mlt_dk_logp_mid)
-                     geos_mlt_dk_dphi_extra = Cp_MLT(i,j,k)*pt(i,j,k)*geos_mlt_dk_pk_mid * &
-                          geos_mlt_dk_logp_mid*geos_mlt_dk_delta_kappa
-                  endif
-
                   g1d(i) = g1d(i) + Cp_MLT(i,j,k)*pt(i,j,k) * &
                            (exp(Kappa_MLT(i,j,k)*log(peg(i,k+1))) - &
-                            exp(Kappa_MLT(i,j,k)*log(peg(i,k  )))) + &
-                           geos_mlt_dk_dphi_extra
+                            exp(Kappa_MLT(i,j,k)*log(peg(i,k  ))))
                else
                   g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pkg(i,k+1)-pkg(i,k))
                endif
  #else
                p_layer = exp(0.5*(logp(i,k) + logp(i,k+1)))
                if (p_layer <= mlt_pressure_cutoff_pa) then ! 1.0 Pa = 0.01 hPa
-                  geos_mlt_dk_dphi_extra = 0.0
-                  if (geos_mlt_apply_explicit_dk_hydro) then
-                     if (k == 1) then
-                        geos_mlt_dk_kappa_top = Kappa_MLT(i,j,k)
-                     else
-                        geos_mlt_dk_kappa_top = 0.5*(Kappa_MLT(i,j,k-1) + Kappa_MLT(i,j,k))
-                     endif
-
-                     if (k == km) then
-                        geos_mlt_dk_kappa_bot = Kappa_MLT(i,j,k)
-                     else
-                        geos_mlt_dk_kappa_bot = 0.5*(Kappa_MLT(i,j,k) + Kappa_MLT(i,j,k+1))
-                     endif
-
-                     geos_mlt_dk_delta_kappa = geos_mlt_dk_kappa_bot - geos_mlt_dk_kappa_top
-                     geos_mlt_dk_logp_mid = 0.5*(logp(i,k) + logp(i,k+1))
-                     geos_mlt_dk_pk_mid = exp(Kappa_MLT(i,j,k)*geos_mlt_dk_logp_mid)
-                     geos_mlt_dk_dphi_extra = Cp_MLT(i,j,k)*pt(i,j,k)*geos_mlt_dk_pk_mid * &
-                          geos_mlt_dk_logp_mid*geos_mlt_dk_delta_kappa
-                  endif
-
                   g1d(i) = g1d(i) + Cp_MLT(i,j,k)*pt(i,j,k) * &
                   (exp(Kappa_MLT(i,j,k)*logp(i,k+1)) - &   ! logp covers halos
-                   exp(Kappa_MLT(i,j,k)*logp(i,k  ))) + &
-                  geos_mlt_dk_dphi_extra
+                   exp(Kappa_MLT(i,j,k)*logp(i,k  )))
                else
                   g1d(i) = g1d(i) + cp_air*pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))
                endif

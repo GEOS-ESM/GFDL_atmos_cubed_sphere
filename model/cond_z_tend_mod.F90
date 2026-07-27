@@ -5,7 +5,7 @@ module cond_z_tend_mod
 
 contains
 
-  subroutine cond_z_tend(T, K_tc, rho, cp, dz, dz_if, dTdt, top_flux)
+  subroutine cond_z_tend(T, K_tc, rho, cp, dz, dz_if, dTdt, dt, top_flux)
     use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
     implicit none
 
@@ -14,210 +14,138 @@ contains
     real, intent(in)  :: rho(:,:,:)
     real, intent(in)  :: cp(:,:,:)
     real, intent(in)  :: dz(:,:,:)
-    real, intent(in)  :: dz_if(:,:,:)  ! Changed back to intent(in)
+    real, intent(in)  :: dz_if(:,:,:)
     real, intent(out) :: dTdt(:,:,:)
+    real, intent(in)  :: dt
     real, intent(in), optional :: top_flux(:,:)
 
     integer :: i, j, kk
     integer :: is, ie, js, je, ks, ke
+    integer :: nk
 
-    real :: F_up, F_dn
-    real :: K_if, dzif, dzk
-    real :: rhok, cpk
+    real, allocatable :: lower(:)
+    real, allocatable :: diagonal(:)
+    real, allocatable :: upper(:)
+    real, allocatable :: rhs(:)
+    real, allocatable :: T_new(:)
+    real, allocatable :: heat_capacity(:)
+    logical, allocatable :: valid(:)
 
-    real, parameter :: eps = 1.0e-6
-    real, parameter :: dz_min = 100.0  ! Minimum physical layer thickness
-    logical :: ok_here, ok_above, ok_below
+    real :: interface_distance
+    real :: interface_conductance
+    real :: coupling
+    real :: elimination_factor
+    real :: applied_top_flux
+
+    real, parameter :: dz_min = 100.0
+    real, parameter :: diagonal_min = 1.0e-20
 
     is = lbound(T,1); ie = ubound(T,1)
     js = lbound(T,2); je = ubound(T,2)
     ks = lbound(T,3); ke = ubound(T,3)
+    nk = ke - ks + 1
 
     dTdt(:,:,:) = 0.0
+
+    if (.not. ieee_is_finite(dt) .or. dt <= 0.0 .or. nk <= 0) then
+      return
+    end if
+
+    allocate(lower(ks:ke))
+    allocate(diagonal(ks:ke))
+    allocate(upper(ks:ke))
+    allocate(rhs(ks:ke))
+    allocate(T_new(ks:ke))
+    allocate(heat_capacity(ks:ke))
+    allocate(valid(ks:ke))
 
     do j = js, je
       do i = is, ie
 
-        ! Top layer (kk=ks)
-        kk   = ks
-        F_up = 0.0
-        if (present(top_flux)) F_up = top_flux(i,j)
-        F_dn = F_up
+        lower(:) = 0.0
+        diagonal(:) = 1.0
+        upper(:) = 0.0
+        rhs(:) = 0.0
+        T_new(:) = 0.0
+        heat_capacity(:) = 0.0
+        valid(:) = .false.
 
-        rhok = rho(i,j,kk)
-        cpk  = cp(i,j,kk)
+        do kk = ks, ke
+          rhs(kk) = T(i,j,kk)
 
-        ok_here = ieee_is_finite(T(i,j,kk)) .and. &
-                  ieee_is_finite(K_tc(i,j,kk)) .and. (K_tc(i,j,kk) >= 0.0) .and. &
-                  ieee_is_finite(rhok) .and. (rhok > 0.0) .and. &
-                  ieee_is_finite(cpk)  .and. (cpk  > 0.0)
+          valid(kk) = ieee_is_finite(T(i,j,kk)) .and. &
+                      ieee_is_finite(K_tc(i,j,kk)) .and. K_tc(i,j,kk) >= 0.0 .and. &
+                      ieee_is_finite(rho(i,j,kk)) .and. rho(i,j,kk) > 0.0 .and. &
+                      ieee_is_finite(cp(i,j,kk)) .and. cp(i,j,kk) > 0.0 .and. &
+                      ieee_is_finite(dz(i,j,kk)) .and. abs(dz(i,j,kk)) >= dz_min
 
-        if (ok_here) then
-          dzk = abs(dz(i,j,kk))
-          
-          ! Safety check for tiny layers
-          if (dzk < dz_min) then
-            dTdt(i,j,kk) = 0.0
-            if (i==1 .and. j==1) then
-              print *, 'WARNING: Top layer too thin at kk=', kk, ' dzk=', dzk
-            end if
-            cycle
+          if (valid(kk)) then
+            heat_capacity(kk) = rho(i,j,kk) * cp(i,j,kk) * abs(dz(i,j,kk))
+            valid(kk) = ieee_is_finite(heat_capacity(kk)) .and. heat_capacity(kk) > 0.0
           end if
-
-          if (kk < ke) then
-            dzif = 0.5 * (dz(i,j,kk) + dz(i,j,kk+1))  ! Distance between centers
-            
-            ! Safety check
-            if (dzif < dz_min) then
-              dTdt(i,j,kk) = 0.0
-              if (i==1 .and. j==1) then
-                print *, 'WARNING: Interface distance too small at kk=', kk, ' dzif=', dzif
-              end if
-              cycle
-            end if
-            
-            ok_below = ieee_is_finite(T(i,j,kk+1)) .and. &
-                       ieee_is_finite(K_tc(i,j,kk+1)) .and. (K_tc(i,j,kk+1) >= 0.0)
-
-            if (ok_below) then
-              K_if = 0.5*(K_tc(i,j,kk) + K_tc(i,j,kk+1))
-              F_dn = -K_if * (T(i,j,kk+1) - T(i,j,kk)) / dzif
-            else
-              F_dn = F_up
-            end if
-          end if
-
-          dTdt(i,j,kk) = -(F_dn - F_up) / (rhok*cpk*dzk)
-          
-          ! Diagnostic for first column, top layer
-!          if (i==1 .and. j==1) then
-!             print *, '=== Top layer diagnostics (kk=', kk, ') ==='
-!             print *, '  T(kk), T(kk+1):', T(i,j,kk), T(i,j,kk+1)
-!             print *, '  dz(kk), dz(kk+1):', dz(i,j,kk), dz(i,j,kk+1)
-!             print *, '  dzk:', dzk
-!             print *, '  dzif:', dzif
-!             print *, '  K_tc(kk), K_tc(kk+1):', K_tc(i,j,kk), K_tc(i,j,kk+1)
-!             print *, '  K_if:', K_if
-!             print *, '  rho, cp:', rhok, cpk
-!             print *, '  F_up, F_dn:', F_up, F_dn
-!             print *, '  (F_dn - F_up):', (F_dn - F_up)
-!             print *, '  (rhok*cpk*dzk):', (rhok*cpk*dzk)
-!             print *, '  dTdt(i,j,kk):', dTdt(i,j,kk)
-!             print *, '========================================'
-!          end if
-          
-          if (.not. ieee_is_finite(dTdt(i,j,kk))) dTdt(i,j,kk) = 0.0
-        else
-          dTdt(i,j,kk) = 0.0
-          if (i==1 .and. j==1) then
-            print *, 'WARNING: Top layer failed ok_here check at kk=', kk
-            print *, '  T, K_tc, rho, cp:', T(i,j,kk), K_tc(i,j,kk), rhok, cpk
-          end if
-        end if
-
-        ! Interior layers (ks+1 .. ke-1)
-        do kk = ks+1, ke-1
-
-          rhok = rho(i,j,kk)
-          cpk  = cp(i,j,kk)
-
-          ok_here = ieee_is_finite(T(i,j,kk)) .and. &
-                    ieee_is_finite(K_tc(i,j,kk)) .and. (K_tc(i,j,kk) >= 0.0) .and. &
-                    ieee_is_finite(rhok) .and. (rhok > 0.0) .and. &
-                    ieee_is_finite(cpk)  .and. (cpk  > 0.0)
-
-          if (.not. ok_here) then
-            dTdt(i,j,kk) = 0.0
-            cycle
-          end if
-
-          dzk = abs(dz(i,j,kk))
-          if (dzk < dz_min) then
-            dTdt(i,j,kk) = 0.0
-            cycle
-          end if
-
-          ! Flux from above interface (kk-1/kk)
-          dzif = 0.5 * (dz(i,j,kk-1) + dz(i,j,kk))
-          if (dzif < dz_min) then
-            F_up = 0.0
-          else
-            ok_above = ieee_is_finite(T(i,j,kk-1)) .and. &
-                       ieee_is_finite(K_tc(i,j,kk-1)) .and. (K_tc(i,j,kk-1) >= 0.0)
-
-            if (ok_above) then
-              K_if = 0.5*(K_tc(i,j,kk-1) + K_tc(i,j,kk))
-              F_up = -K_if * (T(i,j,kk) - T(i,j,kk-1)) / dzif
-            else
-              F_up = 0.0
-            end if
-          end if
-
-          ! Flux to below interface (kk/kk+1)
-          dzif = 0.5 * (dz(i,j,kk) + dz(i,j,kk+1))
-          if (dzif < dz_min) then
-            F_dn = 0.0
-          else
-            ok_below = ieee_is_finite(T(i,j,kk+1)) .and. &
-                       ieee_is_finite(K_tc(i,j,kk+1)) .and. (K_tc(i,j,kk+1) >= 0.0)
-
-            if (ok_below) then
-              K_if = 0.5*(K_tc(i,j,kk) + K_tc(i,j,kk+1))
-              F_dn = -K_if * (T(i,j,kk+1) - T(i,j,kk)) / dzif
-            else
-              F_dn = 0.0
-            end if
-          end if
-
-          dTdt(i,j,kk) = -(F_dn - F_up) / (rhok*cpk*dzk)
-          if (.not. ieee_is_finite(dTdt(i,j,kk))) dTdt(i,j,kk) = 0.0
-
         end do
 
-        ! Bottom layer (kk=ke)
-        if (ke > ks) then
-          kk = ke
+        ! Assemble the frozen-coefficient backward-Euler diffusion operator.
+        do kk = ks, ke-1
+          if (.not. valid(kk) .or. .not. valid(kk+1)) cycle
 
-          rhok = rho(i,j,kk)
-          cpk  = cp(i,j,kk)
+          interface_distance = abs(dz_if(i,j,kk))
+          if (.not. ieee_is_finite(interface_distance) .or. &
+              interface_distance < dz_min) cycle
 
-          ok_here = ieee_is_finite(T(i,j,kk)) .and. &
-                    ieee_is_finite(K_tc(i,j,kk)) .and. (K_tc(i,j,kk) >= 0.0) .and. &
-                    ieee_is_finite(rhok) .and. (rhok > 0.0) .and. &
-                    ieee_is_finite(cpk)  .and. (cpk  > 0.0)
+          interface_conductance = 0.5 * (K_tc(i,j,kk) + K_tc(i,j,kk+1)) / &
+                                  interface_distance
+          if (.not. ieee_is_finite(interface_conductance) .or. &
+              interface_conductance < 0.0) cycle
 
-          if (ok_here) then
-            dzk = abs(dz(i,j,kk))
-            if (dzk < dz_min) then
-              dTdt(i,j,kk) = 0.0
-              cycle
-            end if
-            
-            dzif = 0.5 * (dz(i,j,kk-1) + dz(i,j,kk))
-            if (dzif < dz_min) then
-              F_up = 0.0
-            else
-              ok_above = ieee_is_finite(T(i,j,kk-1)) .and. &
-                         ieee_is_finite(K_tc(i,j,kk-1)) .and. (K_tc(i,j,kk-1) >= 0.0)
+          coupling = dt * interface_conductance / heat_capacity(kk)
+          diagonal(kk) = diagonal(kk) + coupling
+          upper(kk) = upper(kk) - coupling
 
-              if (ok_above) then
-                K_if = 0.5*(K_tc(i,j,kk-1) + K_tc(i,j,kk))
-                F_up = -K_if * (T(i,j,kk) - T(i,j,kk-1)) / dzif
-              else
-                F_up = 0.0
-              end if
-            end if
+          coupling = dt * interface_conductance / heat_capacity(kk+1)
+          diagonal(kk+1) = diagonal(kk+1) + coupling
+          lower(kk+1) = lower(kk+1) - coupling
+        end do
 
-            F_dn = 0.0
-            dTdt(i,j,kk) = -(F_dn - F_up) / (rhok*cpk*dzk)
-            if (.not. ieee_is_finite(dTdt(i,j,kk))) dTdt(i,j,kk) = 0.0
+        if (valid(ks) .and. present(top_flux)) then
+          applied_top_flux = top_flux(i,j)
+          if (ieee_is_finite(applied_top_flux)) then
+            rhs(ks) = rhs(ks) + dt * applied_top_flux / heat_capacity(ks)
+          end if
+        end if
+
+        ! Thomas algorithm for the tridiagonal backward-Euler system.
+        do kk = ks+1, ke
+          if (abs(diagonal(kk-1)) <= diagonal_min) then
+            diagonal(kk-1) = 1.0
+            lower(kk) = 0.0
+          end if
+
+          elimination_factor = lower(kk) / diagonal(kk-1)
+          diagonal(kk) = diagonal(kk) - elimination_factor * upper(kk-1)
+          rhs(kk) = rhs(kk) - elimination_factor * rhs(kk-1)
+        end do
+
+        if (abs(diagonal(ke)) <= diagonal_min) diagonal(ke) = 1.0
+        T_new(ke) = rhs(ke) / diagonal(ke)
+
+        do kk = ke-1, ks, -1
+          if (abs(diagonal(kk)) <= diagonal_min) diagonal(kk) = 1.0
+          T_new(kk) = (rhs(kk) - upper(kk) * T_new(kk+1)) / diagonal(kk)
+        end do
+
+        do kk = ks, ke
+          if (valid(kk) .and. ieee_is_finite(T_new(kk))) then
+            dTdt(i,j,kk) = (T_new(kk) - T(i,j,kk)) / dt
           else
             dTdt(i,j,kk) = 0.0
           end if
-        end if
+        end do
 
       end do
     end do
+
+    deallocate(lower, diagonal, upper, rhs, T_new, heat_capacity, valid)
 
   end subroutine cond_z_tend
 end module cond_z_tend_mod
