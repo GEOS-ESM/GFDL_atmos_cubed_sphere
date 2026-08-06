@@ -167,7 +167,6 @@ public :: dyn_core, del2_cubed, init_ijk_mem
 
   ! GEOS_MLT baseline: runtime-controlled molecular momentum diffusion.
   ! The coefficients are stored in flagstruct and are read from fv_core_nml.
-  integer :: geos_mlt_momdiff_call_count = 0
   integer :: geos_mlt_alt_diag_call_count = 0
   real, parameter :: geos_mlt_gz_sentinel_thresh = 1.0e7
 
@@ -568,13 +567,9 @@ contains
                ' limit=', flagstruct%geos_mlt_thermcond_limit, &
                ' dtmax_kps=', flagstruct%geos_mlt_thermcond_dtmax
           write(*,*) 'GEOS_MLT_MOMDIFF apply=', flagstruct%geos_mlt_momdiff_enable, &
-               ' diag=', flagstruct%geos_mlt_momdiff_diag, &
                ' heat=', flagstruct%geos_mlt_momdiff_heat, &
                ' Pr=', flagstruct%geos_mlt_momdiff_pr, &
-               ' nu_scale=', flagstruct%geos_mlt_momdiff_nu_scale, &
-               ' pmax_pa=', flagstruct%geos_mlt_momdiff_pmax_pa, &
-               ' kmax=', flagstruct%geos_mlt_momdiff_kmax, &
-               ' rmax=', flagstruct%geos_mlt_momdiff_rmax
+               ' pmax_pa=', flagstruct%geos_mlt_momdiff_pmax_pa
        endif
 
        if (flagstruct%geos_mlt_alt_diag) then
@@ -1429,11 +1424,11 @@ contains
   endif
 
   ! GEOS_MLT vertical molecular momentum diffusion.
-  ! This is outside the acoustic n_split loop and uses bdt,
-  ! matching the placement of the GEOS-MLT thermal-conduction tendency below.
+  ! This is outside the acoustic n_split loop and uses a frozen-coefficient
+  ! backward-Euler solve over bdt. The returned tendency reconstructs the
+  ! implicitly solved A-grid winds when update_dwinds_phys applies bdt*tendency.
   if ( GEOS_MLT .and. (flagstruct%geos_mlt_momdiff_enable .or. &
-       flagstruct%geos_mlt_momdiff_diag .or. flagstruct%geos_mlt_momdiff_heat) ) then
-     geos_mlt_momdiff_call_count = geos_mlt_momdiff_call_count + 1
+       flagstruct%geos_mlt_momdiff_heat) ) then
 
      ! At this point ua/va were last used by c_sw/d_sw and are local
      ! cubed-sphere A-grid components, not eastward/northward winds.
@@ -1444,16 +1439,11 @@ contains
           npx, npy, npz, 1, gridstruct%grid_type, domain, gridstruct%nested, &
           flagstruct%c2l_ord, bd)
 
-     call mol_mom_diff_compute_tend('GEOS_MLT_MOMDIFF_NEAR_THERMCOND', &
-          is, ie, js, je, isd, ied, jsd, jed, npz, &
-          bdt, flagstruct%geos_mlt_momdiff_pr, flagstruct%geos_mlt_momdiff_pmax_pa, &
-          flagstruct%geos_mlt_momdiff_kmax, flagstruct%geos_mlt_momdiff_rmax, &
-          flagstruct%geos_mlt_momdiff_nu_max, flagstruct%geos_mlt_momdiff_nu_scale, &
+     call mol_mom_diff_compute_tend( &
+          is, ie, js, je, isd, ied, jsd, jed, npz, bdt, &
+          flagstruct%geos_mlt_momdiff_pr, flagstruct%geos_mlt_momdiff_pmax_pa, &
           pe, gz_agrid_mlt, ua_momdiff, va_momdiff, lambda_mlt_dyn, rho_mlt_dyn, cp_mlt_dyn, &
-          pt, pkz, u_momdiff_tend, v_momdiff_tend, momdiff_ke_heat_tend, &
-          flagstruct%geos_mlt_momdiff_diag .and. is_master() .and. &
-          mod(geos_mlt_momdiff_call_count-1, &
-          max(1, flagstruct%geos_mlt_momdiff_print_stride)) == 0)
+          pt, pkz, u_momdiff_tend, v_momdiff_tend, momdiff_ke_heat_tend)
 
      ! update_dwinds_phys interpolates eastward/northward A-grid tendencies
      ! to D-grid edges. Fill halo values the same way fv_update_phys fills

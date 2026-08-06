@@ -315,15 +315,9 @@ module fv_control_mod
    integer , pointer :: geos_mlt_alt_diag_kmax
    integer , pointer :: geos_mlt_alt_diag_print_stride
    logical , pointer :: geos_mlt_momdiff_enable
-   logical , pointer :: geos_mlt_momdiff_diag
    logical , pointer :: geos_mlt_momdiff_heat
-   integer , pointer :: geos_mlt_momdiff_kmax
-   integer , pointer :: geos_mlt_momdiff_print_stride
    real    , pointer :: geos_mlt_momdiff_pr
-   real    , pointer :: geos_mlt_momdiff_nu_scale
    real    , pointer :: geos_mlt_momdiff_pmax_pa
-   real    , pointer :: geos_mlt_momdiff_rmax
-   real    , pointer :: geos_mlt_momdiff_nu_max
 
 
    logical , pointer :: do_uni_zfull !miz
@@ -697,10 +691,9 @@ module fv_control_mod
                          mol_diffusion_k_bot, prandtl_number, geos_mlt_thermcond_enable, &
                          geos_mlt_thermcond_limit, geos_mlt_thermcond_dtmax, geos_mlt_alt_diag, &
                          geos_mlt_alt_diag_kmax, geos_mlt_alt_diag_print_stride, &
-                         geos_mlt_momdiff_enable, geos_mlt_momdiff_diag, &
-                         geos_mlt_momdiff_heat, geos_mlt_momdiff_kmax, geos_mlt_momdiff_print_stride, &
-                         geos_mlt_momdiff_pr, geos_mlt_momdiff_nu_scale, geos_mlt_momdiff_pmax_pa, &
-                         geos_mlt_momdiff_rmax, geos_mlt_momdiff_nu_max, fv_sg_adj, breed_vortex_inline,  &
+                         geos_mlt_momdiff_enable, geos_mlt_momdiff_heat, &
+                         geos_mlt_momdiff_pr, geos_mlt_momdiff_pmax_pa, &
+                         fv_sg_adj, breed_vortex_inline,  &
                          na_init, nudge_dz, hybrid_z, Make_NH, n_zs_filter, nord_zs_filter, full_zs_filter, reset_eta,         &
                          pnats, dnats, a2b_ord, remap_option, gmao_remap, p_ref, d2_bg_k1, d2_bg_k2,  &
                          c2l_ord, dx_const, dy_const, umax, deglat,      &
@@ -1345,15 +1338,9 @@ module fv_control_mod
      geos_mlt_alt_diag_kmax       => Atm%flagstruct%geos_mlt_alt_diag_kmax
      geos_mlt_alt_diag_print_stride => Atm%flagstruct%geos_mlt_alt_diag_print_stride
      geos_mlt_momdiff_enable      => Atm%flagstruct%geos_mlt_momdiff_enable
-     geos_mlt_momdiff_diag       => Atm%flagstruct%geos_mlt_momdiff_diag
-     geos_mlt_momdiff_heat => Atm%flagstruct%geos_mlt_momdiff_heat
-     geos_mlt_momdiff_kmax       => Atm%flagstruct%geos_mlt_momdiff_kmax
-     geos_mlt_momdiff_print_stride => Atm%flagstruct%geos_mlt_momdiff_print_stride
-     geos_mlt_momdiff_pr         => Atm%flagstruct%geos_mlt_momdiff_pr
-     geos_mlt_momdiff_nu_scale     => Atm%flagstruct%geos_mlt_momdiff_nu_scale
-     geos_mlt_momdiff_pmax_pa    => Atm%flagstruct%geos_mlt_momdiff_pmax_pa
-     geos_mlt_momdiff_rmax       => Atm%flagstruct%geos_mlt_momdiff_rmax
-     geos_mlt_momdiff_nu_max     => Atm%flagstruct%geos_mlt_momdiff_nu_max
+     geos_mlt_momdiff_heat        => Atm%flagstruct%geos_mlt_momdiff_heat
+     geos_mlt_momdiff_pr          => Atm%flagstruct%geos_mlt_momdiff_pr
+     geos_mlt_momdiff_pmax_pa     => Atm%flagstruct%geos_mlt_momdiff_pmax_pa
 
      do_uni_zfull                  => Atm%flagstruct%do_uni_zfull !miz
      adj_mass_vmr                  => Atm%flagstruct%adj_mass_vmr !f1p
@@ -1393,5 +1380,3 @@ module fv_control_mod
 
        
 end module fv_control_mod
-
-
