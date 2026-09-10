@@ -5,6 +5,7 @@
 !  - Build T = pt * pkz on the local owned interior (exclude halos via ng)
 !  - Use halo-aware i,j for pt, but local ii,jj for pkz.
 !  - Use gz interfaces to form altitude for MSIS sampling
+!  - Restrict MSIS sampling and the solve to the caller's pressure mask
 !  - Compute dT/dt from thermal conduction and return in heat_tc (K/s)
 !
 !======================================================================
@@ -23,16 +24,7 @@ module cond_driver_mod
   real,    parameter :: GEOS_MLT_MSIS_ALT_MIN_KM = 0.0
   real,    parameter :: GEOS_MLT_MSIS_ALT_MAX_KM = 400.0
 
-  ! Do not call NRLMSIS below this altitude for thermal-conduction lookup.
-  ! The GEOS-MLT conduction application is restricted to the upper atmosphere,
-  ! so lower-atmosphere MSIS calls are unnecessary and can create noisy diagnostics.
-  real,    parameter :: GEOS_MLT_MSIS_LOOKUP_ALT_MIN_KM = 70.0
   integer, parameter :: GEOS_MLT_MSIS_WARN_LIMIT = 80
-
-  ! Only sample NRLMSIS in the upper column for thermal conduction.
-  ! This avoids harmless near-surface or below-ground geometric-altitude
-  ! warnings from lower layers that are not used by GEOS-MLT conduction.
-  integer, parameter :: GEOS_MLT_MSIS_LOOKUP_KMAX = 40
 
   ! Diagnostic isolation switch for the top thermal-conduction boundary.
   ! .true. gives zero external heat flux at the model top.
@@ -150,7 +142,7 @@ contains
   ! Full driver called from dyn_core
   !------------------------------------------------------------
   subroutine cond_driver_apply(agrid, gz, pt, pkz, heat_tc, dt, ng, &
-                               year_msis, doy_msis, ut_seconds_msis)
+                               conduction_active, year_msis, doy_msis, ut_seconds_msis)
     use msis_wrapper, only : msis_point
     implicit none
 
@@ -161,6 +153,7 @@ contains
     real, intent(out)   :: heat_tc(:,:,:)        ! dTdt (K/s)
     real, intent(in)    :: dt                     ! dynamics time step (s)
     integer, intent(in) :: ng                    ! halo width
+    logical, intent(in) :: conduction_active(:,:,:) ! owned interior, no halos
 
     integer, intent(in), optional :: year_msis, doy_msis, ut_seconds_msis
 
@@ -205,6 +198,12 @@ contains
 
     if (ni <= 0 .or. nj <= 0 .or. nk <= 0) then
       return
+    end if
+
+    if (size(conduction_active,1) /= ni .or. &
+        size(conduction_active,2) /= nj .or. &
+        size(conduction_active,3) /= nk) then
+      error stop 'GEOS-MLT conduction pressure-mask shape mismatch'
     end if
 
     y     = 2017
@@ -298,11 +297,10 @@ contains
           if (gz(i,j,kk)   >= GZ_SENTINEL_THRESH) cycle
           if (gz(i,j,kk+1) >= GZ_SENTINEL_THRESH) cycle
 
-          ! Thermal conduction/MSIS coupling is only active in the upper
-          ! atmosphere.  Do not call NRLMSIS in lower model layers, because
-          ! terrain-following or near-surface gz can be slightly negative and
-          ! creates misleading low-altitude warnings.
-          if (kkL > GEOS_MLT_MSIS_LOOKUP_KMAX) cycle
+          ! The caller selects the physical pressure domain on any vertical grid.
+          ! Keep densities zero outside it. cond_z_tend excludes zero-density
+          ! layers and their interfaces, imposing zero flux at the boundary.
+          if (.not. conduction_active(ii,jj,kkL)) cycle
 
           lon_deg = modulo(agrid(i,j,1) * rad2deg, 360.0)
           lat_deg = agrid(i,j,2) * rad2deg
@@ -340,7 +338,10 @@ contains
       j = js + jj - 1
       do ii = 1, ni
         i = is + ii - 1
-    
+
+        ! An inactive top layer has no external conductive boundary flux.
+        if (.not. conduction_active(ii,jj,1)) cycle
+
         lon_deg = modulo(agrid(i,j,1) * rad2deg, 360.0)
         lat_deg = agrid(i,j,2) * rad2deg
         stl_hr  = modulo(real(utsec)/3600.0 + lon_deg/15.0, 24.0)
@@ -443,13 +444,6 @@ contains
       call print_msis_alt_warning('negative MSIS altitude: skipping MSIS call', &
                                   i, j, k, raw_alt_km, alt_km, gz_top, gz_bot, &
                                   lat_deg, lon_deg, year_msis, doy_msis, utsec_msis)
-      return
-    end if
-
-    if (raw_alt_km < GEOS_MLT_MSIS_LOOKUP_ALT_MIN_KM) then
-      ! This layer is below the GEOS-MLT conduction/MSIS lookup region.
-      ! Skip silently to avoid noisy lower-atmosphere diagnostics.
-      alt_ok = .false.
       return
     end if
 

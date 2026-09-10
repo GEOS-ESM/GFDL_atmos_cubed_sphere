@@ -262,6 +262,7 @@ contains
     
     ! +++ geos_mlt
     real, allocatable, dimension(:,:,:) :: heat_tc
+    logical, allocatable, dimension(:,:,:) :: conduction_active
     real, allocatable, dimension(:,:,:) :: kappa_mlt_dyn
     real, allocatable, dimension(:,:,:) :: cp_mlt_dyn
     real, allocatable, dimension(:,:,:) :: lambda_mlt_dyn
@@ -434,6 +435,8 @@ contains
     ! Thermal conduction is a GEOS-MLT physics tendency.
     if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
          allocate( heat_tc(isd:ied, jsd:jed, npz) ) ! include halo
+         allocate( conduction_active(is:ie, js:je, npz) )
+         conduction_active(:,:,:) = .false.
          call init_ijk_mem(isd, ied, jsd, jed, npz, heat_tc, 0.)
     endif
     if ( GEOS_MLT .and. present(dtdt_tc) ) then
@@ -1513,8 +1516,23 @@ contains
 
 
   if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
+     ! Use one pressure mask for both the column solve and the applied update.
+     ! Inactive layers are excluded before assembling the diffusion operator,
+     ! giving zero conductive flux across the lower active-domain boundary.
+     do k=1,npz
+        do j=js,je
+           do i=is,ie
+              conduction_active(i,j,k) = .false.
+              if (.not. ieee_is_finite(pe(i,k,j))) cycle
+              if (.not. ieee_is_finite(pe(i,k+1,j))) cycle
+              if (pe(i,k,j) <= 0.0 .or. pe(i,k+1,j) <= 0.0) cycle
+              p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
+              conduction_active(i,j,k) = p_layer <= mlt_pressure_cutoff_pa
+           enddo
+        enddo
+     enddo
      call cond_driver_apply(gridstruct%agrid, gz_agrid_mlt, pt, pkz, heat_tc, &
-          bdt, ng, year, doy, ut_seconds)
+          bdt, ng, conduction_active, year, doy, ut_seconds)
   endif
 
 
@@ -1631,16 +1649,13 @@ contains
   ! tendency, not the raw tendency returned by the conduction driver.
   if ( GEOS_MLT .and. flagstruct%geos_mlt_thermcond_enable ) then
 !$OMP parallel do default(none) &
-!$OMP shared(flagstruct,is,ie,js,je,npz,pt,heat_tc,bdt,pkz,pe,dtdt_tc) &
-!$OMP private(i,j,k,p_layer,dT_tc,tc_tend_limited,dT_limit)
+!$OMP shared(flagstruct,is,ie,js,je,npz,pt,heat_tc,bdt,pkz,conduction_active,dtdt_tc) &
+!$OMP private(i,j,k,dT_tc,tc_tend_limited,dT_limit)
      do k=1,npz
         do j=js,je
            do i=is,ie
-              ! Layer-center pressure from edge pressures.
-              ! pe is in Pa; 1.0 Pa = 0.01 hPa.
-              p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
-
-              if ( p_layer <= mlt_pressure_cutoff_pa .and. &
+              ! Apply exactly the pressure domain used by the column solver.
+              if ( conduction_active(i,j,k) .and. &
                    ieee_is_finite(heat_tc(i,j,k)) .and. &
                    ieee_is_finite(pkz(i,j,k)) .and. pkz(i,j,k) > 0.0 ) then
                  ! heat_tc is raw dT/dt in K/s. Limit the applied tendency
@@ -1668,6 +1683,7 @@ contains
 
   if (allocated(heat_source)) deallocate( heat_source ) !If ncon == 0 but d_con > 1.e-5, this would not be deallocated in earlier versions of the code
   if (allocated(heat_tc)) deallocate(heat_tc)
+  if (allocated(conduction_active)) deallocate(conduction_active)
   if (allocated(kappa_mlt_dyn)) deallocate(kappa_mlt_dyn)
   if (allocated(cp_mlt_dyn))    deallocate(cp_mlt_dyn)
   if (allocated(lambda_mlt_dyn)) deallocate(lambda_mlt_dyn)
