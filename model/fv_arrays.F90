@@ -971,16 +971,7 @@ module fv_arrays_mod
                                           !< If .false., heating from the physics is applied simply as a temperature
                                           !< tendency. The default value is .true.; ignored if hydrostatic = .true.
 
-   logical :: GEOS_MLT = .false.          !< Adding GEOS_MLT. Default false, if levels 
-                                          !< are 186 or 190, this will turn to true and adds GEOS_MLT physics and dynamics
-
-   logical :: do_mol_diffusion = .false.  !< Include molecular diffusion
- 
-   integer :: mol_diffusion_k_top = 1     !< Top level to apply molecular diffusion
-
-   integer :: mol_diffusion_k_bot = 10    !< Bottom level to apply molecular diffusion 
-
-   real :: prandtl_number = 1.0           !< Tuning parameter for molecular diffusion -- based on thermal conduction
+   logical :: GEOS_MLT = .false.          !< Enable GEOS-MLT upper-atmosphere extensions
 
    ! GEOS-MLT thermal conduction controls. These can be set from
    ! fv_core_nml or from GEOS resources through FV_StateMod.F90.
@@ -988,8 +979,8 @@ module fv_arrays_mod
    logical :: geos_mlt_thermcond_limit = .false.    !< Limit applied thermal-conduction dT/dt
    real :: geos_mlt_thermcond_dtmax = 2.0e-3        !< Max |dT/dt| from thermal conduction [K/s]
 
-   ! Temporary GEOS-MLT altitude diagnostics for the top few layers.
-   logical :: geos_mlt_alt_diag = .true.            !< Print top-layer altitude diagnostics
+   ! Optional GEOS-MLT altitude diagnostics for the top few layers.
+   logical :: geos_mlt_alt_diag = .false.           !< Print top-layer altitude diagnostics
    integer :: geos_mlt_alt_diag_kmax = 5            !< Number of top layers to print
    integer :: geos_mlt_alt_diag_print_stride = 20   !< Print every N dyn_core calls
 

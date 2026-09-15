@@ -142,7 +142,7 @@ contains
                       akap, cappa, kord_mt, kord_wz, kord_tr, kord_tm,  peln, te0_2d,        &
                       ng, ua, va, omga, te, ws, fill, reproduce_sum, out_dt, dtdt,      &
                       ptop, ak, bk, pfull, flagstruct, gridstruct, domain, do_sat_adj, &
-                      hydrostatic, GEOS_MLT, year, doy, ut_seconds, mol_diffusion_k_top, mol_diffusion_k_bot, & 
+                      hydrostatic, GEOS_MLT, year, doy, ut_seconds, &
                       hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
                       mfx, mfy, cx, cy, remap_option, gmao_remap, dtdt_consvte)
   logical, intent(in):: last_step
@@ -203,8 +203,6 @@ contains
   real, intent(inout), dimension(isd:,jsd:,1:)::delz, q_con, cappa
   logical, intent(in):: hydrostatic
   logical, intent(in):: GEOS_MLT
-  integer, intent(in):: mol_diffusion_k_top
-  integer, intent(in):: mol_diffusion_k_bot
   logical, intent(in):: hybrid_z
   logical, intent(in):: out_dt
 
@@ -426,7 +424,7 @@ contains
    endif
 
 !$OMP parallel do default(none) shared(is,ie,js,je,km,pe,ptop,kord_tm,remap_t, &
-!$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic,GEOS_MLT,mol_diffusion_k_top,mol_diffusion_k_bot, &
+!$OMP                                  remap_pt,remap_te,mfy,mfx,cx,cy,hydrostatic,GEOS_MLT, &
 !$OMP                                  pt,pk,rg,peln,q,nwat,liq_wat,rainwat,ice_wat,snowwat,    &
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,ps, gridstruct, &
@@ -4310,6 +4308,3 @@ endif        ! end last_step check
 
 
 end module fv_mapz_mod
-
-
-

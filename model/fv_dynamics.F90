@@ -786,7 +786,7 @@ contains
                      ng, ua, va, omga, dp1, ws, fill, reproduce_sum,             &
                      idiag%id_mdt>0, dtdt_m, ptop, ak, bk, pfull, flagstruct, gridstruct, domain,   &
                      flagstruct%do_sat_adj,hydrostatic, GEOS_MLT_use, year_use, doy_use, ut_seconds_use, & 
-                     flagstruct%mol_diffusion_k_top, flagstruct%mol_diffusion_k_bot, hybrid_z, do_omega,     &
+                     hybrid_z, do_omega,     &
                      flagstruct%adiabatic, do_adiabatic_init, &
                      mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap, &
                      dtdt_consvte=dtdt_consvte)

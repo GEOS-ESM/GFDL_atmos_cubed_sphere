@@ -1,5 +1,5 @@
 module msis_wrapper
-  ! Simple MSIS wrapper:
+  ! GEOS-MLT MSIS wrapper:
   ! - reads F10.7/AP from file 'F107_ap_appended.txt'
   ! - initialize MSIS via msisinit('msis21.parm')
   ! - call msis_point(year,doy,ut_seconds,alt,lat,lon,slt, O,N2,O2,T)
@@ -165,7 +165,7 @@ contains
 
 
   subroutine load_f107_file()
-    ! Read inpute file (F107_ap_appended.txt): columns: year doy hour ap f107 f107a
+    ! Read input file (F107_ap_appended.txt): columns: year doy hour ap f107 f107a
     character(len=*), parameter :: fname = 'F107_ap_appended.txt'
     integer :: unit, ios, count
     character(len=256) :: line
@@ -238,7 +238,7 @@ contains
   end subroutine load_f107_file
 
 
-  ! I used AI to help write this subroutine. It should save on memory rather than hold entire file in memory (~6mb).
+  ! Shrink allocated index arrays if malformed records were skipped while reading. 
   subroutine shrink_arrays(new_n)
      integer, intent(in) :: new_n
      integer, allocatable :: tmpi(:)

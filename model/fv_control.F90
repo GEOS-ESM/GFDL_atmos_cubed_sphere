@@ -304,10 +304,6 @@ module fv_control_mod
    logical , pointer :: use_hydro_pressure
    
    logical , pointer :: GEOS_MLT   ! GEOS_MLT
-   logical , pointer :: do_mol_diffusion
-   integer , pointer :: mol_diffusion_k_top
-   integer , pointer :: mol_diffusion_k_bot
-   real    , pointer :: prandtl_number
    logical , pointer :: geos_mlt_thermcond_enable
    logical , pointer :: geos_mlt_thermcond_limit
    real    , pointer :: geos_mlt_thermcond_dtmax
@@ -687,8 +683,7 @@ module fv_control_mod
                          dry_mass, grid_type, do_Held_Suarez, do_reed_physics, reed_cond_only, &
                          consv_te, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, Beljaars_TOFD, &
                          range_warn, dwind_2d, inline_q, z_tracer, reproduce_sum, adiabatic, do_vort_damp, no_dycore,   &
-                         tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, GEOS_MLT, do_mol_diffusion, mol_diffusion_k_top, &
-                         mol_diffusion_k_bot, prandtl_number, geos_mlt_thermcond_enable, &
+                         tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, GEOS_MLT, geos_mlt_thermcond_enable, &
                          geos_mlt_thermcond_limit, geos_mlt_thermcond_dtmax, geos_mlt_alt_diag, &
                          geos_mlt_alt_diag_kmax, geos_mlt_alt_diag_print_stride, &
                          geos_mlt_momdiff_enable, geos_mlt_momdiff_heat, &
@@ -1327,10 +1322,6 @@ module fv_control_mod
      use_hydro_pressure            => Atm%flagstruct%use_hydro_pressure
      
      GEOS_MLT                      => Atm%flagstruct%GEOS_MLT
-     do_mol_diffusion              => Atm%flagstruct%do_mol_diffusion
-     mol_diffusion_k_top           => Atm%flagstruct%mol_diffusion_k_top
-     mol_diffusion_k_bot           => Atm%flagstruct%mol_diffusion_k_bot
-     prandtl_number                => Atm%flagstruct%prandtl_number
      geos_mlt_thermcond_enable    => Atm%flagstruct%geos_mlt_thermcond_enable
      geos_mlt_thermcond_limit     => Atm%flagstruct%geos_mlt_thermcond_limit
      geos_mlt_thermcond_dtmax     => Atm%flagstruct%geos_mlt_thermcond_dtmax
