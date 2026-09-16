@@ -269,9 +269,15 @@ contains
                                                              phiO, phiN2, phiO2)
 
                  ntot = real(Om_k) + real(N2m_k) + real(O2m_k)
-                 xO  = real(Om_k)  / ntot
-                 xN2 = real(N2m_k) / ntot
-                 xO2 = real(O2m_k) / ntot
+                 if (ntot > 0.0 .and. ieee_is_finite(ntot)) then
+                    xO  = real(Om_k)  / ntot
+                    xN2 = real(N2m_k) / ntot
+                    xO2 = real(O2m_k) / ntot
+                 else
+                    xO  = 0.0
+                    xN2 = 0.0
+                    xO2 = 0.0
+                 endif
 
                  ! Convert MSIS number densities from cm-3 to m-3 for mass density.
                  rhoO    = real(Om_k)  * 1.0e6 * mO
