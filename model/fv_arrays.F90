@@ -778,6 +778,8 @@ module fv_arrays_mod
                            !< original value before entering the physics; a value of 0.7 roughly
                            !< causes the energy fixer to compensate for the amount of energy changed
                            !< by the physics in GFDL HiRAM or AM3.
+                           !< GEOS-MLT currently requires consv_te = 0 because this
+                           !< global fixer still assumes dry-air thermodynamics.
 
    real :: tau = 0.   !< Time scale (in days) for Rayleigh friction applied to horizontal
                       !< and vertical winds; lost kinetic energy is converted to heat, except
@@ -876,6 +878,7 @@ module fv_arrays_mod
                                  !<     0: remap  T in logP
                                  !<     1: remap PT in P
                                  !<     2: remap TE in logP with GMAO cubic
+                                 !< GEOS-MLT currently supports option 0 only.
                                  !< kord_tm no longer needs to be negative.
                                  !< WMP-NASA-GMAO UPDATE
 
@@ -987,7 +990,7 @@ module fv_arrays_mod
    ! GEOS-MLT molecular momentum diffusion controls. These can be set from
    ! fv_core_nml or from GEOS resources through FV_StateMod.F90.
    logical :: geos_mlt_momdiff_enable = .true.      !< Apply molecular momentum diffusion to U/V
-   logical :: geos_mlt_momdiff_heat = .false.       !< Add molecular KE-loss heating to PT
+   logical :: geos_mlt_momdiff_heat = .false.       !< Add molecular KE-loss heating to PT; requires momdiff enabled
    real :: geos_mlt_momdiff_pr = 0.70               !< Prandtl number for nu = Pr*lambda/(rho*cp)
    real :: geos_mlt_momdiff_pmax_pa = 1.0           !< Apply where layer pressure <= this value [Pa]
 

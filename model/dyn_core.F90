@@ -132,8 +132,7 @@ module dyn_core_mod
   use boundary_mod,         only: extrapolation_BC,  nested_grid_BC_apply_intT
 
 ! +++ GEOS_MLT  
-  use calc_gas_specific_heat_mlt_mod, only: calc_gas_specific_heat_mlt, calc_mlt_thermo_state
-  use ESMF, only: ESMF_Clock, ESMF_Time, ESMF_ClockGet, ESMF_TimeGet
+  use calc_gas_specific_heat_mlt_mod, only: calc_mlt_thermo_state
 
   use cond_driver_mod, only : cond_driver_apply
   use mol_mom_diff_mod, only : mol_mom_diff_compute_tend
@@ -267,7 +266,6 @@ contains
     real, allocatable, dimension(:,:,:) :: cp_mlt_dyn
     real, allocatable, dimension(:,:,:) :: lambda_mlt_dyn
     real, allocatable, dimension(:,:,:) :: rho_mlt_dyn
-    real, allocatable, dimension(:,:,:) :: alpha_mlt_dyn
     real, allocatable, dimension(:,:,:) :: u_momdiff_tend
     real, allocatable, dimension(:,:,:) :: v_momdiff_tend
     real, allocatable, dimension(:,:,:) :: ua_momdiff
@@ -284,6 +282,7 @@ contains
     real :: zmin_diag
     real :: zmax_diag
     integer :: k_diag
+    logical, save :: geos_mlt_config_printed = .false.
     ! --- geos_mlt
 
 
@@ -466,29 +465,34 @@ contains
          endif
     endif
 
-    ! Allocate these arrays unconditionally because d_sw always receives them.
-    ! They keep dry-air defaults when GEOS_MLT is disabled.
+    ! d_sw always receives kappa_mlt_dyn, so keep this one dry-air field
+    ! allocated for both standard GEOS and GEOS-MLT. Allocate the remaining
+    ! upper-atmosphere work arrays only when GEOS-MLT actually needs them.
     allocate(kappa_mlt_dyn(isd:ied, jsd:jed, npz))
-    allocate(cp_mlt_dyn(isd:ied, jsd:jed, npz))
-    allocate(lambda_mlt_dyn(isd:ied, jsd:jed, npz))
-    allocate(rho_mlt_dyn(isd:ied, jsd:jed, npz))
-    allocate(alpha_mlt_dyn(isd:ied, jsd:jed, npz))
-    allocate(u_momdiff_tend(isd:ied, jsd:jed, npz))
-    allocate(v_momdiff_tend(isd:ied, jsd:jed, npz))
-    allocate(ua_momdiff(isd:ied, jsd:jed, npz))
-    allocate(va_momdiff(isd:ied, jsd:jed, npz))
-    allocate(momdiff_ke_heat_tend(isd:ied, jsd:jed, npz))
-    
     kappa_mlt_dyn(:,:,:) = akap
-    cp_mlt_dyn(:,:,:) = cp_air
-    lambda_mlt_dyn(:,:,:) = 0.0
-    rho_mlt_dyn(:,:,:) = 0.0
-    alpha_mlt_dyn(:,:,:) = 0.0
-    u_momdiff_tend(:,:,:) = 0.0
-    v_momdiff_tend(:,:,:) = 0.0
-    ua_momdiff(:,:,:) = 0.0
-    va_momdiff(:,:,:) = 0.0
-    momdiff_ke_heat_tend(:,:,:) = 0.0
+
+    if (GEOS_MLT) then
+       allocate(cp_mlt_dyn(isd:ied, jsd:jed, npz))
+       cp_mlt_dyn(:,:,:) = cp_air
+
+       if (flagstruct%geos_mlt_momdiff_enable) then
+          allocate(lambda_mlt_dyn(isd:ied, jsd:jed, npz))
+          allocate(rho_mlt_dyn(isd:ied, jsd:jed, npz))
+          lambda_mlt_dyn(:,:,:) = 0.0
+          rho_mlt_dyn(:,:,:) = 0.0
+          allocate(u_momdiff_tend(isd:ied, jsd:jed, npz))
+          allocate(v_momdiff_tend(isd:ied, jsd:jed, npz))
+          allocate(ua_momdiff(isd:ied, jsd:jed, npz))
+          allocate(va_momdiff(isd:ied, jsd:jed, npz))
+          allocate(momdiff_ke_heat_tend(isd:ied, jsd:jed, npz))
+
+          u_momdiff_tend(:,:,:) = 0.0
+          v_momdiff_tend(:,:,:) = 0.0
+          ua_momdiff(:,:,:) = 0.0
+          va_momdiff(:,:,:) = 0.0
+          momdiff_ke_heat_tend(:,:,:) = 0.0
+       endif
+    endif
     if (present(dtdt_molke)) dtdt_molke(:,:,:) = 0.0
     if (present(dtdt_dcon)) dtdt_dcon(:,:,:) = 0.0
     if (present(dudt_moldiff)) dudt_moldiff(:,:,:) = 0.0
@@ -517,18 +521,26 @@ contains
           enddo
        enddo
 
-       call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
-                  gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
-                  year, doy, ut_seconds, gridstruct, delz, &
-                  Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn, &
-                  Lambda_MLT_out=lambda_mlt_dyn, Rho_MLT_out=rho_mlt_dyn, Alpha_MLT_out=alpha_mlt_dyn)
+       if (flagstruct%geos_mlt_momdiff_enable) then
+          call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
+                     gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                     year, doy, ut_seconds, gridstruct, delz, &
+                     Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn, &
+                     Lambda_MLT_out=lambda_mlt_dyn, Rho_MLT_out=rho_mlt_dyn)
+       else
+          call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
+                     gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                     year, doy, ut_seconds, gridstruct, delz, &
+                     Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn)
+       endif
 
        ! GEOS-MLT: make the diagnosed thermodynamic fields halo-consistent.
        call mpp_update_domains(kappa_mlt_dyn, domain, complete=.true.)
        call mpp_update_domains(cp_mlt_dyn,     domain, complete=.true.)
-       call mpp_update_domains(lambda_mlt_dyn, domain, complete=.true.)
-       call mpp_update_domains(rho_mlt_dyn,    domain, complete=.true.)
-       call mpp_update_domains(alpha_mlt_dyn,  domain, complete=.true.)
+       if (flagstruct%geos_mlt_momdiff_enable) then
+          call mpp_update_domains(lambda_mlt_dyn, domain, complete=.true.)
+          call mpp_update_domains(rho_mlt_dyn,    domain, complete=.true.)
+       endif
 
        ! Ensure physical temperature is preserved with the second-pass pkz. 
        do k=1,npz
@@ -565,14 +577,21 @@ contains
 
        deallocate(t_phys_sync)
 
-       if (is_master()) then
-          write(*,*) 'GEOS_MLT_THERMCOND apply=', flagstruct%geos_mlt_thermcond_enable, &
+       if (GEOS_MLT .and. is_master() .and. .not. geos_mlt_config_printed) then
+       
+          write(*,*) 'GEOS_MLT_THERMCOND apply=', &
+               flagstruct%geos_mlt_thermcond_enable, &
                ' limit=', flagstruct%geos_mlt_thermcond_limit, &
                ' dtmax_kps=', flagstruct%geos_mlt_thermcond_dtmax
-          write(*,*) 'GEOS_MLT_MOMDIFF apply=', flagstruct%geos_mlt_momdiff_enable, &
+       
+          write(*,*) 'GEOS_MLT_MOMDIFF apply=', &
+               flagstruct%geos_mlt_momdiff_enable, &
                ' heat=', flagstruct%geos_mlt_momdiff_heat, &
                ' Pr=', flagstruct%geos_mlt_momdiff_pr, &
                ' pmax_pa=', flagstruct%geos_mlt_momdiff_pmax_pa
+       
+          geos_mlt_config_printed = .true.
+       
        endif
 
        if (flagstruct%geos_mlt_alt_diag) then
@@ -759,19 +778,33 @@ contains
 #endif
       endif
       if ( hydrostatic ) then
-           call geopk(ptop, pe, peln, delpc, pkc, gz, phis, ptc, q_con, pkz, npz, akap, .true., &
-                      gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
-                      year, doy, ut_seconds, gridstruct, delz,& 
-                      Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn, &
-                  Lambda_MLT_out=lambda_mlt_dyn, Rho_MLT_out=rho_mlt_dyn, Alpha_MLT_out=alpha_mlt_dyn)
+           if (GEOS_MLT) then
+              if (flagstruct%geos_mlt_momdiff_enable) then
+                 call geopk(ptop, pe, peln, delpc, pkc, gz, phis, ptc, q_con, pkz, npz, akap, .true., &
+                            gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                            year, doy, ut_seconds, gridstruct, delz, &
+                            Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn, &
+                            Lambda_MLT_out=lambda_mlt_dyn, Rho_MLT_out=rho_mlt_dyn)
+              else
+                 call geopk(ptop, pe, peln, delpc, pkc, gz, phis, ptc, q_con, pkz, npz, akap, .true., &
+                            gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                            year, doy, ut_seconds, gridstruct, delz, &
+                            Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn)
+              endif
+           else
+              call geopk(ptop, pe, peln, delpc, pkc, gz, phis, ptc, q_con, pkz, npz, akap, .true., &
+                         gridstruct%nested, .false., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                         year, doy, ut_seconds, gridstruct, delz)
+           endif
 
            ! GEOS-MLT: make the diagnosed thermodynamic fields halo-consistent.
            if (GEOS_MLT) then
               call mpp_update_domains(kappa_mlt_dyn, domain, complete=.true.)
               call mpp_update_domains(cp_mlt_dyn,     domain, complete=.true.)
-              call mpp_update_domains(lambda_mlt_dyn, domain, complete=.true.)
-              call mpp_update_domains(rho_mlt_dyn,    domain, complete=.true.)
-              call mpp_update_domains(alpha_mlt_dyn,  domain, complete=.true.)
+              if (flagstruct%geos_mlt_momdiff_enable) then
+                 call mpp_update_domains(lambda_mlt_dyn, domain, complete=.true.)
+                 call mpp_update_domains(rho_mlt_dyn,    domain, complete=.true.)
+              endif
            endif
       else
 #ifndef SW_DYNAMICS
@@ -1092,11 +1125,24 @@ contains
 
      if ( hydrostatic ) then
 
-        call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
-                   gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
-                   year, doy, ut_seconds, gridstruct, delz,& 
-                   Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn, &
-                  Lambda_MLT_out=lambda_mlt_dyn, Rho_MLT_out=rho_mlt_dyn, Alpha_MLT_out=alpha_mlt_dyn)
+        if (GEOS_MLT) then
+           if (flagstruct%geos_mlt_momdiff_enable) then
+              call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
+                         gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                         year, doy, ut_seconds, gridstruct, delz, &
+                         Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn, &
+                         Lambda_MLT_out=lambda_mlt_dyn, Rho_MLT_out=rho_mlt_dyn)
+           else
+              call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
+                         gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                         year, doy, ut_seconds, gridstruct, delz, &
+                         Kappa_MLT_out=kappa_mlt_dyn, Cp_MLT_out=cp_mlt_dyn)
+           endif
+        else
+           call geopk(ptop, pe, peln, delp, pkc, gz, phis, pt, q_con, pkz, npz, akap, .false., &
+                      gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd, GEOS_MLT, pfull, &
+                      year, doy, ut_seconds, gridstruct, delz)
+        endif
         ! GEOS-MLT: make the diagnosed thermodynamic fields halo-consistent.
         if (GEOS_MLT) then
            ! Update hydrostatic layer thickness (delz) from the final
@@ -1118,11 +1164,12 @@ contains
            call mpp_update_domains(delz, domain, complete=.true.)
 
            ! Synchronize GEOS-MLT thermodynamic fields.
-           call mpp_update_domains(kappa_mlt_dyn,  domain, complete=.true.)
-           call mpp_update_domains(cp_mlt_dyn,     domain, complete=.true.)
-           call mpp_update_domains(lambda_mlt_dyn, domain, complete=.true.)
-           call mpp_update_domains(rho_mlt_dyn,    domain, complete=.true.)
-           call mpp_update_domains(alpha_mlt_dyn,  domain, complete=.true.)
+           call mpp_update_domains(kappa_mlt_dyn, domain, complete=.true.)
+           call mpp_update_domains(cp_mlt_dyn,    domain, complete=.true.)
+           if (flagstruct%geos_mlt_momdiff_enable) then
+              call mpp_update_domains(lambda_mlt_dyn, domain, complete=.true.)
+              call mpp_update_domains(rho_mlt_dyn,    domain, complete=.true.)
+           endif
         endif
      else
 #ifndef SW_DYNAMICS
@@ -1430,8 +1477,7 @@ contains
   ! This is outside the acoustic n_split loop and uses a frozen-coefficient
   ! backward-Euler solve over bdt. The returned tendency reconstructs the
   ! implicitly solved A-grid winds when update_dwinds_phys applies bdt*tendency.
-  if ( GEOS_MLT .and. (flagstruct%geos_mlt_momdiff_enable .or. &
-       flagstruct%geos_mlt_momdiff_heat) ) then
+  if ( GEOS_MLT .and. flagstruct%geos_mlt_momdiff_enable ) then
 
      ! At this point ua/va were last used by c_sw/d_sw and are local
      ! cubed-sphere A-grid components, not eastward/northward winds.
@@ -1466,13 +1512,11 @@ contains
      ! DTDT_Mol should represent applied heating only. Do not write the
      ! hypothetical KE-loss heating diagnostic when geos_mlt_momdiff_heat is false.
 
-     if (flagstruct%geos_mlt_momdiff_enable) then
-        call update_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, bdt, &
-             u_momdiff_tend, v_momdiff_tend, u, v, gridstruct, npx, npy, npz, domain)
+     call update_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, bdt, &
+          u_momdiff_tend, v_momdiff_tend, u, v, gridstruct, npx, npy, npz, domain)
 
-        ! GEOS-MLT molecular diffusion updates the D-grid winds.
-        call mpp_update_domains(u, v, domain, gridtype=DGRID_NE, complete=.true.)
-     endif
+     ! GEOS-MLT molecular diffusion updates the D-grid winds.
+     call mpp_update_domains(u, v, domain, gridtype=DGRID_NE, complete=.true.)
 
      if (flagstruct%geos_mlt_momdiff_heat) then
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,pt,pkz,momdiff_ke_heat_tend,bdt) private(i,j,k)
@@ -1688,7 +1732,6 @@ contains
   if (allocated(cp_mlt_dyn))    deallocate(cp_mlt_dyn)
   if (allocated(lambda_mlt_dyn)) deallocate(lambda_mlt_dyn)
   if (allocated(rho_mlt_dyn))    deallocate(rho_mlt_dyn)
-  if (allocated(alpha_mlt_dyn))  deallocate(alpha_mlt_dyn)
   if (allocated(u_momdiff_tend)) deallocate(u_momdiff_tend)
   if (allocated(v_momdiff_tend)) deallocate(v_momdiff_tend)
   if (allocated(ua_momdiff)) deallocate(ua_momdiff)

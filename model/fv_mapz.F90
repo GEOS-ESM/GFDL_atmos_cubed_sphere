@@ -87,13 +87,12 @@ module fv_mapz_mod
   use fv_grid_utils_mod, only: g_sum, ptop_min
   use fv_fill_mod,       only: fillz
   use mpp_domains_mod,   only: mpp_update_domains, domain2d, mpp_global_sum, BITWISE_EFP_SUM, BITWISE_EXACT_SUM
-  use mpp_mod,           only: NOTE, mpp_error, get_unit
+  use mpp_mod,           only: NOTE, FATAL, mpp_error, get_unit
   use fv_arrays_mod,     only: fv_grid_type, fv_flags_type
   use fv_timing_mod,     only: timing_on, timing_off
   use fv_mp_mod,         only: is_master
   use fv_cmp_mod,        only: qs_init, fv_sat_adj
-  use calc_gas_specific_heat_mlt_mod, only: calc_gas_specific_heat_mlt, calc_mlt_thermo_state
-  use ESMF, only: ESMF_Clock, ESMF_Time, ESMF_ClockGet, ESMF_TimeGet
+  use calc_gas_specific_heat_mlt_mod, only: calc_mlt_thermo_state
   use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
 
   implicit none
@@ -144,7 +143,8 @@ contains
                       ptop, ak, bk, pfull, flagstruct, gridstruct, domain, do_sat_adj, &
                       hydrostatic, GEOS_MLT, year, doy, ut_seconds, &
                       hybrid_z, do_omega, adiabatic, do_adiabatic_init, &
-                      mfx, mfy, cx, cy, remap_option, gmao_remap, dtdt_consvte)
+                      mfx, mfy, cx, cy, remap_option, gmao_remap, dtdt_consvte, &
+                      cp_mlt_sg, kappa_mlt_sg)
   logical, intent(in):: last_step
   real,    intent(in):: mdt                    !< remap time step
   real,    intent(in):: pdt                    !< phys time step
@@ -212,6 +212,8 @@ contains
   real, intent(inout)::   peln(is:ie,km+1,js:je)   !< log(pe)
   real, intent(inout)::   dtdt(is:ie,js:je,km)
   real, optional, intent(inout):: dtdt_consvte(is:ie,js:je,km) !< consv_te global fixer tendency [K/s]
+  real, optional, intent(out):: cp_mlt_sg(is:ie,js:je,km)
+  real, optional, intent(out):: kappa_mlt_sg(is:ie,js:je,km)
   real, intent(out)::    pkz(is:ie,js:je,km)       !< layer-mean pk for converting t to pt
   real, intent(out)::     te(isd:ied,jsd:jed,km)
 ! Mass fluxes
@@ -264,6 +266,17 @@ contains
     print*, ' INVALID REMAP_OPTION '
     stop
   end select
+
+  if (GEOS_MLT) then
+     if (remap_option /= 0) then
+        call mpp_error(FATAL, &
+             'GEOS-MLT currently supports remap_option = 0 only.')
+     endif
+     if (abs(consv) > 0.0) then
+        call mpp_error(FATAL, &
+             'GEOS-MLT currently requires consv_te = 0.')
+     endif
+  endif
 
   select case (gmao_remap)
   case(0)
@@ -361,6 +374,10 @@ contains
    ilast  = ie
    jfirst = js
    jlast  = je
+
+   ! Keep dry-air defaults outside GEOS-MLT.
+   Cp_MLT(:,:,:) = cp
+   Kappa_MLT(:,:,:) = akap
 
    if ( GEOS_MLT ) then
    
@@ -1451,6 +1468,14 @@ endif        ! end last_step check
     endif
 !$OMP end parallel
 
+  ! Return the final GEOS-MLT thermodynamic state for the post-dynamics
+  ! subgrid-z adjustment. These fields are copied only when requested.
+  if (present(cp_mlt_sg)) then
+     cp_mlt_sg(:,:,:) = Cp_MLT(is:ie,js:je,:)
+  endif
+  if (present(kappa_mlt_sg)) then
+     kappa_mlt_sg(:,:,:) = Kappa_MLT(is:ie,js:je,:)
+  endif
 
  end subroutine Lagrangian_to_Eulerian
 

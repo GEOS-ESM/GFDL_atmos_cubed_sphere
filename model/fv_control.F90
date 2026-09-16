@@ -775,6 +775,24 @@ module fv_control_mod
       write(unit, nml=fv_core_nml)
       write(unit, nml=test_case_nml)
 
+      ! GEOS-MLT currently supports temperature remapping only and does not
+      ! use the dry-air global energy fixer. Molecular KE-loss heating is
+      ! meaningful only when molecular momentum diffusion is applied.
+      if (GEOS_MLT) then
+         if (remap_option /= 0) then
+            call mpp_error(FATAL, &
+                 'GEOS-MLT currently requires remap_option = 0.')
+         endif
+         if (abs(consv_te) > 0.0) then
+            call mpp_error(FATAL, &
+                 'GEOS-MLT currently requires consv_te = 0.')
+         endif
+         if (geos_mlt_momdiff_heat .and. .not. geos_mlt_momdiff_enable) then
+            call mpp_error(FATAL, &
+                 'GEOS-MLT molecular heating requires geos_mlt_momdiff_enable = .true.')
+         endif
+      endif
+
       if (len_trim(grid_file) /= 0) Atm(n)%flagstruct%grid_file = grid_file
       if (len_trim(grid_name) /= 0) Atm(n)%flagstruct%grid_name = grid_name
       if (len_trim(res_latlon_dynamics) /= 0) Atm(n)%flagstruct%res_latlon_dynamics = res_latlon_dynamics
