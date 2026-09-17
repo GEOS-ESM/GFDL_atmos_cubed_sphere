@@ -302,6 +302,20 @@ module fv_control_mod
    logical , pointer :: hydrostatic 
    logical , pointer :: phys_hydrostatic
    logical , pointer :: use_hydro_pressure
+   
+   logical , pointer :: GEOS_MLT   ! GEOS_MLT
+   logical , pointer :: geos_mlt_thermcond_enable
+   logical , pointer :: geos_mlt_thermcond_limit
+   real    , pointer :: geos_mlt_thermcond_dtmax
+   logical , pointer :: geos_mlt_alt_diag
+   integer , pointer :: geos_mlt_alt_diag_kmax
+   integer , pointer :: geos_mlt_alt_diag_print_stride
+   logical , pointer :: geos_mlt_momdiff_enable
+   logical , pointer :: geos_mlt_momdiff_heat
+   real    , pointer :: geos_mlt_momdiff_pr
+   real    , pointer :: geos_mlt_momdiff_pmax_pa
+
+
    logical , pointer :: do_uni_zfull !miz
    logical , pointer :: adj_mass_vmr ! f1p
    logical , pointer :: hybrid_z    
@@ -669,7 +683,12 @@ module fv_control_mod
                          dry_mass, grid_type, do_Held_Suarez, do_reed_physics, reed_cond_only, &
                          consv_te, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, Beljaars_TOFD, &
                          range_warn, dwind_2d, inline_q, z_tracer, reproduce_sum, adiabatic, do_vort_damp, no_dycore,   &
-                         tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, fv_sg_adj, breed_vortex_inline,  &
+                         tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, GEOS_MLT, geos_mlt_thermcond_enable, &
+                         geos_mlt_thermcond_limit, geos_mlt_thermcond_dtmax, geos_mlt_alt_diag, &
+                         geos_mlt_alt_diag_kmax, geos_mlt_alt_diag_print_stride, &
+                         geos_mlt_momdiff_enable, geos_mlt_momdiff_heat, &
+                         geos_mlt_momdiff_pr, geos_mlt_momdiff_pmax_pa, &
+                         fv_sg_adj, breed_vortex_inline,  &
                          na_init, nudge_dz, hybrid_z, Make_NH, n_zs_filter, nord_zs_filter, full_zs_filter, reset_eta,         &
                          pnats, dnats, a2b_ord, remap_option, gmao_remap, p_ref, d2_bg_k1, d2_bg_k2,  &
                          c2l_ord, dx_const, dy_const, umax, deglat,      &
@@ -755,6 +774,24 @@ module fv_control_mod
 #endif
       write(unit, nml=fv_core_nml)
       write(unit, nml=test_case_nml)
+
+      ! GEOS-MLT currently supports temperature remapping only and does not
+      ! use the dry-air global energy fixer. Molecular KE-loss heating is
+      ! meaningful only when molecular momentum diffusion is applied.
+      if (GEOS_MLT) then
+         if (remap_option /= 0) then
+            call mpp_error(FATAL, &
+                 'GEOS-MLT currently requires remap_option = 0.')
+         endif
+         if (abs(consv_te) > 0.0) then
+            call mpp_error(FATAL, &
+                 'GEOS-MLT currently requires consv_te = 0.')
+         endif
+         if (geos_mlt_momdiff_heat .and. .not. geos_mlt_momdiff_enable) then
+            call mpp_error(FATAL, &
+                 'GEOS-MLT molecular heating requires geos_mlt_momdiff_enable = .true.')
+         endif
+      endif
 
       if (len_trim(grid_file) /= 0) Atm(n)%flagstruct%grid_file = grid_file
       if (len_trim(grid_name) /= 0) Atm(n)%flagstruct%grid_name = grid_name
@@ -1301,6 +1338,19 @@ module fv_control_mod
      hydrostatic                   => Atm%flagstruct%hydrostatic
      phys_hydrostatic              => Atm%flagstruct%phys_hydrostatic
      use_hydro_pressure            => Atm%flagstruct%use_hydro_pressure
+     
+     GEOS_MLT                      => Atm%flagstruct%GEOS_MLT
+     geos_mlt_thermcond_enable    => Atm%flagstruct%geos_mlt_thermcond_enable
+     geos_mlt_thermcond_limit     => Atm%flagstruct%geos_mlt_thermcond_limit
+     geos_mlt_thermcond_dtmax     => Atm%flagstruct%geos_mlt_thermcond_dtmax
+     geos_mlt_alt_diag            => Atm%flagstruct%geos_mlt_alt_diag
+     geos_mlt_alt_diag_kmax       => Atm%flagstruct%geos_mlt_alt_diag_kmax
+     geos_mlt_alt_diag_print_stride => Atm%flagstruct%geos_mlt_alt_diag_print_stride
+     geos_mlt_momdiff_enable      => Atm%flagstruct%geos_mlt_momdiff_enable
+     geos_mlt_momdiff_heat        => Atm%flagstruct%geos_mlt_momdiff_heat
+     geos_mlt_momdiff_pr          => Atm%flagstruct%geos_mlt_momdiff_pr
+     geos_mlt_momdiff_pmax_pa     => Atm%flagstruct%geos_mlt_momdiff_pmax_pa
+
      do_uni_zfull                  => Atm%flagstruct%do_uni_zfull !miz
      adj_mass_vmr                  => Atm%flagstruct%adj_mass_vmr !f1p
      hybrid_z                      => Atm%flagstruct%hybrid_z

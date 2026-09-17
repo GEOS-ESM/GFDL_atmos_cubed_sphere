@@ -303,6 +303,8 @@ module fv_arrays_mod
                             !< 8 by default; 9 recommended. It is also recommended to use the same value
                             !< for 'kord_wz' as for 'kord_mt'.
 
+
+
    !> Vorticity & w transport options:
    integer :: hord_vt = 9   !< Horizontal advection scheme for absolute vorticity and for
                             !< vertical velocity in nonhydrostatic simulations. 9 by default.
@@ -776,6 +778,8 @@ module fv_arrays_mod
                            !< original value before entering the physics; a value of 0.7 roughly
                            !< causes the energy fixer to compensate for the amount of energy changed
                            !< by the physics in GFDL HiRAM or AM3.
+                           !< GEOS-MLT currently requires consv_te = 0 because this
+                           !< global fixer still assumes dry-air thermodynamics.
 
    real :: tau = 0.   !< Time scale (in days) for Rayleigh friction applied to horizontal
                       !< and vertical winds; lost kinetic energy is converted to heat, except
@@ -874,6 +878,7 @@ module fv_arrays_mod
                                  !<     0: remap  T in logP
                                  !<     1: remap PT in P
                                  !<     2: remap TE in logP with GMAO cubic
+                                 !< GEOS-MLT currently supports option 0 only.
                                  !< kord_tm no longer needs to be negative.
                                  !< WMP-NASA-GMAO UPDATE
 
@@ -968,6 +973,26 @@ module fv_arrays_mod
                                           !< balance, causing the entire atmospheric column to expand instantaneously.
                                           !< If .false., heating from the physics is applied simply as a temperature
                                           !< tendency. The default value is .true.; ignored if hydrostatic = .true.
+
+   logical :: GEOS_MLT = .false.          !< Enable GEOS-MLT upper-atmosphere extensions
+
+   ! GEOS-MLT thermal conduction controls. These can be set from
+   ! fv_core_nml or from GEOS resources through FV_StateMod.F90.
+   logical :: geos_mlt_thermcond_enable = .true.    !< Apply GEOS-MLT thermal conduction
+   logical :: geos_mlt_thermcond_limit = .false.    !< Limit applied thermal-conduction dT/dt
+   real :: geos_mlt_thermcond_dtmax = 2.0e-3        !< Max |dT/dt| from thermal conduction [K/s]
+
+   ! Optional GEOS-MLT altitude diagnostics for the top few layers.
+   logical :: geos_mlt_alt_diag = .false.           !< Print top-layer altitude diagnostics
+   integer :: geos_mlt_alt_diag_kmax = 5            !< Number of top layers to print
+   integer :: geos_mlt_alt_diag_print_stride = 20   !< Print every N dyn_core calls
+
+   ! GEOS-MLT molecular momentum diffusion controls. These can be set from
+   ! fv_core_nml or from GEOS resources through FV_StateMod.F90.
+   logical :: geos_mlt_momdiff_enable = .true.      !< Apply molecular momentum diffusion to U/V
+   logical :: geos_mlt_momdiff_heat = .false.       !< Add molecular KE-loss heating to PT; requires momdiff enabled
+   real :: geos_mlt_momdiff_pr = 0.70               !< Prandtl number for nu = Pr*lambda/(rho*cp)
+   real :: geos_mlt_momdiff_pmax_pa = 1.0           !< Apply where layer pressure <= this value [Pa]
 
    logical :: use_hydro_pressure = .false.   !< Whether to compute hydrostatic pressure for input to the physics.
                                              !< Currently only enabled for the fvGFS model.

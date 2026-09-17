@@ -1,6 +1,7 @@
 esma_set_this()
 
 set(srcs
+  ../calc_gas_specific_heat_MLT.F90
   ../fv_mapz.F90
   ../fv_fill.F90
   ../fv_arrays.F90
@@ -9,6 +10,16 @@ set(srcs
 
   ../../tools/fv_timing.F90
   ../../tools/fv_mp_mod.F90
+
+  ../../NRL_MSIS/msis_constants.F90
+  ../../NRL_MSIS/msis_utils.F90
+  ../../NRL_MSIS/msis_init.F90
+  ../../NRL_MSIS/msis_gfn.F90
+  ../../NRL_MSIS/msis_tfn.F90
+  ../../NRL_MSIS/msis_dfn.F90
+  ../../NRL_MSIS/msis_calc.F90
+  ../../NRL_MSIS/msis_gtd8d.F90
+  ../../NRL_MSIS/msis_wrapper.F90
 
   stubs/fv_grid_utils_stub.f90
   stubs/external_ic_stub.F90

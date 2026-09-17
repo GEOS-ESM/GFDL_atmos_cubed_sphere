@@ -60,11 +60,13 @@ module fv_sg_mod
   use field_manager_mod,  only: MODEL_ATMOS
   use gfdl_lin_cloud_microphys_mod, only: wqs2, wqsat2_moist
   use fv_mp_mod,          only: mp_reduce_min, is_master
+  use mpp_mod,            only: FATAL, mpp_error
 
 implicit none
 private
 
 public  fv_subgrid_z, qsmith, neg_adj3
+public  fv_sg_set_mlt_thermo, fv_sg_clear_mlt_thermo
 
   real, parameter:: esl = 0.621971831
   real, parameter:: tice = 273.16
@@ -97,7 +99,51 @@ public  fv_subgrid_z, qsmith, neg_adj3
   real, allocatable:: table(:),des(:)
   real:: lv00, d0_vap
 
+  ! Cached GEOS-MLT thermodynamic fields for the post-dynamics 2-dz filter.
+  ! The fields are diagnosed during the final vertical remap and copied here
+  ! so fv_subgrid_z can use the same Cp and kappa without another MSIS call.
+  real, allocatable, save :: sg_cp_mlt(:,:,:)
+  real, allocatable, save :: sg_kappa_mlt(:,:,:)
+  logical, save :: sg_mlt_thermo_ready = .false.
+
 contains
+
+
+ subroutine fv_sg_set_mlt_thermo(is, ie, js, je, km, cp_mlt, kappa_mlt)
+      integer, intent(in) :: is, ie, js, je, km
+      real, intent(in) :: cp_mlt(is:ie,js:je,km)
+      real, intent(in) :: kappa_mlt(is:ie,js:je,km)
+
+      if (allocated(sg_cp_mlt)) then
+         if (lbound(sg_cp_mlt,1) /= is .or. ubound(sg_cp_mlt,1) /= ie .or. &
+             lbound(sg_cp_mlt,2) /= js .or. ubound(sg_cp_mlt,2) /= je .or. &
+             size(sg_cp_mlt,3) /= km) then
+            deallocate(sg_cp_mlt)
+         endif
+      endif
+      if (allocated(sg_kappa_mlt)) then
+         if (lbound(sg_kappa_mlt,1) /= is .or. ubound(sg_kappa_mlt,1) /= ie .or. &
+             lbound(sg_kappa_mlt,2) /= js .or. ubound(sg_kappa_mlt,2) /= je .or. &
+             size(sg_kappa_mlt,3) /= km) then
+            deallocate(sg_kappa_mlt)
+         endif
+      endif
+
+      if (.not. allocated(sg_cp_mlt)) allocate(sg_cp_mlt(is:ie,js:je,km))
+      if (.not. allocated(sg_kappa_mlt)) allocate(sg_kappa_mlt(is:ie,js:je,km))
+
+      sg_cp_mlt(:,:,:) = cp_mlt(:,:,:)
+      sg_kappa_mlt(:,:,:) = kappa_mlt(:,:,:)
+      sg_mlt_thermo_ready = .true.
+
+ end subroutine fv_sg_set_mlt_thermo
+
+
+ subroutine fv_sg_clear_mlt_thermo()
+      if (allocated(sg_cp_mlt)) deallocate(sg_cp_mlt)
+      if (allocated(sg_kappa_mlt)) deallocate(sg_kappa_mlt)
+      sg_mlt_thermo_ready = .false.
+ end subroutine fv_sg_clear_mlt_thermo
 
 
 #if defined(GFS_PHYS) || defined(MAPL_MODE)
@@ -107,7 +153,8 @@ contains
 !!-one for the GFDL physics
  subroutine fv_subgrid_z( isd, ied, jsd, jed, is, ie, js, je, km, nq, dt,    &
                          tau, nwat, delp, pe, peln, pkz, ta, qa, ua, va,  &
-                         hydrostatic, w, delz, u_dt, v_dt, t_dt, w_dt, k_bot )
+                         hydrostatic, w, delz, u_dt, v_dt, t_dt, w_dt,    &
+                         k_bot, GEOS_MLT )
 ! Dry convective adjustment-mixing
 !-------------------------------------------
       integer, intent(in):: is, ie, js, je, km, nq, nwat
@@ -121,6 +168,7 @@ contains
       real, intent(in)::  pkz(is:ie,js:je,km)
       logical, intent(in)::  hydrostatic
       integer, intent(in), optional:: k_bot
+      logical, intent(in), optional:: GEOS_MLT
 ! 
       real, intent(inout):: ua(isd:ied,jsd:jed,km)
       real, intent(inout):: va(isd:ied,jsd:jed,km)
@@ -138,9 +186,13 @@ contains
       real ri_ref, ri, pt1, pt2, ratio, tv, cv, tmp, q_liq, q_sol
       real tv1, tv2, g2, h0, mc, fra, rk, rz, rdt, tvd, tv_surf
       real dh, dq, qsw, dqsdt, tcp3, t_max, t_min
+      real cp_eff, r_eff, r_tv_eff, rk_eff, rtv, p_layer
       integer i, j, k, kk, n, m, iq, km1, im, kbot
       real, parameter:: ustar2 = 1.E-4
       real:: cv_air, xvir
+      logical :: GEOS_MLT_use
+      logical :: use_mlt_thermo
+      real :: mlt_temp_guard_pcut_pa
       integer :: sphum, liq_wat, rainwat, snowwat, graupel, ice_wat, cld_amt
 
       cv_air = cp_air - rdgas ! = rdgas * (7/2-1) = 2.5*rdgas=717.68
@@ -152,11 +204,37 @@ contains
       rdt = 1./ dt
       im = ie-is+1
 
+! GEOS_MLT option for L190/high-top runs.
+! If GEOS_MLT is enabled, the original lower-atmosphere temperature
+! guard is disabled above this pressure cutoff, but Ri/shear filtering
+! remains active.
+      GEOS_MLT_use = .false.
+      if ( present(GEOS_MLT) ) GEOS_MLT_use = GEOS_MLT
+
+! 1 Pa = 0.01 hPa. This is a first-test cutoff for the MLT/thermosphere.
+      mlt_temp_guard_pcut_pa = 1.0
+
+      use_mlt_thermo = .false.
+
       if ( present(k_bot) ) then
            if ( k_bot < 3 ) return
            kbot = k_bot
       else
            kbot = km
+      endif
+
+      if (GEOS_MLT_use .and. hydrostatic) then
+         if (.not. sg_mlt_thermo_ready) then
+            call mpp_error(FATAL, &
+                 'GEOS-MLT fv_subgrid_z requires cached Cp and kappa fields.')
+         endif
+         if (lbound(sg_cp_mlt,1) > is .or. ubound(sg_cp_mlt,1) < ie .or. &
+             lbound(sg_cp_mlt,2) > js .or. ubound(sg_cp_mlt,2) < je .or. &
+             size(sg_cp_mlt,3) < km) then
+            call mpp_error(FATAL, &
+                 'GEOS-MLT fv_subgrid_z thermodynamic cache has incompatible bounds.')
+         endif
+         use_mlt_thermo = .true.
       endif
       if ( pe(is,1,js) < 2. ) then
            t_min = t1_min
@@ -164,7 +242,7 @@ contains
            t_min = t2_min
       endif
 
-      if ( k_bot < min(km,24)  ) then
+      if ( kbot < min(km,24)  ) then
          t_max = t2_max
       else
          t_max = t3_max
@@ -232,10 +310,13 @@ contains
 !$OMP parallel do default(none) shared(im,is,ie,js,je,nq,kbot,qa,ta,sphum,ua,va,delp,peln,   &
 !$OMP                                  hydrostatic,pe,delz,g2,w,liq_wat,rainwat,ice_wat,     &
 !$OMP                                  snowwat,cv_air,m,graupel,pkz,rk,rz,fra, t_max, t_min, &
-!$OMP                                  rdt,u_dt,v_dt,t_dt,w_dt,xvir,nwat)                    &
+!$OMP                                  rdt,u_dt,v_dt,t_dt,w_dt,xvir,nwat,GEOS_MLT_use,       &
+!$OMP                                  mlt_temp_guard_pcut_pa,use_mlt_thermo,                 &
+!$OMP                                  sg_cp_mlt,sg_kappa_mlt)                               &
 !$OMP                          private(kk,lcp2,icp2,tcp3,dh,dq,den,qs,qsw,dqsdt,qcon,q0,     &
 !$OMP                                  t0,u0,v0,w0,h0,pm,gzh,tvm,tmp,cpm,cvm,q_liq,q_sol,    &
-!$OMP                                  tv,gz,hd,te,ratio,pt1,pt2,tv1,tv2,ri_ref, ri,mc,km1)
+!$OMP                                  tv,gz,hd,te,ratio,pt1,pt2,tv1,tv2,ri_ref,ri,mc,km1,   &
+!$OMP                                  cp_eff,r_eff,r_tv_eff,rk_eff,rtv,p_layer)
   do 1000 j=js,je  
 
     do iq=1, nq
@@ -263,11 +344,37 @@ contains
     if( hydrostatic ) then
        do k=kbot, 1,-1
           do i=is,ie
-                tv  = rdgas*tvm(i,k)
-           den(i,k) = pm(i,k)/tv
-            gz(i,k) = gzh(i) + tv*(1.-pe(i,k,j)/pm(i,k))
-            hd(i,k) = cp_air*tvm(i,k)+gz(i,k)+0.5*(u0(i,k)**2+v0(i,k)**2)
-             gzh(i) = gzh(i) + tv*(peln(i,k+1,j)-peln(i,k,j))
+             p_layer = sqrt(pe(i,k,j)*pe(i,k+1,j))
+
+             if (use_mlt_thermo .and. p_layer <= mlt_temp_guard_pcut_pa) then
+                cp_eff = sg_cp_mlt(i,j,k)
+                r_eff = cp_eff*sg_kappa_mlt(i,j,k)
+
+                if (cp_eff > 0.0 .and. r_eff > 0.0) then
+                   r_tv_eff = r_eff
+                   if (nwat > 0) r_tv_eff = r_eff + (rvgas-r_eff)*q0(i,k,sphum)
+                   tv = r_tv_eff*t0(i,k)
+                   den(i,k) = pm(i,k)/tv
+                   gz(i,k) = gzh(i) + tv*(1.-pe(i,k,j)/pm(i,k))
+                   hd(i,k) = cp_eff*(tv/r_eff) + gz(i,k) + &
+                        0.5*(u0(i,k)**2+v0(i,k)**2)
+                   gzh(i) = gzh(i) + tv*(peln(i,k+1,j)-peln(i,k,j))
+                else
+                   tv = rdgas*tvm(i,k)
+                   den(i,k) = pm(i,k)/tv
+                   gz(i,k) = gzh(i) + tv*(1.-pe(i,k,j)/pm(i,k))
+                   hd(i,k) = cp_air*tvm(i,k) + gz(i,k) + &
+                        0.5*(u0(i,k)**2+v0(i,k)**2)
+                   gzh(i) = gzh(i) + tv*(peln(i,k+1,j)-peln(i,k,j))
+                endif
+             else
+                tv = rdgas*tvm(i,k)
+                den(i,k) = pm(i,k)/tv
+                gz(i,k) = gzh(i) + tv*(1.-pe(i,k,j)/pm(i,k))
+                hd(i,k) = cp_air*tvm(i,k) + gz(i,k) + &
+                     0.5*(u0(i,k)**2+v0(i,k)**2)
+                gzh(i) = gzh(i) + tv*(peln(i,k+1,j)-peln(i,k,j))
+             endif
           enddo
        enddo
     else
@@ -393,11 +500,22 @@ contains
 !
             ri = (gz(i,km1)-gz(i,k))*(pt1-pt2)/( 0.5*(pt1+pt2)*        &
                  ((u0(i,km1)-u0(i,k))**2+(v0(i,km1)-v0(i,k))**2+ustar2) )
-            if ( tv1>t_max .and. tv1>tv2 ) then
-! top layer unphysically warm
-               ri = 0.
-            elseif ( tv2<t_min ) then
-               ri = min(ri, 0.1)
+! GEOS_MLT modification:
+! In the MLT/thermosphere, neutral temperature can physically exceed
+! the original lower-atmosphere temperature thresholds. Therefore,
+! when GEOS_MLT is enabled and the local pressure is below the cutoff,
+! do not force extra 2-dz mixing only because T is above t_max.
+!
+! The Richardson-number/shear-based filter is still active because
+! ri is already computed above this block.
+            if ( .not. (GEOS_MLT_use .and. &
+                 min(pm(i,km1), pm(i,k)) <= mlt_temp_guard_pcut_pa) ) then
+               if ( tv1 > t_max .and. tv1 > tv2 ) then
+! Original lower-atmosphere temperature guard.
+                  ri = 0.
+               elseif ( tv2 < t_min ) then
+                  ri = min(ri, 0.1)
+               endif
             endif
 ! Adjustment for K-H instability:
 ! Compute equivalent mass flux: mc
@@ -469,15 +587,57 @@ contains
        if ( hydrostatic ) then
          kk = k
          do i=is,ie
-            t0(i,kk) = (hd(i,kk)-gzh(i)-0.5*(u0(i,kk)**2+v0(i,kk)**2))  &
-                     / ( rk - pe(i,kk,j)/pm(i,kk) )
-              gzh(i) = gzh(i) + t0(i,kk)*(peln(i,kk+1,j)-peln(i,kk,j))
-            t0(i,kk) = t0(i,kk) / ( rdgas + rz*q0(i,kk,sphum) )
+            p_layer = sqrt(pe(i,kk,j)*pe(i,kk+1,j))
+
+            if (use_mlt_thermo .and. p_layer <= mlt_temp_guard_pcut_pa) then
+               cp_eff = sg_cp_mlt(i,j,kk)
+               r_eff = cp_eff*sg_kappa_mlt(i,j,kk)
+
+               if (cp_eff > 0.0 .and. r_eff > 0.0) then
+                  rk_eff = cp_eff/r_eff + 1.0
+                  rtv = (hd(i,kk)-gzh(i)-0.5*(u0(i,kk)**2+v0(i,kk)**2)) / &
+                       (rk_eff-pe(i,kk,j)/pm(i,kk))
+                  gzh(i) = gzh(i) + rtv*(peln(i,kk+1,j)-peln(i,kk,j))
+                  r_tv_eff = r_eff
+                  if (nwat > 0) r_tv_eff = r_eff + (rvgas-r_eff)*q0(i,kk,sphum)
+                  t0(i,kk) = rtv/r_tv_eff
+               else
+                  t0(i,kk) = (hd(i,kk)-gzh(i)-0.5*(u0(i,kk)**2+v0(i,kk)**2)) / &
+                       (rk-pe(i,kk,j)/pm(i,kk))
+                  gzh(i) = gzh(i) + t0(i,kk)*(peln(i,kk+1,j)-peln(i,kk,j))
+                  t0(i,kk) = t0(i,kk)/(rdgas+rz*q0(i,kk,sphum))
+               endif
+            else
+               t0(i,kk) = (hd(i,kk)-gzh(i)-0.5*(u0(i,kk)**2+v0(i,kk)**2)) / &
+                    (rk-pe(i,kk,j)/pm(i,kk))
+               gzh(i) = gzh(i) + t0(i,kk)*(peln(i,kk+1,j)-peln(i,kk,j))
+               t0(i,kk) = t0(i,kk)/(rdgas+rz*q0(i,kk,sphum))
+            endif
          enddo
+
          kk = k-1
          do i=is,ie
-            t0(i,kk) = (hd(i,kk)-gzh(i)-0.5*(u0(i,kk)**2+v0(i,kk)**2))  &
-                     / ((rk-pe(i,kk,j)/pm(i,kk))*(rdgas+rz*q0(i,kk,sphum)))
+            p_layer = sqrt(pe(i,kk,j)*pe(i,kk+1,j))
+
+            if (use_mlt_thermo .and. p_layer <= mlt_temp_guard_pcut_pa) then
+               cp_eff = sg_cp_mlt(i,j,kk)
+               r_eff = cp_eff*sg_kappa_mlt(i,j,kk)
+
+               if (cp_eff > 0.0 .and. r_eff > 0.0) then
+                  rk_eff = cp_eff/r_eff + 1.0
+                  rtv = (hd(i,kk)-gzh(i)-0.5*(u0(i,kk)**2+v0(i,kk)**2)) / &
+                       (rk_eff-pe(i,kk,j)/pm(i,kk))
+                  r_tv_eff = r_eff
+                  if (nwat > 0) r_tv_eff = r_eff + (rvgas-r_eff)*q0(i,kk,sphum)
+                  t0(i,kk) = rtv/r_tv_eff
+               else
+                  t0(i,kk) = (hd(i,kk)-gzh(i)-0.5*(u0(i,kk)**2+v0(i,kk)**2)) / &
+                       ((rk-pe(i,kk,j)/pm(i,kk))*(rdgas+rz*q0(i,kk,sphum)))
+               endif
+            else
+               t0(i,kk) = (hd(i,kk)-gzh(i)-0.5*(u0(i,kk)**2+v0(i,kk)**2)) / &
+                    ((rk-pe(i,kk,j)/pm(i,kk))*(rdgas+rz*q0(i,kk,sphum)))
+            endif
          enddo
        else
 ! Non-hydrostatic under constant volume heating/cooling
