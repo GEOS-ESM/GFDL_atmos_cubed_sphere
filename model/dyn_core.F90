@@ -583,6 +583,11 @@ contains
                flagstruct%geos_mlt_thermcond_enable, &
                ' limit=', flagstruct%geos_mlt_thermcond_limit, &
                ' dtmax_kps=', flagstruct%geos_mlt_thermcond_dtmax
+
+          write(*,*) 'GEOS_MLT_THERMCOND_TOP_BC zero_flux=', &
+               flagstruct%geos_mlt_thermcond_zero_top_flux, &
+               ' ghost_dz_factor=', flagstruct%geos_mlt_thermcond_ghost_dz_factor, &
+               ' flux_scale=', flagstruct%geos_mlt_thermcond_top_flux_scale
        
           write(*,*) 'GEOS_MLT_MOMDIFF apply=', &
                flagstruct%geos_mlt_momdiff_enable, &
@@ -1576,7 +1581,10 @@ contains
         enddo
      enddo
      call cond_driver_apply(gridstruct%agrid, gz_agrid_mlt, pt, pkz, heat_tc, &
-          bdt, ng, conduction_active, year, doy, ut_seconds)
+          bdt, ng, conduction_active, year, doy, ut_seconds, &
+          flagstruct%geos_mlt_thermcond_zero_top_flux, &
+          flagstruct%geos_mlt_thermcond_ghost_dz_factor, &
+          flagstruct%geos_mlt_thermcond_top_flux_scale)
   endif
 
 

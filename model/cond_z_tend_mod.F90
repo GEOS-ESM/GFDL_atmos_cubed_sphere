@@ -5,7 +5,8 @@ module cond_z_tend_mod
 
 contains
 
-  subroutine cond_z_tend(T, K_tc, rho, cp, dz, dz_if, dTdt, dt, top_flux)
+  subroutine cond_z_tend(T, K_tc, rho, cp, dz, dz_if, dTdt, dt, &
+                         top_temperature, top_conductance)
     use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
     implicit none
 
@@ -17,7 +18,8 @@ contains
     real, intent(in)  :: dz_if(:,:,:)
     real, intent(out) :: dTdt(:,:,:)
     real, intent(in)  :: dt
-    real, intent(in), optional :: top_flux(:,:)
+    real, intent(in), optional :: top_temperature(:,:)
+    real, intent(in), optional :: top_conductance(:,:)
 
     integer :: i, j, kk
     integer :: is, ie, js, je, ks, ke
@@ -35,7 +37,9 @@ contains
     real :: interface_conductance
     real :: coupling
     real :: elimination_factor
-    real :: applied_top_flux
+    real :: applied_top_temperature
+    real :: applied_top_conductance
+    real :: top_coupling
 
     real, parameter :: dz_min = 100.0
     real, parameter :: diagonal_min = 1.0e-20
@@ -107,10 +111,24 @@ contains
           lower(kk+1) = lower(kk+1) - coupling
         end do
 
-        if (valid(ks) .and. present(top_flux)) then
-          applied_top_flux = top_flux(i,j)
-          if (ieee_is_finite(applied_top_flux)) then
-            rhs(ks) = rhs(ks) + dt * applied_top_flux / heat_capacity(ks)
+        ! Apply the external top boundary implicitly. The boundary flux is
+        !
+        !   F_top = G_top * (T_ext - T_top_new),
+        !
+        ! so its T_top_new contribution belongs on the matrix diagonal.
+        if (valid(ks) .and. present(top_temperature) .and. &
+            present(top_conductance)) then
+          applied_top_temperature = top_temperature(i,j)
+          applied_top_conductance = top_conductance(i,j)
+
+          if (ieee_is_finite(applied_top_temperature) .and. &
+              ieee_is_finite(applied_top_conductance) .and. &
+              applied_top_conductance >= 0.0) then
+            top_coupling = dt * applied_top_conductance / heat_capacity(ks)
+            if (ieee_is_finite(top_coupling) .and. top_coupling >= 0.0) then
+              diagonal(ks) = diagonal(ks) + top_coupling
+              rhs(ks) = rhs(ks) + top_coupling * applied_top_temperature
+            end if
           end if
         end if
 

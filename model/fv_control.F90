@@ -307,6 +307,9 @@ module fv_control_mod
    logical , pointer :: geos_mlt_thermcond_enable
    logical , pointer :: geos_mlt_thermcond_limit
    real    , pointer :: geos_mlt_thermcond_dtmax
+   logical , pointer :: geos_mlt_thermcond_zero_top_flux
+   real    , pointer :: geos_mlt_thermcond_ghost_dz_factor
+   real    , pointer :: geos_mlt_thermcond_top_flux_scale
    logical , pointer :: geos_mlt_alt_diag
    integer , pointer :: geos_mlt_alt_diag_kmax
    integer , pointer :: geos_mlt_alt_diag_print_stride
@@ -684,7 +687,9 @@ module fv_control_mod
                          consv_te, fill, filter_phys, fill_dp, fill_wz, consv_am, RF_fast, Beljaars_TOFD, &
                          range_warn, dwind_2d, inline_q, z_tracer, reproduce_sum, adiabatic, do_vort_damp, no_dycore,   &
                          tau, tau_h2o, rf_cutoff, nf_omega, hydrostatic, GEOS_MLT, geos_mlt_thermcond_enable, &
-                         geos_mlt_thermcond_limit, geos_mlt_thermcond_dtmax, geos_mlt_alt_diag, &
+                         geos_mlt_thermcond_limit, geos_mlt_thermcond_dtmax, &
+                         geos_mlt_thermcond_zero_top_flux, geos_mlt_thermcond_ghost_dz_factor, &
+                         geos_mlt_thermcond_top_flux_scale, geos_mlt_alt_diag, &
                          geos_mlt_alt_diag_kmax, geos_mlt_alt_diag_print_stride, &
                          geos_mlt_momdiff_enable, geos_mlt_momdiff_heat, &
                          geos_mlt_momdiff_pr, geos_mlt_momdiff_pmax_pa, &
@@ -790,6 +795,16 @@ module fv_control_mod
          if (geos_mlt_momdiff_heat .and. .not. geos_mlt_momdiff_enable) then
             call mpp_error(FATAL, &
                  'GEOS-MLT molecular heating requires geos_mlt_momdiff_enable = .true.')
+         endif
+         if (geos_mlt_thermcond_enable .and. .not. geos_mlt_thermcond_zero_top_flux) then
+            if (geos_mlt_thermcond_ghost_dz_factor <= 0.0) then
+               call mpp_error(FATAL, &
+                    'GEOS-MLT thermal conduction requires geos_mlt_thermcond_ghost_dz_factor > 0.')
+            endif
+            if (geos_mlt_thermcond_top_flux_scale < 0.0) then
+               call mpp_error(FATAL, &
+                    'GEOS-MLT thermal conduction requires geos_mlt_thermcond_top_flux_scale >= 0.')
+            endif
          endif
       endif
 
@@ -1343,6 +1358,12 @@ module fv_control_mod
      geos_mlt_thermcond_enable    => Atm%flagstruct%geos_mlt_thermcond_enable
      geos_mlt_thermcond_limit     => Atm%flagstruct%geos_mlt_thermcond_limit
      geos_mlt_thermcond_dtmax     => Atm%flagstruct%geos_mlt_thermcond_dtmax
+     geos_mlt_thermcond_zero_top_flux => &
+          Atm%flagstruct%geos_mlt_thermcond_zero_top_flux
+     geos_mlt_thermcond_ghost_dz_factor => &
+          Atm%flagstruct%geos_mlt_thermcond_ghost_dz_factor
+     geos_mlt_thermcond_top_flux_scale => &
+          Atm%flagstruct%geos_mlt_thermcond_top_flux_scale
      geos_mlt_alt_diag            => Atm%flagstruct%geos_mlt_alt_diag
      geos_mlt_alt_diag_kmax       => Atm%flagstruct%geos_mlt_alt_diag_kmax
      geos_mlt_alt_diag_print_stride => Atm%flagstruct%geos_mlt_alt_diag_print_stride

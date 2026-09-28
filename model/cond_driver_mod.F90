@@ -6,6 +6,7 @@
 !  - Use halo-aware i,j for pt, but local ii,jj for pkz.
 !  - Use gz interfaces to form altitude for MSIS sampling
 !  - Restrict MSIS sampling and the solve to the caller's pressure mask
+!  - Use an MSIS ghost layer to close the upper thermal-conduction boundary
 !  - Compute dT/dt from thermal conduction and return in heat_tc (K/s)
 !
 !======================================================================
@@ -26,9 +27,9 @@ module cond_driver_mod
 
   integer, parameter :: GEOS_MLT_MSIS_WARN_LIMIT = 80
 
-  ! Diagnostic isolation switch for the top thermal-conduction boundary.
-  ! .true. gives zero external heat flux at the model top.
-  logical, parameter :: GEOS_MLT_TC_ZERO_TOP_FLUX = .true.
+  ! The upper thermal-conduction boundary is controlled at runtime through
+  ! FV3 fv_core_nml and passed into this module by dyn_core.
+  ! Positive top flux means heat enters the GEOS-MLT column from above.
 
   integer, save :: msis_alt_warn_count = 0
 
@@ -49,10 +50,12 @@ module cond_driver_mod
 contains
 
   !------------------------------------------------------------
-  ! Compute the backward-Euler conduction temperature tendency (K/s)
+  ! Compute the backward-Euler conduction temperature tendency (K/s).
   !------------------------------------------------------------
-  subroutine cond_driver_from_msis(T, nO, nO2, nN2, dz, dz_if, dTdt, T_ext_ref, z_top_km, dt)
-    use thermcond_mod,   only : tc_calc
+  subroutine cond_driver_from_msis(T, nO, nO2, nN2, dz, dz_if, dTdt, &
+                                   T_ext_ref, K_ext_ref, dt, zero_top_flux, &
+                                   ghost_dz_factor, top_flux_scale)
+    use thermcond_mod,    only : tc_calc
     use cond_z_tend_mod, only : cond_z_tend
     implicit none
 
@@ -61,20 +64,30 @@ contains
     real, intent(in)  :: dz(:,:,:)
     real, intent(in)  :: dz_if(:,:,:)
     real, intent(out) :: dTdt(:,:,:)
-    real, intent(in) :: T_ext_ref(:,:), z_top_km(:,:)
-    real, intent(in) :: dt
+    real, intent(in)  :: T_ext_ref(:,:)
+    real, intent(in)  :: K_ext_ref(:,:)
+    real, intent(in)  :: dt
+    logical, intent(in), optional :: zero_top_flux
+    real, intent(in), optional :: ghost_dz_factor
+    real, intent(in), optional :: top_flux_scale
 
-    integer :: is,ie,js,je,ks,ke
-    integer :: i,j,kk
-    integer :: k0
+    integer :: is, ie, js, je, ks, ke
+    integer :: i, j, kk
 
     real, allocatable :: K_tc(:,:,:)
     real, allocatable :: alpha(:,:,:)
     real, allocatable :: rho(:,:,:)
     real, allocatable :: cp(:,:,:)
-    real, allocatable :: top_flux_ij(:,:)
-    real :: dz_ref_m
-    real, parameter :: z_ref_km = 220.0
+    real, allocatable :: top_conductance_ij(:,:)
+
+    real :: dz_top_m
+    real :: dz_ghost_m
+    real :: K_top
+    real :: K_ghost
+    real :: thermal_resistance
+    logical :: zero_top_flux_use
+    real :: ghost_dz_factor_use
+    real :: top_flux_scale_use
 
     real, parameter :: amu = 1.66053906660e-27
     real, parameter :: mO  = 16.0 * amu
@@ -85,40 +98,68 @@ contains
     js = lbound(T,2); je = ubound(T,2)
     ks = lbound(T,3); ke = ubound(T,3)
 
+    ! Backward-compatible defaults if this public helper is called directly.
+    zero_top_flux_use = .true.
+    ghost_dz_factor_use = 1.0
+    top_flux_scale_use = 1.0
+    if (present(zero_top_flux)) zero_top_flux_use = zero_top_flux
+    if (present(ghost_dz_factor)) ghost_dz_factor_use = ghost_dz_factor
+    if (present(top_flux_scale)) top_flux_scale_use = top_flux_scale
 
     allocate(K_tc(is:ie,js:je,ks:ke))
     allocate(alpha(is:ie,js:je,ks:ke))
     allocate(rho(is:ie,js:je,ks:ke))
     allocate(cp(is:ie,js:je,ks:ke))
-    allocate(top_flux_ij(is:ie, js:je))
-    top_flux_ij(:,:) = 0.0
+    allocate(top_conductance_ij(is:ie,js:je))
 
-    K_tc(:,:,:)  = 0.0
-    alpha(:,:,:) = 0.0
-    rho(:,:,:)   = 0.0
-    cp(:,:,:)    = 0.0
-    dTdt(:,:,:)  = 0.0
+    K_tc(:,:,:)     = 0.0
+    alpha(:,:,:)    = 0.0
+    rho(:,:,:)      = 0.0
+    cp(:,:,:)       = 0.0
+    top_conductance_ij(:,:) = 0.0
+    dTdt(:,:,:)     = 0.0
 
     call tc_calc(T, nO, nO2, nN2, K_tc, alpha)
 
-    if (GEOS_MLT_TC_ZERO_TOP_FLUX) then
-      ! Diagnostic isolation: use a zero external heat flux at the model top.
-      ! This prevents the MSIS 220-km temperature reservoir from forcing the
-      ! top layer while we diagnose thermal/geometric stability.
-      top_flux_ij(:,:) = 0.0
-    else
+    ! Build the external top-boundary conductance.
+    !
+    ! The GEOS top cell and the MSIS ghost cell are treated as two half-cell
+    ! thermal resistances in series:
+    !
+    !   R = 0.5*dz_top/K_top + 0.5*dz_ghost/K_ghost
+    !
+    ! so the boundary conductance is
+    !
+    !   G_top = top_flux_scale / R.
+    !
+    ! The MSIS ghost temperature and G_top are passed separately to
+    ! cond_z_tend so the boundary flux is evaluated implicitly as
+    ! G_top * (T_ghost - T_top_new).
+    if (.not. zero_top_flux_use) then
       do j = js, je
         do i = is, ie
-          ! dz between model top and reference altitude (meters)
-          dz_ref_m = (z_ref_km - z_top_km(i,j)) * 1000.0
-          if (is_finite_real(dz_ref_m) .and. is_finite_real(T_ext_ref(i,j)) .and. &
-              dz_ref_m > 1.0) then
-            ! F_up = -K_top * (T_top - T_ext)/dz
-            top_flux_ij(i,j) = -K_tc(i,j,ks) * &
-                 (T(i,j,ks) - T_ext_ref(i,j)) / dz_ref_m
-          else
-            top_flux_ij(i,j) = 0.0
-          end if
+          dz_top_m = abs(dz(i,j,ks))
+          dz_ghost_m = ghost_dz_factor_use * dz_top_m
+          K_top = K_tc(i,j,ks)
+          K_ghost = K_ext_ref(i,j)
+
+          if (.not. is_finite_real(dz_top_m)) cycle
+          if (.not. is_finite_real(dz_ghost_m)) cycle
+          if (.not. is_finite_real(K_top)) cycle
+          if (.not. is_finite_real(K_ghost)) cycle
+          if (.not. is_finite_real(T(i,j,ks))) cycle
+          if (.not. is_finite_real(T_ext_ref(i,j))) cycle
+
+          if (dz_top_m <= 1.0 .or. dz_ghost_m <= 1.0) cycle
+          if (K_top <= 0.0 .or. K_ghost <= 0.0) cycle
+
+          thermal_resistance = 0.5*dz_top_m/K_top + &
+                               0.5*dz_ghost_m/K_ghost
+
+          if (.not. is_finite_real(thermal_resistance)) cycle
+          if (thermal_resistance <= 0.0) cycle
+
+          top_conductance_ij(i,j) = top_flux_scale_use / thermal_resistance
         end do
       end do
     end if
@@ -127,23 +168,28 @@ contains
       do j = js, je
         do i = is, ie
           rho(i,j,kk) = nO(i,j,kk)*mO + nO2(i,j,kk)*mO2 + nN2(i,j,kk)*mN2
-          cp(i,j,kk)  = K_tc(i,j,kk) / max(1.0e-30, (rho(i,j,kk)*alpha(i,j,kk)))
+          cp(i,j,kk)  = K_tc(i,j,kk) / &
+                        max(1.0e-30, rho(i,j,kk)*alpha(i,j,kk))
         end do
       end do
     end do
 
-    call cond_z_tend(T, K_tc, rho, cp, dz, dz_if, dTdt, dt, top_flux_ij)
+    call cond_z_tend(T, K_tc, rho, cp, dz, dz_if, dTdt, dt, &
+                     T_ext_ref, top_conductance_ij)
 
-    deallocate(K_tc, alpha, rho, cp, top_flux_ij)
+    deallocate(K_tc, alpha, rho, cp, top_conductance_ij)
   end subroutine cond_driver_from_msis
 
 
   !------------------------------------------------------------
-  ! Full driver called from dyn_core
+  ! Full driver called from dyn_core.
   !------------------------------------------------------------
   subroutine cond_driver_apply(agrid, gz, pt, pkz, heat_tc, dt, ng, &
-                               conduction_active, year_msis, doy_msis, ut_seconds_msis)
+                               conduction_active, year_msis, doy_msis, &
+                               ut_seconds_msis, zero_top_flux, &
+                               ghost_dz_factor, top_flux_scale)
     use msis_wrapper, only : msis_point
+    use thermcond_mod, only : tc_point
     implicit none
 
     real, intent(in)    :: agrid(:,:,:)          ! lon/lat radians (local storage)
@@ -152,16 +198,19 @@ contains
     real, intent(in)    :: pkz(:,:,:)            ! Exner-like factor
     real, intent(out)   :: heat_tc(:,:,:)        ! dTdt (K/s)
     real, intent(in)    :: dt                     ! dynamics time step (s)
-    integer, intent(in) :: ng                    ! halo width
+    integer, intent(in) :: ng                     ! halo width
     logical, intent(in) :: conduction_active(:,:,:) ! owned interior, no halos
 
     integer, intent(in), optional :: year_msis, doy_msis, ut_seconds_msis
+    logical, intent(in), optional :: zero_top_flux
+    real, intent(in), optional :: ghost_dz_factor
+    real, intent(in), optional :: top_flux_scale
 
-    integer :: ilb,iub,jlb,jub,klb,kub
-    integer :: is,ie,js,je,ks,ke
-    integer :: ni,nj,nk
-    integer :: ii,jj,kkL
-    integer :: i,j,kk
+    integer :: ilb, iub, jlb, jub, klb, kub
+    integer :: is, ie, js, je, ks, ke
+    integer :: ni, nj, nk
+    integer :: ii, jj, kkL
+    integer :: i, j, kk
     integer :: y, doy, utsec
 
     real, parameter :: pi = 3.14159265358979323846
@@ -170,14 +219,22 @@ contains
 
     real, allocatable :: Tcol(:,:,:), dzcol(:,:,:), dzifcol(:,:,:)
     real, allocatable :: nO(:,:,:), nO2(:,:,:), nN2(:,:,:)
-    real, allocatable :: T_ext_ref(:,:), z_top_km(:,:)
+    real, allocatable :: T_ext_ref(:,:), K_ext_ref(:,:)
 
     real :: lon_deg, lat_deg, stl_hr, alt_km, raw_alt_km
     real :: O_cm3, N2_cm3, O2_cm3, Tmsis
-    logical :: msis_ok, alt_ok
     real :: T_here
+    real :: top_interface_km
+    real :: ghost_alt_km
+    real :: ghost_dz_m
+    real :: nO_ghost, nO2_ghost, nN2_ghost
+    real :: alpha_ghost
+    logical :: msis_ok, alt_ok
+    logical :: zero_top_flux_use
+    real :: ghost_dz_factor_use
+    real :: top_flux_scale_use
 
-    ! Always define output everywhere (including halos)
+    ! Always define output everywhere (including halos).
     heat_tc(:,:,:) = 0.0
 
     ilb = lbound(gz,1); iub = ubound(gz,1)
@@ -196,9 +253,7 @@ contains
     nj = max(0, je - js + 1)
     nk = max(0, ke - ks + 1)
 
-    if (ni <= 0 .or. nj <= 0 .or. nk <= 0) then
-      return
-    end if
+    if (ni <= 0 .or. nj <= 0 .or. nk <= 0) return
 
     if (size(conduction_active,1) /= ni .or. &
         size(conduction_active,2) /= nj .or. &
@@ -209,17 +264,33 @@ contains
     y     = 2017
     doy   = 14
     utsec = 0
-    
+
     if (present(year_msis))       y     = year_msis
     if (present(doy_msis))        doy   = doy_msis
     if (present(ut_seconds_msis)) utsec = ut_seconds_msis
 
-    allocate(Tcol(1:ni, 1:nj, 1:nk))
-    allocate(dzcol(1:ni, 1:nj, 1:nk))
-    allocate(dzifcol(1:ni, 1:nj, 1:nk))
-    allocate(nO(1:ni, 1:nj, 1:nk))
-    allocate(nO2(1:ni, 1:nj, 1:nk))
-    allocate(nN2(1:ni, 1:nj, 1:nk))
+    ! Runtime upper-boundary controls. Defaults preserve the historical
+    ! zero-flux behavior if an older direct caller omits the new arguments.
+    zero_top_flux_use = .true.
+    ghost_dz_factor_use = 1.0
+    top_flux_scale_use = 1.0
+    if (present(zero_top_flux)) zero_top_flux_use = zero_top_flux
+    if (present(ghost_dz_factor)) ghost_dz_factor_use = ghost_dz_factor
+    if (present(top_flux_scale)) top_flux_scale_use = top_flux_scale
+
+    if (ghost_dz_factor_use <= 0.0) then
+      error stop 'GEOS-MLT ghost_dz_factor must be greater than zero'
+    end if
+    if (top_flux_scale_use < 0.0) then
+      error stop 'GEOS-MLT top_flux_scale must be nonnegative'
+    end if
+
+    allocate(Tcol(1:ni,1:nj,1:nk))
+    allocate(dzcol(1:ni,1:nj,1:nk))
+    allocate(dzifcol(1:ni,1:nj,1:nk))
+    allocate(nO(1:ni,1:nj,1:nk))
+    allocate(nO2(1:ni,1:nj,1:nk))
+    allocate(nN2(1:ni,1:nj,1:nk))
 
     Tcol(:,:,:)    = 0.0
     dzcol(:,:,:)   = 0.0
@@ -228,31 +299,26 @@ contains
     nO2(:,:,:)     = 0.0
     nN2(:,:,:)     = 0.0
 
-    allocate(T_ext_ref(is:ie, js:je))
-    allocate(z_top_km(is:ie, js:je))
+    allocate(T_ext_ref(is:ie,js:je))
+    allocate(K_ext_ref(is:ie,js:je))
     T_ext_ref(:,:) = 0.0
-    z_top_km(:,:)  = 0.0
+    K_ext_ref(:,:) = 0.0
 
+    ! Build geometric layer thicknesses.
     do kk = ks, ke
       kkL = kk - ks + 1
       do jj = 1, nj
         j = js + jj - 1
         do ii = 1, ni
           i = is + ii - 1
-    
-          ! Skip if this or next interface is invalid or sentinel.
+
           if (kk+1 > ubound(gz,3)) cycle
           if (.not. is_finite_real(gz(i,j,kk))) cycle
           if (.not. is_finite_real(gz(i,j,kk+1))) cycle
-             if (gz(i,j,kk)   >= GZ_SENTINEL_THRESH) then
-                dzcol(ii,jj,kkL) = 0.0  ! Mark as invalid
-                cycle
-             end if
-          if (gz(i,j,kk+1) >= GZ_SENTINEL_THRESH) then
-             dzcol(ii,jj,kkL) = 0.0  ! Mark as invalid
-             cycle
-          end if
-    
+
+          if (gz(i,j,kk) >= GZ_SENTINEL_THRESH) cycle
+          if (gz(i,j,kk+1) >= GZ_SENTINEL_THRESH) cycle
+
           dzcol(ii,jj,kkL) = abs(gz(i,j,kk) - gz(i,j,kk+1)) / grav
         end do
       end do
@@ -262,28 +328,27 @@ contains
       dzifcol(:,:,kkL) = 0.5*(dzcol(:,:,kkL) + dzcol(:,:,kkL+1))
     end do
     dzifcol(:,:,nk) = dzifcol(:,:,max(1,nk-1))
-    
+
+    ! Build physical temperature on the local owned interior.
     do kk = ks, ke
       kkL = kk - ks + 1
       do jj = 1, nj
         j = js + jj - 1
         do ii = 1, ni
           i = is + ii - 1
-          if (is_finite_real(pt(i,j,kk)) .and. is_finite_real(pkz(ii,jj,kk))) then
+
+          if (is_finite_real(pt(i,j,kk)) .and. &
+              is_finite_real(pkz(ii,jj,kk))) then
             T_here = pt(i,j,kk) * pkz(ii,jj,kk)
             if (is_finite_real(T_here)) then
               Tcol(ii,jj,kkL) = T_here
-            else
-              Tcol(ii,jj,kkL) = 0.0
             end if
-          else
-            Tcol(ii,jj,kkL) = 0.0
           end if
         end do
       end do
     end do
 
-
+    ! Sample MSIS composition at each active GEOS layer center.
     do kk = ks, ke
       kkL = kk - ks + 1
       do jj = 1, nj
@@ -294,12 +359,12 @@ contains
           if (kk+1 > ubound(gz,3)) cycle
           if (.not. is_finite_real(gz(i,j,kk))) cycle
           if (.not. is_finite_real(gz(i,j,kk+1))) cycle
-          if (gz(i,j,kk)   >= GZ_SENTINEL_THRESH) cycle
+          if (gz(i,j,kk) >= GZ_SENTINEL_THRESH) cycle
           if (gz(i,j,kk+1) >= GZ_SENTINEL_THRESH) cycle
 
           ! The caller selects the physical pressure domain on any vertical grid.
           ! Keep densities zero outside it. cond_z_tend excludes zero-density
-          ! layers and their interfaces, imposing zero flux at the boundary.
+          ! layers and their interfaces, imposing zero flux at that boundary.
           if (.not. conduction_active(ii,jj,kkL)) cycle
 
           lon_deg = modulo(agrid(i,j,1) * rad2deg, 360.0)
@@ -307,11 +372,13 @@ contains
           stl_hr  = modulo(real(utsec)/3600.0 + lon_deg/15.0, 24.0)
 
           raw_alt_km = 0.5*(gz(i,j,kk) + gz(i,j,kk+1)) / grav / 1000.0
-          call sanitize_msis_alt(raw_alt_km, i, j, kk, gz(i,j,kk), gz(i,j,kk+1), &
-                                 lat_deg, lon_deg, y, doy, utsec, alt_km, alt_ok)
+          call sanitize_msis_alt(raw_alt_km, i, j, kk, gz(i,j,kk), &
+                                 gz(i,j,kk+1), lat_deg, lon_deg, y, doy, &
+                                 utsec, alt_km, alt_ok)
           if (.not. alt_ok) cycle
 
-          if (.not. is_finite_real(lat_deg) .or. .not. is_finite_real(lon_deg) .or. &
+          if (.not. is_finite_real(lat_deg) .or. &
+              .not. is_finite_real(lon_deg) .or. &
               .not. is_finite_real(stl_hr)) then
             call print_msis_alt_warning('bad lon/lat/stl for layer MSIS call', &
                                         i, j, kk, raw_alt_km, alt_km, &
@@ -329,11 +396,11 @@ contains
             nO2(ii,jj,kkL) = O2_cm3 * 1.0e6
             nN2(ii,jj,kkL) = N2_cm3 * 1.0e6
           end if
-
         end do
       end do
     end do
 
+    ! Build the MSIS ghost state above the geometric model-top interface.
     do jj = 1, nj
       j = js + jj - 1
       do ii = 1, ni
@@ -342,65 +409,83 @@ contains
         ! An inactive top layer has no external conductive boundary flux.
         if (.not. conduction_active(ii,jj,1)) cycle
 
+        ! Default fallback is zero top flux.
+        T_ext_ref(i,j) = Tcol(ii,jj,1)
+        K_ext_ref(i,j) = 0.0
+
+        if (zero_top_flux_use) cycle
+
+        if (ks+1 > ubound(gz,3)) cycle
+        if (.not. is_finite_real(gz(i,j,ks))) cycle
+        if (.not. is_finite_real(gz(i,j,ks+1))) cycle
+        if (gz(i,j,ks) >= GZ_SENTINEL_THRESH) cycle
+        if (gz(i,j,ks+1) >= GZ_SENTINEL_THRESH) cycle
+        if (.not. is_finite_real(dzcol(ii,jj,1))) cycle
+        if (dzcol(ii,jj,1) <= 1.0) cycle
+
         lon_deg = modulo(agrid(i,j,1) * rad2deg, 360.0)
         lat_deg = agrid(i,j,2) * rad2deg
         stl_hr  = modulo(real(utsec)/3600.0 + lon_deg/15.0, 24.0)
-    
-        ! Model top altitude from gz at k=ks.
-        ! Use the same safety path so weird top altitude values are printed.
-        if (ks+1 <= ubound(gz,3) .and. is_finite_real(gz(i,j,ks)) .and. &
-            is_finite_real(gz(i,j,ks+1))) then
-          raw_alt_km = 0.5*(gz(i,j,ks) + gz(i,j,ks+1)) / grav / 1000.0
-          call sanitize_msis_alt(raw_alt_km, i, j, ks, gz(i,j,ks), gz(i,j,ks+1), &
-                                 lat_deg, lon_deg, y, doy, utsec, alt_km, alt_ok)
-          if (alt_ok) then
-            z_top_km(i,j) = alt_km
-          else
-            z_top_km(i,j) = 220.0
-          end if
-        else
-          raw_alt_km = -999.0
-          z_top_km(i,j) = 220.0
-          call print_msis_alt_warning('bad gz for model-top altitude', &
-                                      i, j, ks, raw_alt_km, z_top_km(i,j), &
-                                      gz(i,j,ks), gz(i,j,min(ks+1,ubound(gz,3))), &
+
+        if (.not. is_finite_real(lat_deg) .or. &
+            .not. is_finite_real(lon_deg) .or. &
+            .not. is_finite_real(stl_hr)) then
+          call print_msis_alt_warning('bad lon/lat/stl for ghost MSIS call', &
+                                      i, j, ks, -999.0, -999.0, &
+                                      gz(i,j,ks), gz(i,j,ks+1), &
                                       lat_deg, lon_deg, y, doy, utsec)
+          cycle
         end if
 
-        if (GEOS_MLT_TC_ZERO_TOP_FLUX) then
-          ! No external top flux is used, so do not call NRLMSIS for the
-          ! 220-km reference temperature.  This keeps all MSIS calls restricted
-          ! to layer densities needed by the conduction operator.
-          T_ext_ref(i,j) = Tcol(ii,jj,1)
-        else
-          if (.not. is_finite_real(lat_deg) .or. .not. is_finite_real(lon_deg) .or. &
-              .not. is_finite_real(stl_hr)) then
-            call print_msis_alt_warning('bad lon/lat/stl for top MSIS call', &
-                                        i, j, ks, raw_alt_km, z_top_km(i,j), &
-                                        gz(i,j,ks), gz(i,j,ks+1), &
-                                        lat_deg, lon_deg, y, doy, utsec)
-            T_ext_ref(i,j) = Tcol(ii,jj,1)
-          else
-            call msis_point(y, doy, utsec, 220.0, lat_deg, lon_deg, stl_hr, &
-                            O_cm3, N2_cm3, O2_cm3, Tmsis)
-            T_ext_ref(i,j) = Tmsis
-          end if
+        ! Use the geometrically upper interface of the top GEOS layer.
+        top_interface_km = max(gz(i,j,ks), gz(i,j,ks+1)) / grav / 1000.0
+        ghost_dz_m = ghost_dz_factor_use * dzcol(ii,jj,1)
+        raw_alt_km = top_interface_km + 0.5*ghost_dz_m/1000.0
+
+        call sanitize_msis_alt(raw_alt_km, i, j, ks, gz(i,j,ks), &
+                               gz(i,j,ks+1), lat_deg, lon_deg, y, doy, &
+                               utsec, ghost_alt_km, alt_ok)
+        if (.not. alt_ok) cycle
+
+        call msis_point(y, doy, utsec, ghost_alt_km, lat_deg, lon_deg, &
+                        stl_hr, O_cm3, N2_cm3, O2_cm3, Tmsis)
+
+        msis_ok = is_finite_real(Tmsis) .and. Tmsis > 0.0 .and. &
+                  is_finite_real(O_cm3) .and. O_cm3 >= 0.0 .and. &
+                  is_finite_real(O2_cm3) .and. O2_cm3 >= 0.0 .and. &
+                  is_finite_real(N2_cm3) .and. N2_cm3 >= 0.0 .and. &
+                  (O_cm3 > 0.0 .or. O2_cm3 > 0.0 .or. N2_cm3 > 0.0)
+        if (.not. msis_ok) cycle
+
+        nO_ghost  = O_cm3  * 1.0e6
+        nO2_ghost = O2_cm3 * 1.0e6
+        nN2_ghost = N2_cm3 * 1.0e6
+
+        call tc_point(Tmsis, nO_ghost, nO2_ghost, nN2_ghost, &
+                      K_ext_ref(i,j), alpha_ghost)
+
+        if (.not. is_finite_real(K_ext_ref(i,j))) then
+          K_ext_ref(i,j) = 0.0
+          cycle
         end if
-        !print *,'MSIS external temperature: ', T_ext_ref(i,j)
+        if (K_ext_ref(i,j) <= 0.0) cycle
+
+        T_ext_ref(i,j) = Tmsis
       end do
     end do
 
+    call cond_driver_from_msis(Tcol, nO, nO2, nN2, dzcol, dzifcol, &
+                               heat_tc(is:ie,js:je,ks:ke), &
+                               T_ext_ref, K_ext_ref, dt, zero_top_flux_use, &
+                               ghost_dz_factor_use, top_flux_scale_use)
 
-    call cond_driver_from_msis(Tcol, nO, nO2, nN2, dzcol, dzifcol, heat_tc(is:ie, js:je, ks:ke), &
-                               T_ext_ref, z_top_km, dt)
-
-    deallocate(Tcol, dzcol, dzifcol, nO, nO2, nN2, T_ext_ref, z_top_km)
+    deallocate(Tcol, dzcol, dzifcol, nO, nO2, nN2, T_ext_ref, K_ext_ref)
 
   end subroutine cond_driver_apply
 
 
   !------------------------------------------------------------
-  ! Safety helpers for MSIS input
+  ! Safety helpers for MSIS input.
   !------------------------------------------------------------
   logical function is_finite_real(x)
     implicit none
@@ -411,8 +496,9 @@ contains
   end function is_finite_real
 
 
-  subroutine sanitize_msis_alt(raw_alt_km, i, j, k, gz_top, gz_bot, lat_deg, lon_deg, &
-                               year_msis, doy_msis, utsec_msis, alt_km, alt_ok)
+  subroutine sanitize_msis_alt(raw_alt_km, i, j, k, gz_top, gz_bot, lat_deg, &
+                               lon_deg, year_msis, doy_msis, utsec_msis, &
+                               alt_km, alt_ok)
     implicit none
 
     real,    intent(in)  :: raw_alt_km
@@ -430,7 +516,8 @@ contains
       ! Do not call NRLMSIS with NaN or Inf altitude.
       call print_msis_alt_warning('non-finite MSIS altitude: skipping MSIS call', &
                                   i, j, k, raw_alt_km, 0.0, gz_top, gz_bot, &
-                                  lat_deg, lon_deg, year_msis, doy_msis, utsec_msis)
+                                  lat_deg, lon_deg, year_msis, doy_msis, &
+                                  utsec_msis)
       alt_km = 0.0
       alt_ok = .false.
       return
@@ -443,7 +530,8 @@ contains
       alt_ok = .false.
       call print_msis_alt_warning('negative MSIS altitude: skipping MSIS call', &
                                   i, j, k, raw_alt_km, alt_km, gz_top, gz_bot, &
-                                  lat_deg, lon_deg, year_msis, doy_msis, utsec_msis)
+                                  lat_deg, lon_deg, year_msis, doy_msis, &
+                                  utsec_msis)
       return
     end if
 
@@ -451,15 +539,16 @@ contains
       alt_km = GEOS_MLT_MSIS_ALT_MAX_KM
       call print_msis_alt_warning('high MSIS altitude: clamped', &
                                   i, j, k, raw_alt_km, alt_km, gz_top, gz_bot, &
-                                  lat_deg, lon_deg, year_msis, doy_msis, utsec_msis)
+                                  lat_deg, lon_deg, year_msis, doy_msis, &
+                                  utsec_msis)
       return
     end if
   end subroutine sanitize_msis_alt
 
 
-  subroutine print_msis_alt_warning(reason, i, j, k, raw_alt_km, used_alt_km, gz_top, &
-                                    gz_bot, lat_deg, lon_deg, year_msis, doy_msis, &
-                                    utsec_msis)
+  subroutine print_msis_alt_warning(reason, i, j, k, raw_alt_km, used_alt_km, &
+                                    gz_top, gz_bot, lat_deg, lon_deg, year_msis, &
+                                    doy_msis, utsec_msis)
     implicit none
 
     character(len=*), intent(in) :: reason
@@ -483,6 +572,5 @@ contains
       write(*,*) 'GEOS_MLT_MSIS_ALT_WARNING: further warnings suppressed on this rank.'
     end if
   end subroutine print_msis_alt_warning
-
 
 end module cond_driver_mod

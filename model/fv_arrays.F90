@@ -982,6 +982,12 @@ module fv_arrays_mod
    logical :: geos_mlt_thermcond_limit = .false.    !< Limit applied thermal-conduction dT/dt
    real :: geos_mlt_thermcond_dtmax = 2.0e-3        !< Max |dT/dt| from thermal conduction [K/s]
 
+   ! GEOS-MLT thermal-conduction upper-boundary controls.
+   ! Keep the zero-flux boundary as the default for backward compatibility.
+   logical :: geos_mlt_thermcond_zero_top_flux = .true.  !< Use zero conductive flux at the model top
+   real :: geos_mlt_thermcond_ghost_dz_factor = 1.0      !< MSIS ghost-layer thickness / GEOS top-layer thickness
+   real :: geos_mlt_thermcond_top_flux_scale = 1.0       !< Scale applied MSIS ghost-layer top flux
+
    ! Optional GEOS-MLT altitude diagnostics for the top few layers.
    logical :: geos_mlt_alt_diag = .false.           !< Print top-layer altitude diagnostics
    integer :: geos_mlt_alt_diag_kmax = 5            !< Number of top layers to print
