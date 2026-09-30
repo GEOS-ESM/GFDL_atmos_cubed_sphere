@@ -319,14 +319,28 @@ contains
         snowwat = -1
         graupel = -1
         cld_amt = -1
-       case(3:4)
+       case(3)
+        liq_wat = 2
+        ice_wat = 3
+        rainwat = -1
+        snowwat = -1
+        graupel = -1
+        cld_amt = -1
+       case(4)
         liq_wat = 2
         ice_wat = 3
         rainwat = -1
         snowwat = -1
         graupel = -1
         cld_amt = 4
-       case(6:7)
+       case(6) 
+        liq_wat = 2
+        ice_wat = 3
+        rainwat = 4
+        snowwat = 5
+        graupel = 6
+        cld_amt = -1
+       case(7)
         liq_wat = 2
         ice_wat = 3
         rainwat = 4
@@ -1129,12 +1143,23 @@ endif        ! end last_step check
                     dpln(i,j) = peln(i,k+1,j) - peln(i,k,j)
                  enddo
               enddo
-              call fv_sat_adj(abs(mdt), r_vir, is, ie, js, je, ng, hydrostatic, fast_mp_consv, &
-                             te(isd,jsd,k), q(isd,jsd,k,sphum), q(isd,jsd,k,liq_wat),   &
-                             q(isd,jsd,k,ice_wat), q(isd,jsd,k,rainwat),    &
-                             q(isd,jsd,k,snowwat), q(isd,jsd,k,graupel),    &
-                             hs ,dpln, delz(isd:,jsd:,k), pt(isd,jsd,k), delp(isd,jsd,k), &
-              cappa(isd:,jsd:,k), gridstruct%area_64, dtdt(is:,js:,k), out_dt, last_step, q(isd,jsd,k,cld_amt))
+              if (cld_amt > 0) then
+                 call fv_sat_adj(abs(mdt), r_vir, is, ie, js, je, ng, hydrostatic, fast_mp_consv, &
+                                te(isd,jsd,k), q(isd,jsd,k,sphum), q(isd,jsd,k,liq_wat),   &
+                                q(isd,jsd,k,ice_wat), q(isd,jsd,k,rainwat),    &
+                                q(isd,jsd,k,snowwat), q(isd,jsd,k,graupel),    &
+                                hs ,dpln, delz(isd:,jsd:,k), pt(isd,jsd,k), delp(isd,jsd,k), &
+                                cappa(isd:,jsd:,k), gridstruct%area_64, dtdt(is:,js:,k), out_dt, &
+                                last_step, q(isd,jsd,k,cld_amt))
+              else
+                 call fv_sat_adj(abs(mdt), r_vir, is, ie, js, je, ng, hydrostatic, fast_mp_consv, &
+                                te(isd,jsd,k), q(isd,jsd,k,sphum), q(isd,jsd,k,liq_wat),   &
+                                q(isd,jsd,k,ice_wat), q(isd,jsd,k,rainwat),    &
+                                q(isd,jsd,k,snowwat), q(isd,jsd,k,graupel),    &
+                                hs ,dpln, delz(isd:,jsd:,k), pt(isd,jsd,k), delp(isd,jsd,k), &
+                                cappa(isd:,jsd:,k), gridstruct%area_64, dtdt(is:,js:,k), out_dt, & 
+                                last_step)
+              endif
               if ( .not. hydrostatic  ) then
                  do j=js,je
                     do i=is,ie

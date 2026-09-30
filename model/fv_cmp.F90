@@ -163,7 +163,9 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
     real, intent (inout), dimension (is - ng:, js - ng:) :: cappa
     real, intent (inout), dimension (is:ie, js:je) :: dtdt
     
-    real, intent (out), dimension (is - ng:ie + ng, js - ng:je + ng) :: qa, te0
+    real, intent (out), dimension (is - ng:ie + ng, js - ng:je + ng) :: te0
+
+    real, optional, intent (out), dimension (is - ng:ie + ng, js - ng:je + ng) :: qa
     
     real (kind = r_grid), intent (in), dimension (is - ng:ie + ng, js - ng:je + ng) :: area
     
@@ -645,7 +647,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         endif
         
         ! -----------------------------------------------------------------------
-        ! update latend heat coefficient
+        ! update latent heat coefficient
         ! -----------------------------------------------------------------------
         
         do i = is, ie
@@ -660,7 +662,7 @@ subroutine fv_sat_adj (mdt, zvir, is, ie, js, je, ng, hydrostatic, consv_te, &
         ! compute cloud fraction
         ! -----------------------------------------------------------------------
         
-        if (do_qa .and. last_step) then
+        if (present(qa) .and. do_qa .and. last_step) then
             ! FV3 will do the cloud PDF
 
             ! -----------------------------------------------------------------------
