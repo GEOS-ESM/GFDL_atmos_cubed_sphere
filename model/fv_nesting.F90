@@ -1,25 +1,25 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
-!>@brief The module 'fv_nesting' is a collection of routines pertaining to grid nesting 
+!>@brief The module 'fv_nesting' is a collection of routines pertaining to grid nesting
 !! \cite harris2013two.
 
 module fv_nesting_mod
@@ -45,7 +45,7 @@ module fv_nesting_mod
 !   </tr>
 !   <tr>
 !     <td>fv_arrays_mod</td>
-!     <td>fv_grid_type, fv_flags_type, fv_atmos_type, fv_nest_type, fv_diag_type, 
+!     <td>fv_grid_type, fv_flags_type, fv_atmos_type, fv_nest_type, fv_diag_type,
 !         fv_nest_BC_type_3D,allocate_fv_nest_BC_type,  fv_atmos_type, fv_grid_bounds_type</td>
 !   </tr>
 !   <tr>
@@ -82,7 +82,7 @@ module fv_nesting_mod
 !   </tr>
 !   <tr>
 !     <td>mpp_domains_mod/td>
-!     <td>mpp_update_domains, mpp_get_data_domain, mpp_get_compute_domain, 
+!     <td>mpp_update_domains, mpp_get_data_domain, mpp_get_compute_domain,
 !         mpp_get_global_domain, DGRID_NE, mpp_update_domains, domain2D
 !     </td>
 !   </tr>
@@ -110,7 +110,12 @@ module fv_nesting_mod
    use fv_arrays_mod,       only: allocate_fv_nest_BC_type, fv_atmos_type, fv_grid_bounds_type
    use fv_grid_utils_mod,   only: ptop_min, g_sum, cubed_to_latlon, f_p
    use init_hydro_mod,      only: p_var
-   use constants_mod,       only: grav, pi=>pi_8, radius, hlv, rdgas, cp_air, rvgas, cp_vapor, kappa
+#if defined (SINGLE_FV)
+   use constantsr4_mod,    &
+#else
+   use constants_mod,      &
+#endif
+                            only: grav, pi=>pi_8, radius, hlv, rdgas, cp_air, rvgas, cp_vapor, kappa
    use fv_mapz_mod,         only: mappm
    use fv_timing_mod,       only: timing_on, timing_off
    use fv_mp_mod,           only: is_master
@@ -143,7 +148,7 @@ contains
 !!!! NOTE: Many of the routines here and in boundary.F90 have a lot of
 !!!!   redundant code, which could be cleaned up and simplified.
 
-!>@brief The subroutine 'setup_nested_grid_BCs' fetches data from the coarse grid 
+!>@brief The subroutine 'setup_nested_grid_BCs' fetches data from the coarse grid
 !! to set up  the nested-grid boundary conditions.
  subroutine setup_nested_grid_BCs(npx, npy, npz, zvir, ncnst,     &
                         u, v, w, pt, delp, delz,q, uc, vc, pkz, &
@@ -152,7 +157,7 @@ contains
                         nest_timestep, tracer_nest_timestep, &
                         domain, bd, nwat)
 
-   
+
     type(fv_grid_bounds_type), intent(IN) :: bd
     real, intent(IN) :: zvir
 
@@ -202,7 +207,7 @@ contains
       jed = bd%jed
 
     child_grids => neststruct%child_grids
-    
+
 
     !IF nested, set up nested grid BCs for time-interpolation
     !(actually applying the BCs is done in dyn_core
@@ -213,7 +218,7 @@ contains
 
     if (neststruct%nested .and. (.not. (neststruct%first_step) .or. make_nh) ) then
        do_pd = .true.
-       call set_BCs_t0(ncnst, flagstruct%hydrostatic, neststruct) 
+       call set_BCs_t0(ncnst, flagstruct%hydrostatic, neststruct)
     else
        !On first timestep the t0 BCs are not initialized and may contain garbage
        do_pd = .false.
@@ -246,7 +251,7 @@ contains
           else
              call divergence_corner(u(isd,jsd,k), v(isd,jsd,k), ua, va, divg(isd,jsd,k), gridstruct, flagstruct, bd)
           endif
-       end do       
+       end do
     endif
 
 #ifndef SW_DYNAMICS
@@ -260,7 +265,7 @@ contains
        enddo
        enddo
     endif
-#endif 
+#endif
 !! Nested grid: receive from parent grid
     if (neststruct%nested) then
        if (.not. allocated(q_buf)) then
@@ -318,7 +323,7 @@ contains
           else
              call nested_grid_BC_send(w, neststruct%nest_domain_all(p), 0, 0)
              call nested_grid_BC_send(delz, neststruct%nest_domain_all(p), 0, 0)
-          endif          
+          endif
 #endif
           call nested_grid_BC_send(u, neststruct%nest_domain_all(p), 0, 1)
           call nested_grid_BC_send(vc, neststruct%nest_domain_all(p), 0, 1)
@@ -327,7 +332,7 @@ contains
        call nested_grid_BC_send(divg, neststruct%nest_domain_all(p), 1, 1)
        endif
     enddo
-    
+
     !Nested grid: do computations
     if (nested) then
        call nested_grid_BC_save_proc(neststruct%nest_domain, &
@@ -355,8 +360,8 @@ contains
                neststruct%w_BC, w_buf)
           call nested_grid_BC_save_proc(neststruct%nest_domain, &
                neststruct%ind_h, neststruct%wt_h, 0, 0,  npx,  npy,  npz, bd, &
-               neststruct%delz_BC, delz_buf) !Need a negative-definite method? 
-          
+               neststruct%delz_BC, delz_buf) !Need a negative-definite method?
+
           call setup_pt_NH_BC(neststruct%pt_BC, neststruct%delp_BC, neststruct%delz_BC, &
                neststruct%q_BC(sphum), neststruct%q_BC, ncnst, &
 #ifdef USE_COND
@@ -389,10 +394,10 @@ contains
     if (neststruct%first_step) then
        if (neststruct%nested) call set_BCs_t0(ncnst, flagstruct%hydrostatic, neststruct)
        neststruct%first_step = .false.
-       if (.not. flagstruct%hydrostatic) flagstruct%make_nh= .false. 
+       if (.not. flagstruct%hydrostatic) flagstruct%make_nh= .false.
     else if (flagstruct%make_nh) then
        if (neststruct%nested) call set_NH_BCs_t0(neststruct)
-       flagstruct%make_nh= .false. 
+       flagstruct%make_nh= .false.
     endif
 
     !Unnecessary?
@@ -400,7 +405,7 @@ contains
 !!$       neststruct%divg_BC%east_t0  = neststruct%divg_BC%east_t1
 !!$       neststruct%divg_BC%west_t0  = neststruct%divg_BC%west_t1
 !!$       neststruct%divg_BC%north_t0 = neststruct%divg_BC%north_t1
-!!$       neststruct%divg_BC%south_t0 = neststruct%divg_BC%south_t1 
+!!$       neststruct%divg_BC%south_t0 = neststruct%divg_BC%south_t1
 !!$       neststruct%divg_BC%initialized = .true.
 !!$    endif
 
@@ -432,7 +437,7 @@ contains
    ied = bd%ied
    jsd = bd%jsd
    jed = bd%jed
-   
+
    if (is == 1) then
       ptBC    =>    pt_BC%west_t1
       pkzBC   =>   pkz_BC%west_t1
@@ -514,7 +519,7 @@ contains
       end do
       end do
    end if
-   
+
  end subroutine setup_pt_BC
 
  subroutine setup_pt_NH_BC(pt_BC, delp_BC, delz_BC, sphum_BC, q_BC, nq, &
@@ -541,7 +546,7 @@ contains
    real, intent(IN) :: zvir
 
     real, parameter:: c_liq = 4185.5      !< heat capacity of water at 0C
-    real, parameter:: c_ice = 1972.       !< heat capacity of ice at 0C: c=c_ice+7.3*(T-Tice) 
+    real, parameter:: c_ice = 1972.       !< heat capacity of ice at 0C: c=c_ice+7.3*(T-Tice)
     real, parameter:: cv_vap = cp_vapor - rvgas  !< 1384.5
 
    real, dimension(:,:,:), pointer :: ptBC, sphumBC, qconBC, delpBC, delzBC, cappaBC
@@ -568,7 +573,7 @@ contains
    ied = bd%ied
    jsd = bd%jsd
    jed = bd%jed
-   
+
    rdg = -rdgas / grav
    cv_air =  cp_air - rdgas
 
@@ -583,7 +588,7 @@ contains
    ice_wat = get_tracer_index (MODEL_ATMOS, 'ice_wat')
    rainwat = get_tracer_index (MODEL_ATMOS, 'rainwat')
    snowwat = get_tracer_index (MODEL_ATMOS, 'snowwat')
-   graupel = get_tracer_index (MODEL_ATMOS, 'graupel')   
+   graupel = get_tracer_index (MODEL_ATMOS, 'graupel')
 #endif
 
    if (is == 1) then
@@ -723,13 +728,13 @@ contains
          q_liq = liq_watBC_west(i,j,k) + rainwatBC_west(i,j,k)
          q_sol = ice_watBC_west(i,j,k) + snowwatBC_west(i,j,k) + graupelBC_west(i,j,k)
          q_con = q_liq + q_sol
-#endif 
+#endif
          qconBC(i,j,k) = q_con
 #ifdef MOIST_CAPPA
          cvm = (1.-(sphumBC(i,j,k)+q_con))*cv_air+sphumBC(i,j,k)*cv_vap+q_liq*c_liq+q_sol*c_ice
          cappaBC(i,j,k) = rdgas/(rdgas + cvm/(1.+dp1))
          pkz = exp( cappaBC(i,j,k)*log(rdg*delpBC(i,j,k)*ptBC(i,j,k) * &
-              (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))         
+              (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))
 #else
          pkz = exp( kappa*log(rdg*delpBC(i,j,k)*ptBC(i,j,k) * &
               (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))
@@ -786,13 +791,13 @@ contains
          q_liq = liq_watBC_south(i,j,k) + rainwatBC_south(i,j,k)
          q_sol = ice_watBC_south(i,j,k) + snowwatBC_south(i,j,k) + graupelBC_south(i,j,k)
          q_con = q_liq + q_sol
-#endif 
+#endif
          qconBC(i,j,k) = q_con
 #ifdef MOIST_CAPPA
          cvm = (1.-(sphumBC(i,j,k)+q_con))*cv_air+sphumBC(i,j,k)*cv_vap+q_liq*c_liq+q_sol*c_ice
          cappaBC(i,j,k) = rdgas/(rdgas + cvm/(1.+dp1))
          pkz = exp( cappaBC(i,j,k)*log(rdg*delpBC(i,j,k)*ptBC(i,j,k) * &
-              (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))         
+              (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))
 #else
          pkz = exp( kappa*log(rdg*delpBC(i,j,k)*ptBC(i,j,k) * &
               (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))
@@ -837,13 +842,13 @@ contains
          q_liq = liq_watBC_east(i,j,k) + rainwatBC_east(i,j,k)
          q_sol = ice_watBC_east(i,j,k) + snowwatBC_east(i,j,k) + graupelBC_east(i,j,k)
          q_con = q_liq + q_sol
-#endif 
+#endif
          qconBC(i,j,k) = q_con
 #ifdef MOIST_CAPPA
          cvm = (1.-(sphumBC(i,j,k)+q_con))*cv_air+sphumBC(i,j,k)*cv_vap+q_liq*c_liq+q_sol*c_ice
          cappaBC(i,j,k) = rdgas/(rdgas + cvm/(1.+dp1))
          pkz = exp( cappaBC(i,j,k)*log(rdg*delpBC(i,j,k)*ptBC(i,j,k) * &
-              (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))         
+              (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))
 #else
          pkz = exp( kappa*log(rdg*delpBC(i,j,k)*ptBC(i,j,k) * &
               (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))
@@ -898,13 +903,13 @@ contains
          q_liq = liq_watBC_north(i,j,k) + rainwatBC_north(i,j,k)
          q_sol = ice_watBC_north(i,j,k) + snowwatBC_north(i,j,k) + graupelBC_north(i,j,k)
          q_con = q_liq + q_sol
-#endif 
+#endif
          qconBC(i,j,k) = q_con
 #ifdef MOIST_CAPPA
          cvm = (1.-(sphumBC(i,j,k)+q_con))*cv_air+sphumBC(i,j,k)*cv_vap+q_liq*c_liq+q_sol*c_ice
          cappaBC(i,j,k) = rdgas/(rdgas + cvm/(1.+dp1))
          pkz = exp( cappaBC(i,j,k)*log(rdg*delpBC(i,j,k)*ptBC(i,j,k) * &
-              (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))         
+              (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))
 #else
          pkz = exp( kappa*log(rdg*delpBC(i,j,k)*ptBC(i,j,k) * &
               (1.+dp1)*(1.-q_con)/delzBC(i,j,k)))
@@ -1037,7 +1042,7 @@ contains
 !!  unless flux nested grid BCs are specified, or if a quantity is
 !!  not updated at all. This ability has not been implemented.
 !
-!>@brief The subroutine'twoway_nesting' performs a two-way update 
+!>@brief The subroutine'twoway_nesting' performs a two-way update
 !! of nested-grid data onto the parent grid.
 subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
 
@@ -1048,12 +1053,12 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
 
    integer :: n, p, sphum
 
-   
+
    if (ngrids > 1) then
 
       do n=ngrids,2,-1 !loop backwards to allow information to propagate from finest to coarsest grids
 
-         !two-way updating    
+         !two-way updating
          if (Atm(n)%neststruct%twowaynest ) then
             if  (grids_on_this_pe(n) .or. grids_on_this_pe(Atm(n)%parent_grid%grid_number)) then
                sphum = get_tracer_index (MODEL_ATMOS, 'sphum')
@@ -1131,7 +1136,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
     real, allocatable :: qdp_coarse(:,:,:)
     real(kind=f_p), allocatable :: q_diff(:,:,:)
     real :: L_sum_b(npz), L_sum_a(npz)
-    
+
     integer :: upoff
     integer :: is,  ie,  js,  je
     integer :: isd, ied, jsd, jed
@@ -1184,7 +1189,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
             do i=isd_p,ied_p
 
                parent_grid%ps(i,j) = &
-                    parent_grid%delp(i,j,1)/grav 
+                    parent_grid%delp(i,j,1)/grav
 
             end do
          end do
@@ -1300,7 +1305,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
             parent_grid%q(i,j,k,n) = parent_grid%q(i,j,k,n)/parent_grid%delp(i,j,k)
          enddo
          enddo
-         enddo               
+         enddo
          enddo
          endif
 
@@ -1369,7 +1374,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
          call mpp_sync!self
 
       end if
-      
+
    end if !Neststruct%nestupdate /= 3
 
 #endif
@@ -1449,7 +1454,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
 
       call mpp_sync!self
 
-      if (parent_grid%tile == neststruct%parent_tile) then 
+      if (parent_grid%tile == neststruct%parent_tile) then
 
          if (neststruct%parent_proc) then
 
@@ -1514,9 +1519,9 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
     type(fv_grid_bounds_type), intent(IN) :: bd
     real, intent(in) :: area(   bd%isd:bd%ied  ,bd%jsd:bd%jed)
     real, intent(in) ::    q(   bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)
-    real, intent(OUT) :: L_sum( npz ) 
+    real, intent(OUT) :: L_sum( npz )
     type(domain2d), intent(IN) :: domain
-   
+
     integer :: i, j, k, n
     real :: qA!(bd%is:bd%ie, bd%js:bd%je)
 
@@ -1556,7 +1561,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
     real, intent(inout) :: delz(bd%isd:        ,bd%jsd:        ,1: )   !< delta-height (m); non-hydrostatic only
 
 !-----------------------------------------------------------------------
-! Auxilliary pressure arrays:    
+! Auxilliary pressure arrays:
 ! The 5 vars below can be re-computed from delp and ptop.
 !-----------------------------------------------------------------------
 ! dyn_aux:
@@ -1565,7 +1570,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
     real, intent(inout) :: pk  (bd%is:bd%ie,bd%js:bd%je, npz+1)          !< pe**cappa
     real, intent(inout) :: peln(bd%is:bd%ie,npz+1,bd%js:bd%je)           !< ln(pe)
     real, intent(inout) :: pkz (bd%is:bd%ie,bd%js:bd%je,npz)             !< finite-volume mean pk
-    
+
 !-----------------------------------------------------------------------
 ! Others:
 !-----------------------------------------------------------------------
@@ -1580,7 +1585,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
 
     integer :: is,  ie,  js,  je
     integer :: isd, ied, jsd, jed
-    
+
     is  = bd%is
     ie  = bd%ie
     js  = bd%js
@@ -1627,7 +1632,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
 
  end subroutine after_twoway_nest_update
 
-!>@brief The subroutine 'update_remap_tqw' remaps (interpolated) nested-grid data 
+!>@brief The subroutine 'update_remap_tqw' remaps (interpolated) nested-grid data
 !! to the coarse-grid's vertical coordinate.
  !This does not yet do anything for the tracers
  subroutine update_remap_tqw( npz, ak,  bk,  ps, delp,  t,  q, w, hydrostatic, &
@@ -1660,13 +1665,13 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
            pe0(i,k) = ak(k) + bk(k)*ps0(i,j)
            pn0(i,k) = log(pe0(i,k))
        enddo
-     enddo 
+     enddo
      do k=1,kmd+1
         do i=is,ie
            pe1(i,k) = ak(k) + bk(k)*ps(i,j)
            pn1(i,k) = log(pe1(i,k))
        enddo
-     enddo 
+     enddo
      if (do_q) then
         do iq=1,nq
         do k=1,kmd
@@ -1690,7 +1695,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
      enddo
      !Remap T using logp
      call mappm(kmd, pn0, tp, npz, pn1, qn1, is,ie, 1, abs(kord_tm), ptop)
-     
+
      do k=1,npz
         do i=is,ie
            t(i,j,k) = qn1(i,k)

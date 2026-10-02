@@ -48,31 +48,16 @@ esma_add_library (${this}
   SRCS ${srcs}
   DEPENDENCIES MAPL GFTL_SHARED::gftl-shared esmf)
 
+target_link_libraries (${this} PUBLIC FMS::fms)
+
 if (FV_PRECISION STREQUAL R4)
-  target_link_libraries (${this} PUBLIC FMS::fms_r4)
-  target_compile_definitions (${this} PRIVATE SINGLE_FV OVERLOAD_R4)
-elseif (FV_PRECISION STREQUAL R4R8) # FV is R4 but FMS is R8
-  # fvdycore needs r4 .mod interfaces
-  get_target_property(inc_r4 FMS::fms_r4 INTERFACE_INCLUDE_DIRECTORIES)
-  target_include_directories(${this} PRIVATE $<BUILD_INTERFACE:${inc_r4}>)
-
-  # But fvdycore should not *compile* with FMS::fms_r8 includes
-  target_link_libraries(${this} PUBLIC $<LINK_ONLY:FMS::fms_r8>)
-
-  target_compile_definitions (${this} PRIVATE SINGLE_FV OVERLOAD_R4)
-
-  add_dependencies(${this} FMS::fms_r4 FMS::fms_r8)
+  target_compile_definitions (${this} PRIVATE -DSINGLE_FV -DOVERLOAD_R4)
 elseif (FV_PRECISION STREQUAL R8)
-  target_link_libraries (${this} PUBLIC FMS::fms_r8)
   string(REPLACE " " ";" tmp ${FREAL8})
   foreach(flag ${tmp})
     target_compile_options (${this} PRIVATE $<$<COMPILE_LANGUAGE:Fortran>:${flag}>)
   endforeach()
 endif ()
-
-#if (CMAKE_Fortran_COMPILER_ID MATCHES Intel AND CMAKE_BUILD_TYPE MATCHES Release)
-#set (CMAKE_Fortran_FLAGS_RELEASE "${GEOS_Fortran_FLAGS_AGGRESSIVE}")
-#endif ()
 
 if (CRAY_POINTER)
   set_target_properties (${this} PROPERTIES COMPILE_FLAGS ${CRAY_POINTER})
@@ -89,6 +74,17 @@ target_compile_definitions (${this} PRIVATE MOIST_CAPPA USE_COND)
 
 ecbuild_info("This sets the INTERNAL_FILE_NML preprocessor variable")
 target_compile_definitions (${this} PRIVATE INTERNAL_FILE_NML)
+
+include(check_fms1_io_support)
+check_fms1_io_support(FMS1_IO_SUPPORTED)
+if(FMS1_IO_SUPPORTED)
+  message(STATUS "Using deprecated FMS1 I/O for ${this}")
+  target_compile_definitions (${this} PRIVATE FMS1_IO)
+else()
+  message(STATUS "Using FMS2 I/O for ${this}")
+  ecbuild_info("This sets the NO_GFDL_SHARED preprocessor variable")
+  target_compile_definitions (${this} PRIVATE NO_GFDL_SHARED)
+endif()
 
 esma_add_subdirectories(
   model/mapz-driver

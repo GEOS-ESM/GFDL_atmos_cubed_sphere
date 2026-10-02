@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -46,7 +46,12 @@ module nh_core_mod
 !   </tr>
 ! </table>
 
-   use constants_mod,     only: rdgas, cp_air, grav
+#if defined (SINGLE_FV)
+   use constantsr4_mod,    &
+#else
+   use constants_mod,      &
+#endif
+                          only: rdgas, cp_air, grav
    use tp_core_mod,       only: fv_tp_2d
    use nh_utils_mod,      only: update_dz_c, update_dz_d, nest_halo_nh
    use nh_utils_mod,      only: sim_solver, sim1_solver, sim3_solver
@@ -59,7 +64,7 @@ module nh_core_mod
    public Riem_Solver3, Riem_Solver_c, update_dz_c, update_dz_d, nest_halo_nh
    real, parameter:: r3 = 1./3.
 
-CONTAINS 
+CONTAINS
 
   subroutine Riem_Solver3(ms, dt,   is,   ie,   js, je, km, ng,    &
                           isd, ied, jsd, jed, akap, cappa, cp,     &

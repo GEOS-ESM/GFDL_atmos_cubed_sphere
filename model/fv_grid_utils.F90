@@ -75,7 +75,12 @@
 
 
 #include <fms_platform.h>
- use constants_mod,   only: omega, pi=>pi_8, cnst_radius=>radius
+#if defined (SINGLE_FV)
+ use constantsr4_mod,    &
+#else
+ use constants_mod,      &
+#endif
+                      only: omega, pi=>pi_8, cnst_radius=>radius
  use mpp_mod,         only: FATAL, mpp_error, WARNING
  use external_sst_mod, only: i_sst, j_sst, sst_ncep, sst_anom
  use mpp_domains_mod, only: mpp_update_domains, DGRID_NE, mpp_global_sum

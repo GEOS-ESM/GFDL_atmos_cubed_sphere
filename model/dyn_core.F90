@@ -1,23 +1,23 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 !
-!>@brief The module 'dyn_core' peforms the Lagrangian acoustic dynamics 
+!>@brief The module 'dyn_core' peforms the Lagrangian acoustic dynamics
 !! described by \cite lin2004vertically.
 !>@details The forward timestep is handled by routines in 'sw_core.F90'.
 !! The backwards-in-time PGF is evaluated in one_grad_p or split_p_grad (hydrostatic) and nh_p_grad (nonhydrostatic)
@@ -53,7 +53,7 @@ module dyn_core_mod
 !   </tr>
 !   <tr>
 !     <td>fv_arrays_mod</td>
-!     <td>fv_grid_type, fv_flags_type, fv_nest_type, 
+!     <td>fv_grid_type, fv_flags_type, fv_nest_type,
 !        fv_diag_type,fv_grid_bounds_type, R_GRID </td>
 !   </tr>
 !   <tr>
@@ -62,7 +62,7 @@ module dyn_core_mod
 !   </tr>
 !   <tr>
 !     <td>fv_mp_mod</td>
-!     <td>is_master, start_group_halo_update, 
+!     <td>is_master, start_group_halo_update,
 !          complete_group_halo_update,group_halo_update_type</td>
 !   </tr>
 !   <tr>
@@ -103,8 +103,13 @@ module dyn_core_mod
 !   </tr>
 ! </table>
 
-  use constants_mod,      only: rdgas, radius, cp_air, pi
-  use mpp_mod,            only: mpp_pe 
+#if defined (SINGLE_FV)
+  use constantsr4_mod,    &
+#else
+  use constants_mod,      &
+#endif
+                          only: rdgas, radius, cp_air, pi
+  use mpp_mod,            only: mpp_pe
   use mpp_domains_mod,    only: CGRID_NE, DGRID_NE, AGRID, mpp_get_boundary, mpp_update_domains,  &
                                 domain2d
   use mpp_parameter_mod,  only: CORNER
@@ -159,9 +164,9 @@ contains
 !-----------------------------------------------------------------------
 !     dyn_core :: FV Lagrangian dynamics driver
 !-----------------------------------------------------------------------
- 
+
  subroutine dyn_core(npx, npy, npz, ng, sphum, nq, bdt, k_split, n_split, zvir, cp, akap, cappa, grav, hydrostatic,  &
-                     u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
+                     u,  v,  w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, &
                      dudt_rf, dvdt_rf, dwdt_rf, uc, vc, mfx, mfy, cx, cy, pkz, peln, q_con, ak, bk, dpx, &
                      ks, gridstruct, flagstruct, neststruct, idiag, bd, domain, &
                      init_step, i_pack, end_step, diss_est,time_total)
@@ -188,12 +193,12 @@ contains
     real, intent(inout) :: cappa(bd%isd:,bd%jsd:,1:) !< moist kappa
     real, intent(inout) :: pt(  bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  !< temperature (K)
     real, intent(inout) :: delp(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  !< pressure thickness (pascal)
-    real, intent(inout) :: q(   bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz, nq)  ! 
+    real, intent(inout) :: q(   bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz, nq)  !
     real, intent(in), optional:: time_total  !< total time (seconds) since start
     real, intent(inout) :: diss_est(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  !< skeb dissipation estimate
 
 !-----------------------------------------------------------------------
-! Auxilliary pressure arrays:    
+! Auxilliary pressure arrays:
 ! The 5 vars below can be re-computed from delp and ptop.
 !-----------------------------------------------------------------------
 ! dyn_aux:
@@ -499,7 +504,7 @@ contains
      else
        last_step = .false.
      endif
-       
+
                                                      call timing_on('COMM_TOTAL')
      call complete_group_halo_update(i_pack(8), domain)
                                         call timing_on('COMM_NH')
@@ -563,7 +568,7 @@ contains
                  enddo
               enddo
 
-         else 
+         else
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,npz,zh,gz)
               do k=1, npz+1
                  do j=jsd,jed
@@ -647,14 +652,14 @@ contains
          ! domain and of each processor element. We must either
          ! apply an interpolated BC, or extrapolate into the
          ! boundary halo
-         ! NOTE: 
+         ! NOTE:
          !The update_domains calls for uc and vc need to go BEFORE the BCs to ensure cross-restart
          !bitwise-consistent solutions when doing the spatial extrapolation; should not make a
          !difference for interpolated BCs from the coarse grid.
 
 
             call nested_grid_BC_apply_intT(vc, &
-                 0, 1, npx, npy, npz, bd, split_timestep_bc+0.5, real(n_split*k_split), & 
+                 0, 1, npx, npy, npz, bd, split_timestep_bc+0.5, real(n_split*k_split), &
             neststruct%vc_BC, bctype=neststruct%nestbctype )
             call nested_grid_BC_apply_intT(uc, &
                  1, 0, npx, npy, npz, bd, split_timestep_bc+0.5, real(n_split*k_split), &
@@ -745,7 +750,7 @@ contains
                    nord_w=0; damp_w = d2_divg
                    if ( flagstruct%do_vort_damp ) then
 ! damping on delp and vorticity:
-                        nord_v(k)=0; 
+                        nord_v(k)=0;
                         damp_vt(k) = 0.5*d2_divg
                    endif
                    d_con_k = 0.
@@ -753,7 +758,7 @@ contains
                    nord_k=0; d2_divg = max(flagstruct%d2_bg, flagstruct%d2_bg_k2)
                    nord_w=0; damp_w = d2_divg
                    if ( flagstruct%do_vort_damp ) then
-                        nord_v(k)=0; 
+                        nord_v(k)=0;
                         damp_vt(k) = 0.5*d2_divg
                    endif
                    d_con_k = 0.
@@ -862,7 +867,7 @@ contains
                  enddo
               enddo
               do i=is,iep1
-                 if (wk(i,j) /= 0.0) then 
+                 if (wk(i,j) /= 0.0) then
                     divg2(i,j) = divg2(i,j)/wk(i,j)
                  else
                     divg2(i,j) = 0.0
@@ -891,7 +896,7 @@ contains
 #ifdef USE_COND
        call nested_grid_BC_apply_intT(q_con, &
             0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
-            neststruct%q_con_BC, bctype=neststruct%nestbctype  )       
+            neststruct%q_con_BC, bctype=neststruct%nestbctype  )
 #endif
 #endif
      end if
@@ -950,7 +955,7 @@ contains
           call nested_grid_BC_apply_intT(delz, &
                0, 0, npx, npy, npz, bd, split_timestep_BC+1., real(n_split*k_split), &
                neststruct%delz_BC, bctype=neststruct%nestbctype  )
-          
+
           !Compute gz/pkc/pk3; note that now pkc should be nonhydro pert'n pressure
           call nest_halo_nh(ptop, grav, akap, cp, delp, delz, pt, phis, &
 #ifdef USE_COND
@@ -1102,7 +1107,7 @@ contains
                 v(ie+1,j,k) = ebuffer(j-js+1,k)
              enddo
           enddo
-    endif        
+    endif
 
 #ifndef ROT3
     if ( it/=n_split)   &
@@ -1473,7 +1478,7 @@ do k=1,npz
    do j=js,je
       do i=is,ie
          do n=1,3
-            v3(n,i,j) = up(i,j)*gridstruct%ec1(n,i,j) + vp(i,j)*gridstruct%ec2(n,i,j) 
+            v3(n,i,j) = up(i,j)*gridstruct%ec1(n,i,j) + vp(i,j)*gridstruct%ec2(n,i,j)
          enddo
       enddo
    enddo
@@ -1597,7 +1602,7 @@ real, intent(inout) ::  delp(bd%isd:bd%ied, bd%jsd:bd%jed, npz)
 real, intent(inout) ::    pp(bd%isd:bd%ied, bd%jsd:bd%jed, npz+1)  !< perturbation pressure
 real, intent(inout) ::    pk(bd%isd:bd%ied, bd%jsd:bd%jed, npz+1)  !< p**kappa
 real, intent(inout) ::    gz(bd%isd:bd%ied, bd%jsd:bd%jed, npz+1)  !< g * h
-real, intent(inout) ::     u(bd%isd:bd%ied,  bd%jsd:bd%jed+1,npz) 
+real, intent(inout) ::     u(bd%isd:bd%ied,  bd%jsd:bd%jed+1,npz)
 real, intent(inout) ::     v(bd%isd:bd%ied+1,bd%jsd:bd%jed,  npz)
 type(fv_grid_type), intent(INOUT), target :: gridstruct
 ! Local:
@@ -1616,7 +1621,7 @@ integer :: isd, ied, jsd, jed
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
-      
+
 if ( use_logp ) then
    top_value = peln1
 else
@@ -1695,9 +1700,9 @@ real, intent(inout) ::  delp(bd%isd:bd%ied, bd%jsd:bd%jed, npz)
 real, intent(inout) ::    pp(bd%isd:bd%ied, bd%jsd:bd%jed, npz+1)  !< perturbation pressure
 real, intent(inout) ::    pk(bd%isd:bd%ied, bd%jsd:bd%jed, npz+1)  !< p**kappa
 real, intent(inout) ::    gz(bd%isd:bd%ied, bd%jsd:bd%jed, npz+1)  !< g * h
-! real, intent(inout) ::    du(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz) 
+! real, intent(inout) ::    du(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz)
 ! real, intent(inout) ::    dv(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz)
-real, intent(inout) ::     u(bd%isd:bd%ied,  bd%jsd:bd%jed+1,npz) 
+real, intent(inout) ::     u(bd%isd:bd%ied,  bd%jsd:bd%jed+1,npz)
 real, intent(inout) ::     v(bd%isd:bd%ied+1,bd%jsd:bd%jed,  npz)
 type(fv_grid_type), intent(INOUT), target :: gridstruct
 ! Local:
@@ -1716,7 +1721,7 @@ integer :: isd, ied, jsd, jed
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
-      
+
 if ( use_logp ) then
    top_value = peln1
 else
@@ -1801,7 +1806,7 @@ end subroutine split_p_grad
 
 
 subroutine one_grad_p(u, v, pk, gz, divg2, delp, dt, ng, gridstruct, bd, npx, npy, npz,  &
-   ptop, hydrostatic, a2b_ord, d_ext)  
+   ptop, hydrostatic, a2b_ord, d_ext)
 
 integer, intent(IN) :: ng, npx, npy, npz, a2b_ord
 real,    intent(IN) :: dt, ptop, d_ext
@@ -1811,7 +1816,7 @@ real,    intent(in) :: divg2(bd%is:bd%ie+1,bd%js:bd%je+1)
 real, intent(inout) ::    pk(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz+1)
 real, intent(inout) ::    gz(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz+1)
 real, intent(inout) ::  delp(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz)
-real, intent(inout) ::     u(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz) 
+real, intent(inout) ::     u(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz)
 real, intent(inout) ::     v(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz)
 type(fv_grid_type), intent(INOUT), target :: gridstruct
 ! Local:
@@ -1944,7 +1949,7 @@ type(fv_grid_bounds_type), intent(IN) :: bd
 real, intent(in):: divg2(bd%is:bd%ie+1,bd%js:bd%je+1)
 real, intent(inout) ::    pk(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz+1)
 real, intent(inout) ::    gz(bd%isd:bd%ied,  bd%jsd:bd%jed  ,npz+1)
-real, intent(inout) ::     u(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz) 
+real, intent(inout) ::     u(bd%isd:bd%ied  ,bd%jsd:bd%jed+1,npz)
 real, intent(inout) ::     v(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz)
 type(fv_grid_type), intent(INOUT), target :: gridstruct
 
@@ -1997,7 +2002,7 @@ do k=1,npz+1
 enddo
 
 !$OMP parallel do default(none) shared(npz,is,ie,js,je,pk,u,beta,gz,divg2,alpha, &
-!$OMP                                  gridstruct,v,dt,du,dv) &          
+!$OMP                                  gridstruct,v,dt,du,dv) &
 !$OMP                          private(wk)
 do k=1,npz
 
@@ -2102,8 +2107,8 @@ do 1000 j=jfirst,jlast
          ip = ip + 1
       endif
    enddo
-   if ( fv_debug .and. ip/=0 ) write(*,*) 'Warning: Mix_dp', mpp_pe(), j, ip 
-   !      if ( ip/=0 ) write(*,*) 'Warning: Mix_dp', mpp_pe(), j, ip 
+   if ( fv_debug .and. ip/=0 ) write(*,*) 'Warning: Mix_dp', mpp_pe(), j, ip
+   !      if ( ip/=0 ) write(*,*) 'Warning: Mix_dp', mpp_pe(), j, ip
 1000 continue
 
  end subroutine  mix_dp
@@ -2187,7 +2192,7 @@ do 1000 j=jfirst,jlast
 #endif
 
       if( j>(js-2) .and. j<(je+2) ) then
-         do i=max(ifirst,is-1), min(ilast,ie+1) 
+         do i=max(ifirst,is-1), min(ilast,ie+1)
             pe(i,1,j) = ptop
          enddo
       endif
@@ -2205,7 +2210,7 @@ do 1000 j=jfirst,jlast
          enddo
 
          if( j>(js-2) .and. j<(je+2) ) then
-            do i=max(ifirst,is-1), min(ilast,ie+1) 
+            do i=max(ifirst,is-1), min(ilast,ie+1)
                pe(i,k,j) = p1d(i)
             enddo
             if( j>=js .and. j<=je) then
@@ -2279,7 +2284,7 @@ do 1000 j=jfirst,jlast
 !     rarea => gridstruct%rarea
 !     del6_u => gridstruct%del6_u
 !     del6_v => gridstruct%del6_v
-      
+
 !     sw_corner => gridstruct%sw_corner
 !     nw_corner => gridstruct%nw_corner
 !     se_corner => gridstruct%se_corner
@@ -2373,9 +2378,9 @@ do 1000 j=jfirst,jlast
 
  end subroutine init_ijk_mem
 
-#ifdef DO_TOFD                         
+#ifdef DO_TOFD
  subroutine Beljaars(dt, npx, npy, npz, ng, varflt, thv, delz, u, v, grav, gridstruct, flagstruct, bd, domain)
- 
+
     real, intent(in   ):: dt, grav
     integer, intent(in):: npx, npy, npz, ng
     type(fv_grid_type),  intent(INOUT), target :: gridstruct

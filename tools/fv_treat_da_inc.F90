@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -24,7 +24,7 @@
 !>@details This module includes functions to read in the externally calculated increments
 !! and applies the increments to the restart variables. Specifically, if the increments are
 !! zero, FV3 should reproduce directly from the restart files.
-!>@note Please treat the following subroutines as API interfaces, and consult the FV3 team 
+!>@note Please treat the following subroutines as API interfaces, and consult the FV3 team
 !! code modification proposal.
 !>@warning Expanding the list of increments without the proper knowledge of the FV3 dynamical
 !! core is EXTREMELY RISKY, especially for the non-hydrostatic scenario. Such a modification
@@ -37,7 +37,7 @@
 !-------------------------------------------------------------------------------
 
 #ifdef OVERLOAD_R4
-#define _GET_VAR1 get_var1_real 
+#define _GET_VAR1 get_var1_real
 #else
 #define _GET_VAR1 get_var1_double
 #endif
@@ -61,7 +61,7 @@ module fv_treat_da_inc_mod
 !     <td>fms_mod</td>
 !     <td>file_exist, open_namelist_file,close_file, error_mesg, FATAL,
 !         check_nml_error, stdlog,write_version_number,set_domain,
-!         mpp_clock_id, mpp_clock_begin, mpp_clock_end, CLOCK_SUBCOMPONENT, 
+!         mpp_clock_id, mpp_clock_begin, mpp_clock_end, CLOCK_SUBCOMPONENT,
 !         clock_flag_default, nullify_domain</td>
 !   </tr>
 !   <tr>
@@ -96,7 +96,7 @@ module fv_treat_da_inc_mod
 !   </tr>
 !   <tr>
 !     <td>sim_nc_mod</td>
-!     <td>open_ncfile, close_ncfile, get_ncdim1, get_var1_double, 
+!     <td>open_ncfile, close_ncfile, get_ncdim1, get_var1_double,
 !         get_var2_real, get_var3_r4, get_var1_real</td>
 !   </tr>
 !   <tr>
@@ -105,8 +105,13 @@ module fv_treat_da_inc_mod
 !   </tr>
 ! </table>
 
-  use fms_mod,           only: file_exist, read_data, &
-                               field_exist, write_version_number
+  use fms_mod,           only: write_version_number
+#if defined (FMS1_IO)
+  use fms_mod,           only: file_exists => file_exist, read_data, &
+                               field_exist
+#else
+  use fms2_io_mod,       only: file_exists, read_data
+#endif
   use mpp_mod,           only: mpp_error, FATAL, NOTE, mpp_pe
   use mpp_domains_mod,   only: mpp_get_tile_id, &
                                domain2d, &
@@ -121,7 +126,12 @@ module fv_treat_da_inc_mod
 #ifdef MAPL_MODE
   use MAPL
 #else
-  use constants_mod,     only: pi=>pi_8, omega, grav, kappa, &
+#if defined (SINGLE_FV)
+ use constantsr4_mod,    &
+#else
+ use constants_mod,      &
+#endif
+                         only: pi=>pi_8, omega, grav, kappa, &
                                rdgas, rvgas, cp_air
 #endif
 
@@ -172,7 +182,7 @@ contains
 #ifdef MAPL_MODE
   subroutine geos_get_da_increments(Atm, fv_domain, lon,lat,im,jm,km, &
                   u_amb, v_amb, t_amb, dp_amb, q_amb, o3_amb,  &
-                  u_inc, v_inc, t_inc, dp_inc, q_inc, o3_inc) 
+                  u_inc, v_inc, t_inc, dp_inc, q_inc, o3_inc)
     type(fv_atmos_type), intent(inout) :: Atm(:)
     type(domain2d),      intent(inout) :: fv_domain
     real,                      intent(inout) :: lon(im), lat(jm)
@@ -217,7 +227,7 @@ contains
   ! FV3 code wants lon 0:360
     IMsplit = IM/2
   ! Lons
-    tmp1d(        1:IMsplit) =          lon(IMsplit+1:IM     )    
+    tmp1d(        1:IMsplit) =          lon(IMsplit+1:IM     )
     tmp1d(IMsplit+1:IM     ) = 2.0*PI + lon(        1:IMsplit)
     lon = tmp1d
   ! ANA-BKG
@@ -388,7 +398,7 @@ contains
 #endif
 
   !=============================================================================
-  !>@brief The subroutine 'read_da_inc' reads the increments of the diagnostic variables 
+  !>@brief The subroutine 'read_da_inc' reads the increments of the diagnostic variables
   !! from the DA-generated files.
   !>@details Additional support of prognostic variables such as tracers can be assessed
   !! and added upon request.
@@ -447,7 +457,7 @@ contains
 
     fname = 'INPUT/'//Atm(1)%flagstruct%res_latlon_dynamics
 
-    if( file_exist(fname) ) then
+    if( file_exists(fname) ) then
       call open_ncfile( fname, ncid )        ! open the file
       call get_ncdim1( ncid, 'lon',   tsize(1) )
       call get_ncdim1( ncid, 'lat',   tsize(2) )
@@ -492,7 +502,7 @@ contains
     do j=js,je
       do i=is,ie
           j1 = jdc(i,j)
-        jbeg = min(jbeg, j1) 
+        jbeg = min(jbeg, j1)
         jend = max(jend, j1+1)
       enddo
     enddo
@@ -539,7 +549,7 @@ contains
     do j=js,je
       do i=is,ie+1
           j1 = jdc_c(i,j)
-        jbeg = min(jbeg, j1) 
+        jbeg = min(jbeg, j1)
         jend = max(jend, j1+1)
       enddo
     enddo
@@ -592,7 +602,7 @@ contains
     do j=js,je+1
       do i=is,ie
           j1 = jdc_d(i,j)
-        jbeg = min(jbeg, j1) 
+        jbeg = min(jbeg, j1)
         jend = max(jend, j1+1)
       enddo
     enddo
@@ -682,7 +692,7 @@ contains
     !---------------------------------------------------------------------------
 #endif
   end subroutine read_da_inc
- 
+
   !=============================================================================
   subroutine remap_coef( is, ie, js, je, isd, ied, jsd, jed, &
       im, jm, lon, lat, id1, id2, jdc, s2c, agrid )
@@ -698,7 +708,7 @@ contains
     real :: rdlat(jm)
     real:: a1, b1
     integer i,j, i1, i2, jc, i0, j0
-  
+
     do i=1,im-1
       rdlon(i) = 1. / (lon(i+1) - lon(i))
     enddo

@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 module fv_restart_mod
@@ -68,14 +68,14 @@ module fv_restart_mod
 !   </tr>
 !   <tr>
 !     <td>fv_grid_utils_mod</td>
-!     <td>ptop_min, fill_ghost, g_sum, 
+!     <td>ptop_min, fill_ghost, g_sum,
 !         make_eta_level, cubed_to_latlon, great_circle_dist</td>
 !   </tr>
 !   <tr>
 !     <td>fv_io_mod</td>
-!     <td>fv_io_init, fv_io_read_restart, fv_io_write_restart, 
-!        remap_restart, fv_io_register_restart, fv_io_register_nudge_restart, 
-!        fv_io_register_restart_BCs, fv_io_register_restart_BCs_NH, fv_io_write_BCs, 
+!     <td>fv_io_init, fv_io_read_restart, fv_io_write_restart,
+!        remap_restart, fv_io_register_restart, fv_io_register_nudge_restart,
+!        fv_io_register_restart_BCs, fv_io_register_restart_BCs_NH, fv_io_write_BCs,
 !        fv_io_read_BCs</td>
 !   </tr>
 !   <tr>
@@ -105,12 +105,12 @@ module fv_restart_mod
 !   <tr>
 !     <td>mpp_mod</td>
 !     <td>mpp_chksum, stdout, mpp_error, FATAL, NOTE, get_unit, mpp_sum,
-!         mpp_get_current_pelist, mpp_set_current_pelist, mpp_send, mpp_recv, 
+!         mpp_get_current_pelist, mpp_set_current_pelist, mpp_send, mpp_recv,
 !         mpp_sync_self, mpp_npes, mpp_pe, mpp_sync</td>
 !   </tr>
 !   <tr>
 !     <td>mpp_domains_mod</td>
-!     <td>mpp_get_compute_domain, mpp_get_data_domain, mpp_get_global_domain, 
+!     <td>mpp_get_compute_domain, mpp_get_data_domain, mpp_get_global_domain,
 !         mpp_update_domains, domain2d, DGRID_NE, CENTER, CORNER, NORTH, EAST,
 !         mpp_get_C2F_index, WEST, SOUTH, mpp_global_field</td>
 !   </tr>
@@ -132,8 +132,12 @@ module fv_restart_mod
 !   </tr>
 ! </table>
 
-
-  use constants_mod,       only: kappa, pi=>pi_8, omega, rdgas, grav, rvgas, cp_air, radius
+#if defined (SINGLE_FV)
+  use constantsr4_mod,    &
+#else
+  use constants_mod,      &
+#endif
+                           only: kappa, pi=>pi_8, omega, rdgas, grav, rvgas, cp_air, radius
   use fv_arrays_mod,       only: fv_atmos_type, fv_nest_type, fv_grid_bounds_type, R_GRID
   use fv_io_mod,           only: fv_io_init, fv_io_read_restart, fv_io_write_restart, &
                                  remap_restart, fv_io_register_restart, fv_io_register_nudge_restart, &
@@ -159,10 +163,14 @@ module fv_restart_mod
   use field_manager_mod,   only: MODEL_ATMOS
   use external_ic_mod,     only: get_external_ic, get_cubed_sphere_terrain
   use fv_eta_mod,          only: compute_dz_var, compute_dz_L32, set_hybrid_z
-  use boundary_mod,        only: fill_nested_grid, nested_grid_BC, update_coarse_grid 
+  use boundary_mod,        only: fill_nested_grid, nested_grid_BC, update_coarse_grid
   use field_manager_mod,   only: MODEL_ATMOS
   use fv_timing_mod,       only: timing_on, timing_off
-  use fms_mod,             only: file_exist
+#if defined (FMS1_IO)
+  use fms_mod,             only: file_exists => file_exist
+#else
+  use fms2_io_mod,       only: file_exists
+#endif
   use fv_treat_da_inc_mod, only: read_da_inc
 
   implicit none
@@ -175,7 +183,7 @@ module fv_restart_mod
   !--- private data type
   logical                       :: module_is_initialized = .FALSE.
 
-contains 
+contains
 
 
   subroutine fv_restart_init()
@@ -183,9 +191,9 @@ contains
     module_is_initialized = .TRUE.
   end subroutine fv_restart_init
 
-!>@brief The subroutine 'fv_restart' initializes the model state, including 
+!>@brief The subroutine 'fv_restart' initializes the model state, including
 !! prognaostic variables and several auxiliary pressure variables
-!>@details The modules also writes out restart files at the end of the 
+!>@details The modules also writes out restart files at the end of the
 !! model run, and prints out diagnostics of the initial state.
 !! There are several options to control the initialization process.
   subroutine fv_restart(fv_domain, Atm, dt_atmos, seconds, days, cold_start, grid_type, grids_on_this_pe)
@@ -240,15 +248,17 @@ contains
              Atm(n)%flagstruct%warm_start = .false. !resetting warm_start flag to avoid FATAL error below
           else
              if (is_master()) print*, 'Searching for nested grid restart file ', trim(fname)
-             cold_start_grids(n) = .not. file_exist(fname, Atm(n)%domain)
-             Atm(n)%flagstruct%warm_start = file_exist(fname, Atm(n)%domain)!resetting warm_start flag to avoid FATAL error below
+#if defined (FMS1_IO)
+             cold_start_grids(n) = .not. file_exists(fname, Atm(n)%domain)
+             Atm(n)%flagstruct%warm_start = file_exists(fname, Atm(n)%domain)!resetting warm_start flag to avoid FATAL error below
+#endif
           endif
        endif
 
        if (.not. grids_on_this_pe(n)) then
-          
+
           !Even if this grid is not on this PE, if it has child grids we must send
-          !along the data that is needed. 
+          !along the data that is needed.
           !This is a VERY complicated bit of code that attempts to follow the entire decision tree
           ! of the initialization without doing anything. This could very much be cleaned up.
 
@@ -260,24 +270,26 @@ contains
                    call fill_nested_grid_topo_halo(Atm(n), .false.)
                    call nested_grid_BC(Atm(n)%ps, Atm(n)%parent_grid%ps, Atm(n)%neststruct%nest_domain, &
                         Atm(n)%neststruct%ind_h, Atm(n)%neststruct%wt_h, 0, 0, &
-                        Atm(n)%npx, Atm(n)%npy,Atm(n)%bd, isg, ieg, jsg, jeg, proc_in=.false.)         
-                   call setup_nested_boundary_halo(Atm(n),.false.) 
+                        Atm(n)%npx, Atm(n)%npy,Atm(n)%bd, isg, ieg, jsg, jeg, proc_in=.false.)
+                   call setup_nested_boundary_halo(Atm(n),.false.)
                 else
                    call fill_nested_grid_topo(Atm(n), .false.)
-                   call setup_nested_boundary_halo(Atm(n),.false.) 
+                   call setup_nested_boundary_halo(Atm(n),.false.)
                    if ( Atm(n)%flagstruct%external_ic .and. grid_type < 4 ) call fill_nested_grid_data(Atm(n:n), .false.)
                 endif
              else
                 if (is_master()) print*, 'Searching for nested grid BC files ', trim(fname_ne), ' ', trim (fname_sw)
 
-                !!!! PROBLEM: file_exist doesn't know to look for fv_BC_ne.res.nest02.nc instead of fv_BC_ne.res.nc on coarse grid
-                if (file_exist(fname_ne, Atm(n)%domain) .and. file_exist(fname_sw, Atm(n)%domain)) then
+                !!!! PROBLEM: file_exists doesn't know to look for fv_BC_ne.res.nest02.nc instead of fv_BC_ne.res.nc on coarse grid
+#if defined (FMS1_IO)
+                if (file_exists(fname_ne, Atm(n)%domain) .and. file_exists(fname_sw, Atm(n)%domain)) then
                 else
                    if ( is_master() ) write(*,*) 'BC files not found, re-generating nested grid boundary conditions'
                    call fill_nested_grid_topo_halo(Atm(n), .false.)
                    call setup_nested_boundary_halo(Atm(n), .false.)
-                   Atm(N)%neststruct%first_step = .true.                   
+                   Atm(N)%neststruct%first_step = .true.
                 endif
+#endif
              end if
 
              if (.not. Atm(n)%flagstruct%hydrostatic .and. Atm(n)%flagstruct%make_nh .and. &
@@ -345,12 +357,12 @@ contains
           !Fill nested grid halo with ps
           call nested_grid_BC(Atm(n)%ps, Atm(n)%parent_grid%ps, Atm(n)%neststruct%nest_domain, &
                Atm(n)%neststruct%ind_h, Atm(n)%neststruct%wt_h, 0, 0, &
-               Atm(n)%npx, Atm(n)%npy,Atm(n)%bd, isg, ieg, jsg, jeg, proc_in=.true.)         
+               Atm(n)%npx, Atm(n)%npy,Atm(n)%bd, isg, ieg, jsg, jeg, proc_in=.true.)
        endif
     endif
     if ( Atm(n)%flagstruct%external_ic ) then
          if( is_master() ) write(*,*) 'Calling get_external_ic'
-         call get_external_ic(Atm(n:n), Atm(n)%domain, cold_start_grids(n)) 
+         call get_external_ic(Atm(n:n), Atm(n)%domain, cold_start_grids(n))
          if( is_master() ) write(*,*) 'IC generated from the specified external source'
     endif
 
@@ -373,11 +385,12 @@ contains
           Atm(N)%neststruct%first_step = .false.
           if (Atm(n)%neststruct%nested) then
              if ( Atm(n)%flagstruct%npz_rst /= 0 .and. Atm(n)%flagstruct%npz_rst /= Atm(n)%npz ) then
-                call setup_nested_boundary_halo(Atm(n)) 
+                call setup_nested_boundary_halo(Atm(n))
              else
                 !If BC file is found, then read them in. Otherwise we need to initialize the BCs.
                 if (is_master()) print*, 'Searching for nested grid BC files ', trim(fname_ne), ' ', trim (fname_sw)
-                if (file_exist(fname_ne, Atm(n)%domain) .and. file_exist(fname_sw, Atm(n)%domain)) then
+#if defined (FMS1_IO)
+                if (file_exists(fname_ne, Atm(n)%domain) .and. file_exists(fname_sw, Atm(n)%domain)) then
                    call fv_io_read_BCs(Atm(n))
                 else
                    if ( is_master() ) write(*,*) 'BC files not found, re-generating nested grid boundary conditions'
@@ -385,6 +398,7 @@ contains
                    call setup_nested_boundary_halo(Atm(n), .true.)
                    Atm(N)%neststruct%first_step = .true.
                 endif
+#endif
                 !Following line to make sure u and v are consistent across processor subdomains
                 call mpp_update_domains(Atm(n)%u, Atm(n)%v, Atm(n)%domain, gridtype=DGRID_NE, complete=.true.)
              endif
@@ -479,7 +493,7 @@ contains
             if ( .not. Atm(n)%flagstruct%external_ic ) then
             call init_case(Atm(n)%u,Atm(n)%v,Atm(n)%w,Atm(n)%pt,Atm(n)%delp,Atm(n)%q, &
                            Atm(n)%phis, Atm(n)%ps,Atm(n)%pe, Atm(n)%peln,Atm(n)%pk,Atm(n)%pkz, &
-                           Atm(n)%uc,Atm(n)%vc, Atm(n)%ua,Atm(n)%va,        & 
+                           Atm(n)%uc,Atm(n)%vc, Atm(n)%ua,Atm(n)%va,        &
                            Atm(n)%ak, Atm(n)%bk, Atm(n)%gridstruct, Atm(n)%flagstruct,&
                            Atm(n)%npx, Atm(n)%npy, Atm(n)%npz, Atm(n)%ng, &
                            ncnst, Atm(n)%flagstruct%nwat,  &
@@ -495,7 +509,7 @@ contains
             call init_double_periodic(Atm(n)%u,Atm(n)%v,Atm(n)%w,Atm(n)%pt, &
                                       Atm(n)%delp,Atm(n)%q,Atm(n)%phis, Atm(n)%ps,Atm(n)%pe, &
                                       Atm(n)%peln,Atm(n)%pk,Atm(n)%pkz, &
-                                      Atm(n)%uc,Atm(n)%vc, Atm(n)%ua,Atm(n)%va,        & 
+                                      Atm(n)%uc,Atm(n)%vc, Atm(n)%ua,Atm(n)%va,        &
                                       Atm(n)%ak, Atm(n)%bk, &
                                       Atm(n)%gridstruct, Atm(n)%flagstruct, &
                                       Atm(n)%npx, Atm(n)%npy, Atm(n)%npz, Atm(n)%ng, &
@@ -538,7 +552,7 @@ contains
           !if (Atm(n)%neststruct%nested) then
           ! Only fill nested-grid data if external_ic is called for the cubed-sphere grid
           if (Atm(n)%neststruct%nested) then
-             call setup_nested_boundary_halo(Atm(n), .true.) 
+             call setup_nested_boundary_halo(Atm(n), .true.)
              if (Atm(n)%flagstruct%external_ic .and.  .not. Atm(n)%flagstruct%nggps_ic .and. grid_type < 4 ) then
                 call fill_nested_grid_data(Atm(n:n))
              endif
@@ -692,7 +706,7 @@ contains
     if ( .not. Atm(n)%flagstruct%srf_init ) then
          call cubed_to_latlon(Atm(n)%u, Atm(n)%v, Atm(n)%ua, Atm(n)%va, &
               Atm(n)%gridstruct, &
-              Atm(n)%npx, Atm(n)%npy, Atm(n)%npz, 1, &              
+              Atm(n)%npx, Atm(n)%npy, Atm(n)%npz, 1, &
               Atm(n)%gridstruct%grid_type, Atm(n)%domain, &
               Atm(n)%gridstruct%nested, Atm(n)%flagstruct%c2l_ord, Atm(n)%bd)
          do j=jsc,jec
@@ -740,7 +754,7 @@ contains
     ncnst = Atm%ncnst
     isc = Atm%bd%isc; iec = Atm%bd%iec; jsc = Atm%bd%jsc; jec = Atm%bd%jec
     is  = Atm%bd%is ; ie  = Atm%bd%ie ; js  = Atm%bd%js ; je  = Atm%bd%je
-    npz = Atm%npz    
+    npz = Atm%npz
     nwat = Atm%flagstruct%nwat
 
 #ifdef MAPL_MODE
@@ -823,7 +837,7 @@ contains
 
     call nested_grid_BC(Atm%pt, Atm%parent_grid%pt, Atm%neststruct%nest_domain, &
          Atm%neststruct%ind_h, Atm%neststruct%wt_h, 0, 0, &
-         Atm%npx, Atm%npy, npz, Atm%bd, isg, ieg, jsg, jeg, proc_in=process)    
+         Atm%npx, Atm%npy, npz, Atm%bd, isg, ieg, jsg, jeg, proc_in=process)
 
     if (.not. Atm%flagstruct%hydrostatic) then
 
@@ -894,13 +908,13 @@ contains
     call nested_grid_BC(Atm%phis, Atm%parent_grid%phis, Atm%neststruct%nest_domain, &
          Atm%neststruct%ind_h, Atm%neststruct%wt_h, 0, 0, &
          Atm%npx, Atm%npy, Atm%bd, isg, ieg, jsg, jeg, proc_in=proc_in)
-    
+
   end subroutine fill_nested_grid_topo_halo
 
-!>@brief The subroutine 'fill_nested_grid_topo' fills the nested grid with topo 
+!>@brief The subroutine 'fill_nested_grid_topo' fills the nested grid with topo
 !! to enable boundary smoothing.
 !>@details Interior topography is then over-written in get_external_ic.
-  subroutine fill_nested_grid_topo(Atm, proc_in) 
+  subroutine fill_nested_grid_topo(Atm, proc_in)
     type(fv_atmos_type), intent(INOUT) :: Atm
     logical, intent(IN), OPTIONAL :: proc_in
     real, allocatable :: g_dat(:,:,:)
@@ -937,7 +951,7 @@ contains
        call mpp_global_field( &
             Atm%parent_grid%domain, &
             Atm%parent_grid%phis(isd_p:ied_p,jsd_p:jed_p), g_dat(isg:,jsg:,1), position=CENTER)
-       if (mpp_pe() == sending_proc) then 
+       if (mpp_pe() == sending_proc) then
           do p=1,size(Atm%pelist)
              call mpp_send(g_dat,size(g_dat),Atm%pelist(p))
           enddo
@@ -987,8 +1001,8 @@ contains
     jed = Atm(1)%bd%jed
     ncnst = Atm(1)%ncnst
     isc = Atm(1)%bd%isc; iec = Atm(1)%bd%iec; jsc = Atm(1)%bd%jsc; jec = Atm(1)%bd%jec
-    npz     = Atm(1)%npz    
-    
+    npz     = Atm(1)%npz
+
     gid = mpp_pe()
 
     sending_proc = Atm(1)%parent_grid%pelist(1) + (Atm(1)%neststruct%parent_tile-1)*Atm(1)%parent_grid%npes_per_tile
@@ -1000,8 +1014,8 @@ contains
     call mpp_get_global_domain( Atm(1)%parent_grid%domain, &
          isg, ieg, jsg, jeg, xsize=npx_p, ysize=npy_p)
 
-    if (process) then 
-       
+    if (process) then
+
        call mpp_error(NOTE, "FILLING NESTED GRID DATA")
 
     else
@@ -1067,7 +1081,7 @@ contains
 
     end do
 
-    !Note that we do NOT fill in phis (surface geopotential), which should 
+    !Note that we do NOT fill in phis (surface geopotential), which should
     !be computed exactly instead of being interpolated.
 
 
@@ -1131,7 +1145,7 @@ contains
     call mpp_sync_self
 
     call timing_off('COMM_TOTAL')
-    if (process) then 
+    if (process) then
        allocate(pt_coarse(isd:ied,jsd:jed,npz))
        call fill_nested_grid(pt_coarse, g_dat, &
             Atm(1)%neststruct%ind_h, Atm(1)%neststruct%wt_h, &
@@ -1258,7 +1272,7 @@ contains
     end if
 
 #endif
-    deallocate(g_dat) 
+    deallocate(g_dat)
 
     !u
 
@@ -1322,10 +1336,10 @@ contains
 
   end subroutine fill_nested_grid_data
 
-  !>@brief The subroutine ' fill_nested_grid_data_end' 
+  !>@brief The subroutine ' fill_nested_grid_data_end'
   !! actually sets up the coarse-grid TOPOGRAPHY.
   subroutine fill_nested_grid_data_end(Atm, proc_in)
-    type(fv_atmos_type), intent(INOUT) :: Atm  
+    type(fv_atmos_type), intent(INOUT) :: Atm
     logical, intent(IN), OPTIONAL :: proc_in
     real, allocatable :: g_dat(:,:,:), pt_coarse(:,:,:)
     integer :: i,j,k,nq, sphum, ncnst, istart, iend, npz
@@ -1350,8 +1364,8 @@ contains
     jed = Atm%bd%jed
     ncnst = Atm%ncnst
     isc = Atm%bd%isc; iec = Atm%bd%iec; jsc = Atm%bd%jsc; jec = Atm%bd%jec
-    npz     = Atm%npz    
-    
+    npz     = Atm%npz
+
           isd_p = Atm%parent_grid%bd%isd
           ied_p = Atm%parent_grid%bd%ied
           jsd_p = Atm%parent_grid%bd%jsd
@@ -1414,7 +1428,7 @@ contains
          Atm%flagstruct%moist_phys, .true., Atm%flagstruct%nwat, Atm%domain)
 #endif
 
- 
+
 
   end subroutine fill_nested_grid_data_end
 
@@ -1538,7 +1552,7 @@ contains
         do n=1,steps
            write(file_unit) Atm(1)%idiag%efx(n)
            write(file_unit) Atm(1)%idiag%mtq(n)    ! time series global mountain torque
-           !write(file_unit) Atm(1)%idiag%efx_nest(n)  
+           !write(file_unit) Atm(1)%idiag%efx_nest(n)
         enddo
         close(unit=file_unit)
     endif
@@ -1568,7 +1582,7 @@ contains
   real, intent(in) :: cosa_s(isd:ied,jsd:jed)
   real, intent(in) :: rsin2(isd:ied,jsd:jed)
 
-! Local 
+! Local
   real, dimension(isd:ied,jsd:jed):: utmp, vtmp
   real, parameter:: t11=27./28., t12=-13./28., t13=3./7., t14=6./7., t15=3./28.
   real, parameter:: a1 =  0.5625
@@ -1591,7 +1605,7 @@ contains
      npt = -2
   endif
 
-  if ( nested) then  
+  if ( nested) then
 
      do j=jsd+1,jed-1
         do i=isd,ied
@@ -1610,7 +1624,7 @@ contains
            vtmp(i,j) = a2*(v(i-1,j)+v(i+2,j)) + a1*(v(i,j)+v(i+1,j))
         enddo
         i = isd
-        vtmp(i,j) = 0.5*(v(i,j)+v(i+1,j)) 
+        vtmp(i,j) = 0.5*(v(i,j)+v(i+1,j))
         i = ied
         vtmp(i,j) = 0.5*(v(i,j)+v(i+1,j))
      enddo
@@ -1739,7 +1753,7 @@ contains
 ! Xdir:
      if( is==1 .and. .not. nested ) then
         do j=js-1,je+1
-           uc(0,j) = c1*utmp(-2,j) + c2*utmp(-1,j) + c3*utmp(0,j) 
+           uc(0,j) = c1*utmp(-2,j) + c2*utmp(-1,j) + c3*utmp(0,j)
            uc(1,j) = ( t14*(utmp( 0,j)+utmp(1,j))    &
                      + t12*(utmp(-1,j)+utmp(2,j))    &
                      + t15*(utmp(-2,j)+utmp(3,j)) )*rsin_u(1,j)
@@ -1749,11 +1763,11 @@ contains
 
      if( (ie+1)==npx .and. .not. nested ) then
         do j=js-1,je+1
-           uc(npx-1,j) = c1*utmp(npx-3,j)+c2*utmp(npx-2,j)+c3*utmp(npx-1,j) 
+           uc(npx-1,j) = c1*utmp(npx-3,j)+c2*utmp(npx-2,j)+c3*utmp(npx-1,j)
            uc(npx,j) = (t14*(utmp(npx-1,j)+utmp(npx,j))+      &
                         t12*(utmp(npx-2,j)+utmp(npx+1,j))     &
                       + t15*(utmp(npx-3,j)+utmp(npx+2,j)))*rsin_u(npx,j)
-           uc(npx+1,j) = c3*utmp(npx,j)+c2*utmp(npx+1,j)+c1*utmp(npx+2,j) 
+           uc(npx+1,j) = c3*utmp(npx,j)+c2*utmp(npx+1,j)+c1*utmp(npx+2,j)
         enddo
      endif
 
@@ -1839,7 +1853,7 @@ contains
   real, intent(in) :: rsin2(isd:ied,jsd:jed)
   logical, intent(in) :: nested
 
-! Local 
+! Local
   real, dimension(isd:ied,jsd:jed):: utmp, vtmp
   real, parameter:: t11=27./28., t12=-13./28., t13=3./7., t14=6./7., t15=3./28.
   real, parameter:: a1 =  0.5625
@@ -1862,7 +1876,7 @@ contains
      npt = -2
   endif
 
-  if ( nested) then  
+  if ( nested) then
 
      do j=jsd+1,jed-1
         do i=isd,ied
@@ -1881,7 +1895,7 @@ contains
            vtmp(i,j) = a2*(v(i-1,j)+v(i+2,j)) + a1*(v(i,j)+v(i+1,j))
         enddo
         i = isd
-        vtmp(i,j) = 0.5*(v(i,j)+v(i+1,j)) 
+        vtmp(i,j) = 0.5*(v(i,j)+v(i+1,j))
         i = ied
         vtmp(i,j) = 0.5*(v(i,j)+v(i+1,j))
      enddo

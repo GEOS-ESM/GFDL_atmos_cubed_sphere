@@ -10,12 +10,23 @@ module nwp_nudge_mod
  use fv_mapz_mod,       only: mappm
  use fv_mp_mod,         only: is,js,ie,je, isd,jsd,ied,jed, gid, masterproc, domain, mp_reduce_sum
  use fv_timing_mod,     only: timing_on, timing_off
- use constants_mod,     only: pi, grav, rdgas, cp_air, kappa, radius
+ #if defined (SINGLE_FV)
+ use constantsr4_mod,    &
+#else
+ use constants_mod,      &
+#endif
+                        only: pi, grav, rdgas, cp_air, kappa, radius
  use time_manager_mod,  only: time_type,  get_time, get_date
  use mpp_mod,           only: mpp_error, FATAL, stdlog
- use fms_mod,           only: write_version_number, open_namelist_file, &
-                              check_nml_error, file_exist, close_file,  &
-                              read_data, field_exist 
+ use fms_mod,           only: write_version_number, &
+                              check_nml_error
+#if defined (FMS1_IO)
+ use fms_mod,           only: open_namelist_file, &
+                              file_exists => file_exist, &
+                              close_file, read_data, field_exist
+#else
+ use fms2_io_mod,       only: file_exists, close_file, variable_exists, read_data
+#endif
  use fms_io_mod,        only: field_size
  use mpp_domains_mod,   only: mpp_update_domains
 
@@ -56,12 +67,12 @@ module nwp_nudge_mod
  character(len=128):: file_names(nfile_max)
  character(len=128):: track_file_name
  integer :: nfile_total = 0       ! =5 for 1-day (if datasets are 6-hr apart)
- real(FVPRC)    :: p_wvp = 100.E2        ! cutoff level for specific humidity nudging 
+ real(FVPRC)    :: p_wvp = 100.E2        ! cutoff level for specific humidity nudging
  integer :: kord_data = 8
 
  logical :: tc_mask = .false.
- logical :: strong_mask = .true. 
- logical :: ibtrack = .false. 
+ logical :: strong_mask = .true.
+ logical :: ibtrack = .false.
  logical :: nudge_debug = .false.
  logical :: nudge_t     = .false.
  logical :: nudge_q     = .false.
@@ -79,22 +90,22 @@ module nwp_nudge_mod
  real(FVPRC) :: tau_tpw    = 86400.       ! 1-day
  real(FVPRC) :: tau_winds  = 21600.       !  6-hr
  real(FVPRC) :: tau_t      = 86400.
- real(FVPRC) :: tau_virt   = 86400. 
+ real(FVPRC) :: tau_virt   = 86400.
  real(FVPRC) :: tau_hght   = 86400.
 
  real(FVPRC) :: q_min      = 1.E-8
  real(FVPRC) :: q_rat
 
- integer :: nf_uv = 0 
- integer :: nf_t  = 2 
+ integer :: nf_uv = 0
+ integer :: nf_t  = 2
 
 ! starting layer (top layer is sponge layer and is skipped)
- integer :: kstart = 2 
+ integer :: kstart = 2
 
 ! skip "kbot" layers
- integer :: kbot_winds = 0 
- integer :: kbot_t     = 0 
- integer :: kbot_q     = 1 
+ integer :: kbot_winds = 0
+ integer :: kbot_t     = 0
+ integer :: kbot_q     = 1
 
 !-- Tropical cyclones  --------------------------------------------------------------------
 
@@ -129,7 +140,7 @@ module nwp_nudge_mod
                           r_min, r_inc, ibtrack, track_file_name, file_names
 
  contains
- 
+
 
   subroutine do_nwp_nudge ( Time, dt, npz, ps_dt, u_dt, v_dt, t_dt, q_dt, zvir, &
                             ak, bk, ts, ps, delp, ua, va, pt, nwat, q, phis )
@@ -164,7 +175,7 @@ module nwp_nudge_mod
   real(FVPRC) :: dbk, rdt, press(npz), profile(npz), prof_t(npz), prof_q(npz), du, dv
 
 
-  if ( .not. module_is_initialized ) then 
+  if ( .not. module_is_initialized ) then
         call mpp_error(FATAL,'==> Error from do_nwp_nudge: module not initialized')
   endif
 
@@ -184,7 +195,7 @@ module nwp_nudge_mod
   do k=1,npz
      press(k) = 0.5*(ak(k) + ak(k+1)) + 0.5*(bk(k)+bk(k+1))*1.E5
      if ( press(k) < 30.E2 ) then
-          profile(k) =  max(0.01, press(k)/30.E2) 
+          profile(k) =  max(0.01, press(k)/30.E2)
      endif
   enddo
   profile(1) = 0.
@@ -193,16 +204,16 @@ module nwp_nudge_mod
   prof_t(:) = 1.
   do k=1,npz
      if ( press(k) < 30.E2 ) then
-          prof_t(k) =  max(0.01, press(k)/30.E2) 
+          prof_t(k) =  max(0.01, press(k)/30.E2)
      endif
   enddo
   prof_t(1) = 0.
- 
+
 ! Water vapor:
   prof_q(:) = 1.
   do k=1,npz
      if ( press(k) < 300.E2 ) then
-          prof_q(k) =  max(0., press(k)/300.E2) 
+          prof_q(k) =  max(0., press(k)/300.E2)
      endif
   enddo
   prof_q(1) = 0.
@@ -214,7 +225,7 @@ module nwp_nudge_mod
           ptmp = ak(k+1) + bk(k+1)*1.E5
           if ( ptmp > p_trop ) then
                k_trop = k
-               exit              
+               exit
           endif
        enddo
   endif
@@ -297,7 +308,7 @@ module nwp_nudge_mod
         rdt = dt / (tau_hght/factor + dt)
 
         do j=js,je
- 
+
            do i=is,ie
               pe1(i) = ak(1)
               peln(i,1) = log(pe1(i))
@@ -582,17 +593,17 @@ module nwp_nudge_mod
        call get_int_hght(h2, npz, ak, bk, ps(is:ie,js:je), delp, ps_dat(is:ie,js:je,2), t_dat(:,:,:,2))
 !      if(nudge_debug) call prt_maxmin('H_2', h2, is, ie, js, je, 0, 1, 1./grav, master)
 
-       gz_int(:,:) = alpha*h1(:,:) + beta*h2(:,:) 
+       gz_int(:,:) = alpha*h1(:,:) + beta*h2(:,:)
   endif
 
-  deallocate ( ut ) 
-  deallocate ( vt ) 
+  deallocate ( ut )
+  deallocate ( vt )
 
  end subroutine get_obs
 
 
  subroutine nwp_nudge_init(npz, zvir, ak, bk, ts, phis)
-  integer,  intent(in):: npz           ! vertical dimension 
+  integer,  intent(in):: npz           ! vertical dimension
   real(FVPRC),     intent(in):: zvir
   real(FVPRC), intent(in), dimension(isd:ied,jsd:jed):: phis
   real(FVPRC), intent(in), dimension(npz+1):: ak, bk
@@ -612,15 +623,8 @@ module nwp_nudge_mod
 
    track_file_name = "No_File_specified"
 
-    if( file_exist( 'input.nml' ) ) then
-       unit = open_namelist_file ()
-       io = 1
-       do while ( io .ne. 0 )
-          read( unit, nml = nwp_nudge_nml, iostat = io, end = 10 )
-          ierr = check_nml_error(io,'nwp_nudge_nml')
-       end do
-10     call close_file ( unit )
-    end if
+    read (input_nml_file, nml=nwp_nudge_nml, iostat=io)
+    ierr = check_nml_error (io, 'nwp_nudge_nml')
     call write_version_number (version, tagname)
     if ( master ) then
          write( stdlog(), nml = nwp_nudge_nml )
@@ -672,7 +676,7 @@ module nwp_nudge_mod
     do j=1,jm
        lat(j) = lat(j) * deg2rad
     enddo
- 
+
     allocate ( ak0(km+1) )
     allocate ( bk0(km+1) )
 
@@ -682,7 +686,7 @@ module nwp_nudge_mod
 ! Note: definition of NCEP hybrid is p(k) = a(k)*1.E5 + b(k)*ps
     ak0(:) = ak0(:) * 1.E5
 
-! Limiter to prevent NAN at top during remapping 
+! Limiter to prevent NAN at top during remapping
     ak0(1) = max(1.e-8, ak0(1))
 
    if ( master ) then
@@ -717,7 +721,7 @@ module nwp_nudge_mod
 
 
     module_is_initialized = .true.
-    
+
  end subroutine nwp_nudge_init
 
 
@@ -738,10 +742,10 @@ module nwp_nudge_mod
   logical:: read_ts = .true.
   logical:: land_ts = .false.
 
-  if( .not. file_exist(fname) ) then
+  if( .not. file_exists(fname) ) then
      call mpp_error(FATAL,'==> Error from get_ncep_analysis: file not found')
   else
-     if(master) write(*,*) 'Reading NCEP anlysis file:', fname 
+     if(master) write(*,*) 'Reading NCEP anlysis file:', fname
   endif
 
 !----------------------------------
@@ -793,7 +797,7 @@ module nwp_nudge_mod
                  endif
               enddo
 !-------------------------------------------------------
-! Replace TS over interior land with zonal mean SST/Ice 
+! Replace TS over interior land with zonal mean SST/Ice
 !-------------------------------------------------------
               if ( npt /= 0 ) then
                    tmean= tmean / real(npt)
@@ -838,7 +842,7 @@ module nwp_nudge_mod
 
       endif     ! read_ts
 
-      deallocate ( wk2 ) 
+      deallocate ( wk2 )
 
 ! Read in temperature:
       allocate (  wk3(im,jm,km) )
@@ -913,7 +917,7 @@ module nwp_nudge_mod
 
    endif
 
-   deallocate ( wk3 ) 
+   deallocate ( wk3 )
 
   nfile = nfile + 1
 
@@ -1018,8 +1022,8 @@ module nwp_nudge_mod
 ! lon: 0.5, 1.5, ..., 359.5
 ! lat: -89.5, -88.5, ... , 88.5, 89.5
 
-  delx = 360./real(i_sst) 
-  dely = 180./real(j_sst) 
+  delx = 360./real(i_sst)
+  dely = 180./real(j_sst)
 
   jt = 1
   do 5000 j=1,j_sst
@@ -1100,7 +1104,7 @@ module nwp_nudge_mod
         do i=is,ie
            pn0(i,k) = log( ak0(k) + bk0(k)*ps0(i,j) )
         enddo
-     enddo 
+     enddo
 !------
 ! Model
 !------
@@ -1163,7 +1167,7 @@ module nwp_nudge_mod
            pe0(i,k) = ak0(k) + bk0(k)*ps0(i,j)
            pn0(i,k) = log(pe0(i,k))
        enddo
-     enddo 
+     enddo
 !------
 ! Model
 !------
@@ -1317,10 +1321,10 @@ module nwp_nudge_mod
 
     deallocate ( ak0 )
     deallocate ( bk0 )
-    deallocate ( lat ) 
-    deallocate ( lon ) 
+    deallocate ( lat )
+    deallocate ( lon )
 
-    deallocate ( gz0 ) 
+    deallocate ( gz0 )
 
  end subroutine nwp_nudge_end
 
@@ -1353,7 +1357,7 @@ module nwp_nudge_mod
       do j=js, je
          do i=is, ie
             dist = great_circle_dist(pos, agrid(i,j,1:2), radius)
-            if( dist < 5.*r_vor  ) then 
+            if( dist < 5.*r_vor  ) then
                 if ( strong_mask ) then
                      mask(i,j) = mask(i,j) * ( 1. - exp(-(0.5*dist/r_vor)**2)*min(1.,(slp_env-slp_o)/5.E2) )
                 else
@@ -1419,7 +1423,7 @@ module nwp_nudge_mod
 ! Advance (local) time
     call get_date(fv_time, year, month, day, hour, minute, second)
     if ( year /= year_track_data ) then
-        if (master) write(*,*) 'Warning: The year in storm track data is not the same as model year' 
+        if (master) write(*,*) 'Warning: The year in storm track data is not the same as model year'
         return
      endif
     time = fv_time
@@ -1527,9 +1531,9 @@ module nwp_nudge_mod
         p_sum = 0.
       do j=js, je
          do i=is, ie
-            if( dist(i,j)<(r_vor+del_r) .and. dist(i,j)>r_vor .and. phis(i,j)<200.*grav ) then 
+            if( dist(i,j)<(r_vor+del_r) .and. dist(i,j)>r_vor .and. phis(i,j)<200.*grav ) then
                 p_count = p_count + 1.
-                  p_sum = p_sum + slp(i,j) 
+                  p_sum = p_sum + slp(i,j)
             endif
          enddo
       enddo
@@ -1591,7 +1595,7 @@ module nwp_nudge_mod
                 p_hi = p_env - (p_env-slp_o) * exp( -5.0*f1**2 )    ! upper bound
                 p_lo = p_env - (p_env-slp_o) * exp( -2.0*f1**2 )    ! lower bound
 
-                if ( ps(i,j) > p_hi ) then 
+                if ( ps(i,j) > p_hi ) then
 ! Under-development:
                      delps = relx*(ps(i,j) - p_hi)   ! Note: ps is used here to prevent
                                                      !       over deepening over terrain
@@ -1600,7 +1604,7 @@ module nwp_nudge_mod
                      delps = relx*(slp(i,j) - p_lo)  ! Note: slp is used here
                 else
                      goto 400        ! do nothing; proceed to next storm
-                endif 
+                endif
 
                 mass_sink = mass_sink + delps*area(i,j)
 
@@ -1633,7 +1637,7 @@ module nwp_nudge_mod
 !==========================================================================================
 
             endif
-400     continue 
+400     continue
         enddo        ! end i-loop
       enddo        ! end j-loop
 
@@ -1644,7 +1648,7 @@ module nwp_nudge_mod
       do j=js, je
          do i=is, ie
             if( dist(i,j)<6.*r_vor .and. dist(i,j)>r_vor+del_r ) then
-                p_sum = p_sum + area(i,j) 
+                p_sum = p_sum + area(i,j)
             endif
          enddo
       enddo
@@ -1813,9 +1817,9 @@ module nwp_nudge_mod
         p_sum = 0.
       do j=js, je
          do i=is, ie
-            if( dist(i,j)<(r_vor+del_r) .and. dist(i,j)>r_vor .and. phis(i,j)<250.*grav ) then 
+            if( dist(i,j)<(r_vor+del_r) .and. dist(i,j)>r_vor .and. phis(i,j)<250.*grav ) then
                 p_count = p_count + 1.
-                  p_sum = p_sum + slp(i,j) 
+                  p_sum = p_sum + slp(i,j)
             endif
          enddo
       enddo
@@ -1874,7 +1878,7 @@ module nwp_nudge_mod
                       relx = relx0 * exp( -4.*f1**2 )
 ! Compute p_obs: assuming local radial distributions of slp are Gaussian
 
-                      if ( ps(i,j) > p_hi ) then 
+                      if ( ps(i,j) > p_hi ) then
 ! under-development
                            delps = relx*(ps(i,j) - p_hi)   ! Note: ps is used here to prevent
                                                            !       over deepening over terrain
@@ -1888,7 +1892,7 @@ module nwp_nudge_mod
                       else
 ! Leave the model alone If the ps/slp is in between [p_lo,p_hi]
                            goto 400        ! do nothing; proceed to next storm
-                      endif 
+                      endif
 !===============================================================================================
 
                    mass_sink = mass_sink + delps*area(i,j)
@@ -1910,7 +1914,7 @@ module nwp_nudge_mod
                       va(i,j,k) = va(i,j,k) * ratio
                    enddo
             endif
-400     continue 
+400     continue
         enddo        ! end i-loop
       enddo        ! end j-loop
 
@@ -1921,7 +1925,7 @@ module nwp_nudge_mod
       do j=js, je
          do i=is, ie
             if( dist(i,j)<(6.*r_vor+del_r) .and. dist(i,j)>r_vor+del_r ) then
-                p_sum = p_sum + area(i,j) 
+                p_sum = p_sum + area(i,j)
             endif
          enddo
       enddo
@@ -1971,12 +1975,12 @@ module nwp_nudge_mod
     real*4, intent(in)::  lat_obs(nobs)
     real*4, intent(in)::     mslp(nobs)        ! observed SLP in pa
     real*4, intent(in)::  slp_out(nobs)        ! slp at r_out
-    real*4, intent(in)::    r_out(nobs)        ! 
+    real*4, intent(in)::    r_out(nobs)        !
     real*4, intent(in):: time_obs(nobs)
     real(FVPRC), optional, intent(in):: stime
     real(FVPRC), optional, intent(out):: fact
 ! Output
-    real(FVPRC), intent(out):: x_o , y_o      ! position of the storm center 
+    real(FVPRC), intent(out):: x_o , y_o      ! position of the storm center
     real(FVPRC), intent(out):: slp_o          ! Observed sea-level-pressure (pa)
     real(FVPRC), intent(out):: r_vor, p_vor
 ! Internal:
@@ -1997,7 +2001,7 @@ module nwp_nudge_mod
       call get_date(time, year, month, day, hour, minute, second)
 
       if ( year /= year_track_data ) then
-           if (master) write(*,*) 'Warning: The year in storm track data is not the same as model year' 
+           if (master) write(*,*) 'Warning: The year in storm track data is not the same as model year'
            return
       endif
 
@@ -2018,7 +2022,7 @@ module nwp_nudge_mod
 ! Linear in (lon,lat) space
                    x_o = lon_obs(n) + (lon_obs(n+1)-lon_obs(n)) * fac
                    y_o = lat_obs(n) + (lat_obs(n+1)-lat_obs(n)) * fac
-#else 
+#else
                  p1(1) = lon_obs(n);     p1(2) = lat_obs(n)
                  p2(1) = lon_obs(n+1);   p2(2) = lat_obs(n+1)
                  call intp_great_circle(fac, p1, p2, x_o, y_o)
@@ -2086,7 +2090,7 @@ module nwp_nudge_mod
          call mpp_error(FATAL,'==> Error in reading best track data')
     endif
 
-    do while ( ts_name=='start' ) 
+    do while ( ts_name=='start' )
 
                nstorms  = nstorms + 1
        nobs_tc(nstorms) = nobs       ! observation count for this storm
@@ -2135,7 +2139,7 @@ module nwp_nudge_mod
              y_obs(nobs,nstorms) = lat_deg * deg2rad
           if ( GMT == 'GMT' ) then
 !                                  Transfrom x from (-180 , 180) to (0, 360) then to radian
-             if ( lon_deg < 0 ) then 
+             if ( lon_deg < 0 ) then
                   x_obs(nobs,nstorms) = (360.+lon_deg) * deg2rad
              else
                   x_obs(nobs,nstorms) = (360.-lon_deg) * deg2rad
@@ -2151,7 +2155,7 @@ module nwp_nudge_mod
 
   close(unit)
 
-  if(master) then 
+  if(master) then
      write(*,*) 'TC vortex breeding: total storms=', nstorms
      if ( nstorms/=0 ) then
           do n=1,nstorms
@@ -2180,7 +2184,7 @@ module nwp_nudge_mod
 
       if( month /= 1 ) then
           do m=1, month-1
-            if( m==2  .and. leap_year(year) ) then 
+            if( m==2  .and. leap_year(year) ) then
                 ds = ds + 29
             else
                 ds = ds + days(m)
@@ -2208,7 +2212,7 @@ module nwp_nudge_mod
 !
 ! No leap years prior to 0000
 !
-      parameter ( ny00 = 0000 )   ! The threshold for starting leap-year 
+      parameter ( ny00 = 0000 )   ! The threshold for starting leap-year
 
       if( ny >= ny00 ) then
          if( mod(ny,100) == 0. .and. mod(ny,400) == 0. ) then
