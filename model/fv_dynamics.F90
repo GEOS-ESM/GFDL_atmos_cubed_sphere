@@ -1053,11 +1053,15 @@ contains
           do k=1, npz
              if ( pfull(k) < rf_cutoff ) then
                   rff(k) = dt/tau0*sin(0.5*pi*log(rf_cutoff/pfull(k))/log(rf_cutoff/ptop))**2
-! Re-FACTOR rf
-                  if( is_master() ) write(6,*) k, 0.01*pfull(k), dt/(rff(k)*sday)
                   kmax = k
                   rff(k) = 1.d0 / (1.0d0+rff(k))
                    rf(k) = rff(k)
+                  ! Added safety check to prevent a log(1.0) divide-by-zero crash
+                  if( is_master() ) then
+                      if (rff(k) < 1.0d0) then
+                          write(6,*) k, 0.01*pfull(k), (-dt / log(rff(k))) / sday
+                      endif
+                  endif
              else
                   exit
              endif
