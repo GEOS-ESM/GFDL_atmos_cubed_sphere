@@ -834,6 +834,9 @@ module fv_control_mod
          write(*,199) 'Using p_split = ', p_split
       endif
 
+      ! Safety check on q_split and z_tracer
+      if ( q_split /= 0) z_tracer = .false.  
+
       if (Atm(n)%neststruct%nested) then
          do i=1,n-1
             if (Atm(i)%grid_number == parent_grid_num) then

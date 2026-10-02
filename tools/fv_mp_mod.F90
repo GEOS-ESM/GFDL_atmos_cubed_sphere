@@ -137,8 +137,9 @@
       integer :: isc, iec, jsc, jec
 
       public mp_start, mp_assign_gid, mp_barrier, mp_stop!, npes
-      public domain_decomp, mp_bcst, mp_reduce_max, mp_reduce_sum, mp_gather
-      public mp_reduce_min
+      public domain_decomp, mp_bcst, mp_gather
+      public mp_reduce_min, mp_reduce_max, mp_reduce_sum
+      public mp_ireduce_max, mp_wait_reduce_max
       public fill_corners, XDir, YDir
       public switch_current_domain, switch_current_Atm, broadcast_domains
       public is_master, setup_master
@@ -199,6 +200,14 @@
         MODULE PROCEDURE mp_bcst_2d_i
         MODULE PROCEDURE mp_bcst_3d_i
         MODULE PROCEDURE mp_bcst_4d_i
+      END INTERFACE
+
+      INTERFACE mp_ireduce_max
+        MODULE PROCEDURE mp_ireduce_max_r4_1d
+      END INTERFACE
+
+      INTERFACE mp_wait_reduce_max
+        MODULE PROCEDURE mp_wait_reduce_max_r4_1d
       END INTERFACE
 
       !> The interface 'mp_reduce_min' contains routines that call SPMD_REDUCE. 
@@ -2396,6 +2405,45 @@ end subroutine switch_current_Atm
 ! ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ !
 !-------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+! vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv !
+!       
+!     mp_ireduce_max_r4_1d :: START non-blocking SPMD REDUCE_MAX 
+!
+      subroutine mp_ireduce_max_r4_1d(mymax, npts, req)
+         integer, intent(IN)    :: npts
+         real(kind=4), intent(IN) :: mymax(npts)
+         integer, intent(OUT)   :: req         ! MPI request handle
+
+         req = MPI_REQUEST_NULL
+         ! Pass MPI_IN_PLACE as the send buffer, and mymax as the receive buffer
+         call MPI_IALLREDUCE( MPI_IN_PLACE, mymax, npts, MPI_REAL, MPI_MAX, &
+                              commglobal, req, ierror )
+
+      end subroutine mp_ireduce_max_r4_1d
+!     
+! ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ !
+!-------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------------------
+! vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv !
+!       
+!     mp_wait_reduce_max_r4_1d :: WAIT for non-blocking SPMD REDUCE_MAX 
+!
+      subroutine mp_wait_reduce_max_r4_1d(mymax, npts, req)
+         integer, intent(IN)    :: npts
+         real(kind=4), intent(INOUT):: mymax(npts)
+         integer, intent(INOUT) :: req
+         
+         integer :: status(MPI_STATUS_SIZE)
+
+         ! Wait for the IALLREDUCE to finish
+         call MPI_WAIT(req, status, ierror)
+
+      end subroutine mp_wait_reduce_max_r4_1d
+!     
+! ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ !
+!-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
 ! vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv !
