@@ -7,10 +7,11 @@ module msis_wrapper
   use msis_init, only : msisinit
 
   implicit none
-  
+
   private
-  
+
   public :: msis_wrapper_init, msis_prepare_time, msis_point
+  public :: msis_get_current_f107
 
   ! --- Local Variables ---
   integer, allocatable :: r_iyd(:)    ! stored as year*1000 + doy
@@ -63,7 +64,7 @@ contains
     end if
 
     call load_f107_file()
-    
+
     if (.not. loaded) then
       print *, 'GEOS_MLT_MSIS_ERROR: F107/AP table was not loaded.'
       error stop 'GEOS-MLT MSIS initialization failed'
@@ -118,6 +119,23 @@ contains
     end if
   end subroutine msis_prepare_time
 
+
+  subroutine msis_get_current_f107(f107_daily, f107_81day)
+    ! Return the F10.7 values selected by the most recent msis_prepare_time call.
+    ! This allows other GEOS-MLT components, such as IRI, to use the same
+    ! time-varying solar forcing as MSIS.
+    real, intent(out) :: f107_daily
+    real, intent(out) :: f107_81day
+
+    if (.not. index_cache_ready) then
+      error stop 'Call msis_prepare_time before msis_get_current_f107'
+    end if
+
+    f107_daily = cached_f107
+    f107_81day = cached_f107a
+  end subroutine msis_get_current_f107
+
+
   subroutine msis_point(year, doy, ut_seconds, alt, glat, glong, stl, &
                         O_out, N2_out, O2_out, T_out)
     integer, intent(in) :: year, doy, ut_seconds
@@ -149,7 +167,7 @@ contains
     ut = real(ut_seconds, kind=4)
     mass = 1
     ap(:) = cached_ap
-    
+
 ! Logging
     !print *, 'F107, ap, stl, alt:', cached_f107, ap, stl, alt
     !print *, iyd, ut
@@ -299,7 +317,7 @@ contains
   end function find_record
 
   function day_of_year(year, month, day) result(doy)
-    
+
     integer :: doy
     integer, intent(in) :: year, month, day
     integer :: mdays(12), m
