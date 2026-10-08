@@ -208,10 +208,10 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd
                               call timing_off('COMM_TOTAL')
 
 
-  ! check cmax from allreduce array
-  do k=1,npz
-     if ( is_master() .and. (cmax(k) > 1.0) )  write(*,*) 'tracer_2d_1L: k, qsplt =', k, int(1. + cmax(k))
-  enddo  ! k-loop
+! ! check cmax from allreduce array
+! do k=1,npz
+!    if ( is_master() .and. (cmax(k) > 1.0) )  write(*,*) 'tracer_2d_1L: k, qsplt =', k, int(1. + cmax(k))
+! enddo  ! k-loop
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
 !$OMP                                  cy,yfx,mfx,mfy,cmax,mfx2,mfy2,cx2,cy2)   &
