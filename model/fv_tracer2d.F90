@@ -140,6 +140,9 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd
       integer :: nsplt
       integer :: i,j,k,n,it,iq
 
+      real :: cmax_k
+      integer :: mloc_k
+ 
       real, pointer, dimension(:,:) :: area, rarea
       real, pointer, dimension(:,:,:) :: sin_sg
       real, pointer, dimension(:,:) :: dxa, dya, dx, dy
@@ -207,6 +210,17 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd
                         call timing_off('COMM_TRACER')
                               call timing_off('COMM_TOTAL')
 
+  if ( is_master() ) then
+     cmax_k=cmax(1)
+     mloc_k=1
+     do k=1,npz
+        if (cmax(k) > cmax_k) then
+           cmax_k = cmax(k)
+           mloc_k = k
+        endif
+     enddo  ! k-loop
+     write(*,*) 'tracer_2d_1L: k, qsplt =', mloc_k, int(1. + cmax_k)
+  endif
 
 ! ! check cmax from allreduce array
 ! do k=1,npz
@@ -390,6 +404,9 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
       integer :: maxsplt, ksplt(npz)
       integer :: i,j,k,n,it,iq
 
+      real :: cmax_k
+      integer :: mloc_k
+
       real, pointer, dimension(:,:) :: area, rarea
       real, pointer, dimension(:,:,:) :: sin_sg
       real, pointer, dimension(:,:) :: dxa, dya, dx, dy
@@ -449,6 +466,17 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
        call mp_wait_reduce_max(cmax, npz, imax_req)
        call timing_off('COMM_TRACER_MAX')
        call timing_off('COMM_TOTAL')
+       if ( is_master() ) then
+          cmax_k=cmax(1)
+          mloc_k=1
+          do k=1,npz
+             if (cmax(k) > cmax_k) then
+                cmax_k = cmax(k)
+                mloc_k = k
+             endif
+          enddo  ! k-loop
+          write(*,*) 'tracer_2d_1L: k, qsplt =', mloc_k, int(1. + cmax_k)
+       endif
        maxsplt = 0
        do k=1,npz
           ksplt(k) = int(1. + cmax(k))
@@ -462,7 +490,6 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, cmax, imax_req, gridstruct, bd, d
        severe_violation = .false.
        do k=1,npz
           ksplt(k) = q_split
-       !! if (k <= n_sponge) ksplt(k) = ksplt(k) + 1
           maxsplt = max(maxsplt, ksplt(k))
           if (cmax(k) > real(ksplt(k))) then
              !-------------------------------
@@ -1050,11 +1077,12 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       !! Calculate bit-reproducible scaling factors (with verbose logging ON)
       !scalingFactors = calcScalingFactors_BitReproducible(q(is:ie,js:je,1:npz,1:nq), q3(is:ie,js:je,1:npz,1:nq), &
       !                                                    pleB, pleA, npz, nq, gridstruct, bd, domain)
-       ! Apply scaling to each tracer
-       do iq=1,nq
-          do k=1,npz
-             do j=js,je
-                do i=is,ie
+      ! OPTIMIZED SINGLE-PASS STREAMING LOOP
+!$OMP parallel do default(none) private(i,j,k,iq) shared(is,ie,js,je,npz,nq,q,q3,scalingFactors)
+       do k=1,npz
+          do j=js,je
+             do i=is,ie
+                do iq=1,nq
                    q(i,j,k,iq) = q3(i,j,k,iq) * scalingFactors(iq)
                 enddo
              enddo
@@ -1094,21 +1122,22 @@ end subroutine offline_tracer_advection
          local_mass = 0.d0
 
          ! 1. Compute local domain sums directly (including area weighting)
-         do k=1,npz
-            do j=bd%js,bd%je
-               do i=bd%is,bd%ie
-                  area_wt = gridstruct%area_64(i,j)
+         ! REWRITTEN FOR HIGH CACHE PERFORMANCE INSIDE calcScalingFactors
+         do j=bd%js,bd%je
+            do i=bd%is,bd%ie
+               area_wt = gridstruct%area_64(i,j)  ! Pull out to 2D level to keep hot in L1 cache
+               
+               do k=1,npz
                   dp1 = (ple1(i,j,k+1) - ple1(i,j,k)) * area_wt
                   dp2 = (ple2(i,j,k+1) - ple2(i,j,k)) * area_wt
                   
+                  ! Vectorized tracer array reduction pass
                   do iq=1,nq
-                     ! local_mass(iq)      = Mass BEFORE advection
-                     local_mass(iq) = local_mass(iq) + q1(i,j,k,iq) * dp1
-                     
-                     ! local_mass(iq+nq)   = Mass AFTER advection
+                     local_mass(iq)    = local_mass(iq)    + q1(i,j,k,iq) * dp1
                      local_mass(iq+nq) = local_mass(iq+nq) + q2(i,j,k,iq) * dp2
                   enddo
                enddo
+               
             enddo
          enddo
 
