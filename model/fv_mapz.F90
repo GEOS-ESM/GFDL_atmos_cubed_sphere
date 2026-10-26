@@ -214,8 +214,8 @@ contains
   real, optional, intent(inout):: dtdt_consvte(is:ie,js:je,km) !< consv_te global fixer tendency [K/s]
   real, optional, intent(out):: cp_mlt_sg(is:ie,js:je,km)
   real, optional, intent(out):: kappa_mlt_sg(is:ie,js:je,km)
-  real, intent(out)::    pkz(is:ie,js:je,km)       !< layer-mean pk for converting t to pt
-  real, intent(out)::     te(isd:ied,jsd:jed,km)
+  real, intent(inout)::    pkz(is:ie,js:je,km)       !< layer-mean pk for converting t to pt
+  real, intent(out)::      te(isd:ied,jsd:jed,km)
 ! Mass fluxes
   real, optional, intent(inout):: mfx(is:ie+1,js:je  ,km)   ! X-dir Mass Flux
   real, optional, intent(inout):: mfy(is:ie  ,js:je+1,km)   ! Y-dir Mass Flux
@@ -495,13 +495,15 @@ contains
        ! Remap T in logP
 ! Note: pt at this stage is Theta_v
              if ( hydrostatic ) then
-! Transform virtual pt to virtual temperature.
-! GEOS_MLT diagnostic test:
-! Do not recompute pkz here. Keep the incoming pkz from the dynamics/geopk path,
-! matching the less-invasive v4.3.12 remap_t behavior.
+! Preserve the geopk-derived pkz in GEOS-MLT and restore the original
+! dry-air temperature conversion when GEOS_MLT is disabled.
               do k=1,km
                  do i=is,ie
-                    pt(i,j,k) = pt(i,j,k) * pkz(i,j,k)
+                    if (GEOS_MLT) then
+                       pt(i,j,k) = pt(i,j,k) * pkz(i,j,k)
+                    else
+                       pt(i,j,k) = pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
+                    endif
                  enddo
               enddo
              else
