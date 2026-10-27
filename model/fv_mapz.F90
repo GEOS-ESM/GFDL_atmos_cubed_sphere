@@ -465,32 +465,6 @@ contains
 
   if ( j /= (je+1) ) then
 
-!      if (remap_t) then
-!       ! Remap T in logP
-!! Note: pt at this stage is Theta_v
-!             if ( hydrostatic ) then
-!! Transform virtual pt to virtual temperature.
-!              do k=1,km
-!                 do i=is,ie
-!                    if ( GEOS_MLT ) then
-!                       p_layer = sqrt(pe(i,k,j) * pe(i,k+1,j))
-!                       if ( p_layer <= mlt_pressure_cutoff_pa ) then
-!                          pk_top = exp(Kappa_MLT(i,j,k) * peln(i,k,  j))
-!                          pk_bot = exp(Kappa_MLT(i,j,k) * peln(i,k+1,j))
-!                          pkz(i,j,k) = (pk_bot - pk_top) / &
-!                               (Kappa_MLT(i,j,k) * (peln(i,k+1,j)-peln(i,k,j)))
-!                       else
-!                          pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k)) / &
-!                               (akap*(peln(i,k+1,j)-peln(i,k,j)))
-!                       endif
-!                    else
-!                       pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k)) / &
-!                            (akap*(peln(i,k+1,j)-peln(i,k,j)))
-!                    endif
-!            
-!                    pt(i,j,k) = pt(i,j,k) * pkz(i,j,k)
-!                 enddo
-!              enddo
       if (remap_t) then
        ! Remap T in logP
 ! Note: pt at this stage is Theta_v
