@@ -129,16 +129,16 @@ module fv_dynamics_mod
    use diag_manager_mod,    only: send_data
    use fv_diagnostics_mod,  only: fv_time, prt_mxm, range_check, prt_minmax
    use mpp_domains_mod,     only: DGRID_NE, CGRID_NE, mpp_update_domains, domain2D
-   use mpp_mod,             only: mpp_pe
+   use mpp_mod,             only: mpp_pe, mpp_error, FATAL
    use field_manager_mod,   only: MODEL_ATMOS
    use tracer_manager_mod,  only: get_tracer_index
-   use fv_sg_mod,           only: neg_adj3
+   use fv_sg_mod,           only: neg_adj3, fv_sg_set_mlt_thermo, fv_sg_clear_mlt_thermo
    use fv_nesting_mod,      only: setup_nested_grid_BCs
    use boundary_mod,        only: nested_grid_BC_apply_intT
    use fv_arrays_mod,       only: fv_grid_type, fv_flags_type, fv_atmos_type, fv_nest_type, fv_diag_type, fv_grid_bounds_type
    use fv_nwp_nudge_mod,    only: do_adiabatic_init
-
-implicit none
+ 
+ implicit none
 
    logical :: RF_initialized = .false.
    logical :: bad_range = .false.
@@ -162,13 +162,14 @@ contains
   subroutine fv_dynamics(npx, npy, npz, nq_tot,  ng, bdt, consv_te, fill,    &
                         reproduce_sum, kappa, cp_air, zvir, ptop, ks, ncnst, &
                         k_split, n_split,                                    &
-                        q_split, u, v, w, delz, hydrostatic, pt, delp, q,    &
-                        ps, pe, pk, peln, pkz, phis, varflt, q_con, omga, ua, va, uc, vc,          &
-                        ak, bk, mfx, mfy, cx, cy, ze0, hybrid_z, &
-                        gridstruct, flagstruct, neststruct, idiag, bd, &
-                        parent_grid, domain, diss_est, &
-                        dudt_rf, dvdt_rf, dwdt_rf, dtdt_rf, &
-                        time_total)
+                        q_split, u, v, w, delz, hydrostatic,                 &
+                        pt, delp, q, ps, pe, pk, peln, pkz, phis, varflt, q_con, omga, ua, va, uc, vc, &
+                        ak, bk, mfx, mfy, cx, cy, ze0, hybrid_z,             &
+                        gridstruct, flagstruct, neststruct, idiag, bd,       &
+                        parent_grid, domain, diss_est,                       &
+                        dudt_rf, dvdt_rf, dwdt_rf, dtdt_rf,                  &
+                        time_total, dtdt_tc, dtdt_molke, dtdt_dcon, dtdt_consvte, &
+                        dudt_moldiff, dvdt_moldiff, GEOS_MLT, year, doy, ut_seconds) 
 
     real, intent(IN) :: bdt  !< Large time-step
     real, intent(IN) :: consv_te
@@ -189,6 +190,11 @@ contains
     logical, intent(IN) :: fill
     logical, intent(IN) :: reproduce_sum
     logical, intent(IN) :: hydrostatic
+    
+    logical, intent(IN), optional :: GEOS_MLT
+    integer, intent(IN), optional :: year, doy, ut_seconds 
+    logical :: GEOS_MLT_use
+    integer :: year_use, doy_use, ut_seconds_use 
     logical, intent(IN) :: hybrid_z       !< Using hybrid_z for remapping
 
     type(fv_grid_bounds_type), intent(IN) :: bd
@@ -206,6 +212,12 @@ contains
     real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dvdt_rf ! V-wind tendency from Rayleigh friction
     real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dwdt_rf ! W      tendency from Rayleigh friction
     real, intent(inout), dimension(bd%is :bd%ie ,bd%js :bd%je ,npz) :: dtdt_rf ! Temp   tendency from Rayleigh friction
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_tc ! GEOS-MLT thermal conduction heat
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_molke ! molecular KE-loss heating diagnostic
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_dcon ! native d_con heating diagnostic
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dtdt_consvte ! consv_te global fixer diagnostic
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dudt_moldiff ! molecular momentum diffusion U tendency
+    real, intent(inout), optional, dimension(bd%is:bd%ie,bd%js:bd%je,npz) :: dvdt_moldiff ! molecular momentum diffusion V tendency
 
 !-----------------------------------------------------------------------
 ! Auxilliary pressure arrays:    
@@ -270,6 +282,10 @@ contains
       real:: pfull(npz)
       real, dimension(bd%is:bd%ie):: cvm
       real, allocatable :: dp1(:,:,:), dtdt_m(:,:,:), cappa(:,:,:)
+      real, allocatable :: cp_mlt_sg(:,:,:), kappa_mlt_sg(:,:,:)
+      real, allocatable :: dtdt_tc_accum(:,:,:), dtdt_molke_accum(:,:,:)
+      real, allocatable :: dtdt_dcon_accum(:,:,:)
+      real, allocatable :: dudt_moldiff_accum(:,:,:), dvdt_moldiff_accum(:,:,:)
       real(kind=8), allocatable :: psx(:,:)
       !real(kind=8), allocatable :: dpx(:,:)
       real(kind=8), allocatable :: dpx(:,:,:) !needed for OpenMP
@@ -300,6 +316,27 @@ contains
        cx = 0.0
        cy = 0.0
 
+! Resolve optional GEOS-MLT inputs. Standard GEOS does not use the
+! calendar values, but GEOS-MLT must receive all three explicitly.
+      GEOS_MLT_use   = .false.
+      year_use       = 0
+      doy_use        = 0
+      ut_seconds_use = 0
+
+      if (present(GEOS_MLT)) GEOS_MLT_use = GEOS_MLT
+
+      if (GEOS_MLT_use) then
+         if (.not. present(year) .or. .not. present(doy) .or. &
+             .not. present(ut_seconds)) then
+            call mpp_error(FATAL, &
+                 'GEOS-MLT requires year, doy, and ut_seconds in fv_dynamics.')
+         else
+            year_use       = year
+            doy_use        = doy
+            ut_seconds_use = ut_seconds
+         endif
+      endif
+
 !     cv_air =  cp_air - rdgas
       agrav = 1. / grav
         dt2 = 0.5*bdt
@@ -315,6 +352,43 @@ contains
       allocate ( cappa(isd:isd,jsd:jsd,1) )
       cappa = 0.
 #endif
+
+      ! Cache the final remap thermodynamics for fv_subgrid_z without
+      ! recalculating MSIS in the post-dynamics adjustment.
+      if (GEOS_MLT_use .and. hydrostatic) then
+         allocate(cp_mlt_sg(is:ie,js:je,npz))
+         allocate(kappa_mlt_sg(is:ie,js:je,npz))
+         cp_mlt_sg(:,:,:) = cp_air
+         kappa_mlt_sg(:,:,:) = kappa
+      else
+         call fv_sg_clear_mlt_thermo()
+      endif
+
+      ! Accumulate GEOS-MLT substep tendencies only when k_split > 1.
+      ! This preserves the standard GEOS path and avoids extra 3-D work arrays
+      ! for the common k_split = 1 configuration.
+      if (GEOS_MLT_use .and. k_split > 1) then
+         if (present(dtdt_tc)) then
+            allocate(dtdt_tc_accum(is:ie,js:je,npz))
+            dtdt_tc_accum = 0.0
+         endif
+         if (present(dtdt_molke)) then
+            allocate(dtdt_molke_accum(is:ie,js:je,npz))
+            dtdt_molke_accum = 0.0
+         endif
+         if (present(dtdt_dcon)) then
+            allocate(dtdt_dcon_accum(is:ie,js:je,npz))
+            dtdt_dcon_accum = 0.0
+         endif
+         if (present(dudt_moldiff)) then
+            allocate(dudt_moldiff_accum(is:ie,js:je,npz))
+            dudt_moldiff_accum = 0.0
+         endif
+         if (present(dvdt_moldiff)) then
+            allocate(dvdt_moldiff_accum(is:ie,js:je,npz))
+            dvdt_moldiff_accum = 0.0
+         endif
+      endif
       !We call this BEFORE converting pt to virtual potential temperature, 
       !since we interpolate on (regular) temperature rather than theta.
       if (gridstruct%nested .or. ANY(neststruct%child_grids)) then
@@ -352,6 +426,7 @@ contains
          if ( nwat.eq.2 .and. (.not.hydrostatic) ) then
             sphum = get_tracer_index (MODEL_ATMOS, 'sphum')
          endif
+         call fv_sg_clear_mlt_thermo()
          goto 911
       endif
 
@@ -633,8 +708,8 @@ contains
     endif
 
                                            call timing_on('DYN_CORE')
-      call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, &
-                    u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va,           & 
+      call dyn_core(npx, npy, npz, ng, sphum, nq, mdt, k_split, n_split, zvir, cp_air, akap, cappa, grav, hydrostatic, GEOS_MLT_use, &
+                    year_use, doy_use, ut_seconds_use, u, v, w, delz, pt, q, delp, pe, pk, phis, varflt, ws, omga, ptop, pfull, ua, va, & 
                     uc, vc, &
 #ifdef SINGLE_FV
                     mfxR8, mfyR8, cxR8, cyR8, &
@@ -643,9 +718,16 @@ contains
 #endif
                     pkz, peln, q_con, ak, bk, dpx, ks, &
                     gridstruct, flagstruct, neststruct, idiag, bd, &
-                    domain, n_map==1, i_pack, last_step, diss_est,time_total)
+                    domain, n_map==1, i_pack, last_step, diss_est,time_total, dtdt_tc=dtdt_tc, &
+                    dtdt_molke=dtdt_molke, dtdt_dcon=dtdt_dcon, dudt_moldiff=dudt_moldiff, &
+                    dvdt_moldiff=dvdt_moldiff)
                                            call timing_off('DYN_CORE')
 
+      if (allocated(dtdt_tc_accum)) dtdt_tc_accum = dtdt_tc_accum + dtdt_tc
+      if (allocated(dtdt_molke_accum)) dtdt_molke_accum = dtdt_molke_accum + dtdt_molke
+      if (allocated(dtdt_dcon_accum)) dtdt_dcon_accum = dtdt_dcon_accum + dtdt_dcon
+      if (allocated(dudt_moldiff_accum)) dudt_moldiff_accum = dudt_moldiff_accum + dudt_moldiff
+      if (allocated(dvdt_moldiff_accum)) dvdt_moldiff_accum = dvdt_moldiff_accum + dvdt_moldiff
 
 !MassFluxRoundoffControl
 #ifdef SINGLE_FV
@@ -752,16 +834,37 @@ contains
                                                   call avec_timer_start(6)
 #endif
 
-         call Lagrangian_to_Eulerian(last_step, consv_te, ps, pe, delp,          &
-                     pkz, pk, mdt, bdt, npz, is,ie,js,je, isd,ied,jsd,jed,       &
-                     nq, nwat, sphum, q_con, u,  v, w, delz, pt, q, phis,    &
-                     zvir, cp_air, akap, cappa, flagstruct%kord_mt, flagstruct%kord_wz, &
-                     kord_tracer, flagstruct%kord_tm, peln, te_2d,               &
-                     ng, ua, va, omga, dp1, ws, fill, reproduce_sum,             &
-                     idiag%id_mdt>0, dtdt_m, ptop, ak, bk, pfull, flagstruct, gridstruct, domain,   &
-                     flagstruct%do_sat_adj, hydrostatic, hybrid_z, do_omega,     &
-                     flagstruct%adiabatic, do_adiabatic_init, &
-                     mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap)
+         if (GEOS_MLT_use .and. hydrostatic) then
+            call Lagrangian_to_Eulerian(last_step, consv_te, ps, pe, delp,          &
+                        pkz, pk, mdt, bdt, npz, is,ie,js,je, isd,ied,jsd,jed,       &
+                        nq, nwat, sphum, q_con, u,  v, w, delz, pt, q, phis,    &
+                        zvir, cp_air, akap, cappa, flagstruct%kord_mt, flagstruct%kord_wz, &
+                        kord_tracer, flagstruct%kord_tm, peln, te_2d,               &
+                        ng, ua, va, omga, dp1, ws, fill, reproduce_sum,             &
+                        idiag%id_mdt>0, dtdt_m, ptop, ak, bk, pfull, flagstruct, gridstruct, domain, &
+                        flagstruct%do_sat_adj, hydrostatic, GEOS_MLT_use, year_use, doy_use, ut_seconds_use, &
+                        hybrid_z, do_omega, flagstruct%adiabatic, do_adiabatic_init, &
+                        mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap, &
+                        dtdt_consvte=dtdt_consvte, cp_mlt_sg=cp_mlt_sg, &
+                        kappa_mlt_sg=kappa_mlt_sg)
+         else
+            call Lagrangian_to_Eulerian(last_step, consv_te, ps, pe, delp,          &
+                        pkz, pk, mdt, bdt, npz, is,ie,js,je, isd,ied,jsd,jed,       &
+                        nq, nwat, sphum, q_con, u,  v, w, delz, pt, q, phis,    &
+                        zvir, cp_air, akap, cappa, flagstruct%kord_mt, flagstruct%kord_wz, &
+                        kord_tracer, flagstruct%kord_tm, peln, te_2d,               &
+                        ng, ua, va, omga, dp1, ws, fill, reproduce_sum,             &
+                        idiag%id_mdt>0, dtdt_m, ptop, ak, bk, pfull, flagstruct, gridstruct, domain, &
+                        flagstruct%do_sat_adj, hydrostatic, GEOS_MLT_use, year_use, doy_use, ut_seconds_use, &
+                        hybrid_z, do_omega, flagstruct%adiabatic, do_adiabatic_init, &
+                        mfxL, mfyL, cxL, cyL, flagstruct%remap_option, flagstruct%gmao_remap, &
+                        dtdt_consvte=dtdt_consvte)
+         endif
+
+         ! Synchronize the final Eulerian GEOS-MLT layer thickness.
+         if (hydrostatic .and. GEOS_MLT_use) then
+            call mpp_update_domains(delz, domain, complete=.true.)
+         endif
 
 #ifdef AVEC_TIMERS
                                                   call avec_timer_stop(6)
@@ -802,6 +905,32 @@ contains
 #endif
   enddo    ! n_map loop
                                                   call timing_off('FV_DYN_LOOP')
+
+  if (GEOS_MLT_use .and. hydrostatic) then
+     call fv_sg_set_mlt_thermo(is, ie, js, je, npz, cp_mlt_sg, kappa_mlt_sg)
+     deallocate(cp_mlt_sg, kappa_mlt_sg)
+  endif
+
+  if (allocated(dtdt_tc_accum)) then
+     dtdt_tc = dtdt_tc_accum / real(k_split)
+     deallocate(dtdt_tc_accum)
+  endif
+  if (allocated(dtdt_molke_accum)) then
+     dtdt_molke = dtdt_molke_accum / real(k_split)
+     deallocate(dtdt_molke_accum)
+  endif
+  if (allocated(dtdt_dcon_accum)) then
+     dtdt_dcon = dtdt_dcon_accum / real(k_split)
+     deallocate(dtdt_dcon_accum)
+  endif
+  if (allocated(dudt_moldiff_accum)) then
+     dudt_moldiff = dudt_moldiff_accum / real(k_split)
+     deallocate(dudt_moldiff_accum)
+  endif
+  if (allocated(dvdt_moldiff_accum)) then
+     dvdt_moldiff = dvdt_moldiff_accum / real(k_split)
+     deallocate(dvdt_moldiff_accum)
+  endif
   if ( idiag%id_mdt > 0 .and. (.not.do_adiabatic_init) ) then
 ! Output temperature tendency due to inline moist physics:
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,dtdt_m,bdt)
@@ -906,6 +1035,15 @@ contains
 
 911  call cubed_to_latlon(u, v, ua, va, gridstruct, &
           npx, npy, npz, 1, gridstruct%grid_type, domain, gridstruct%nested, flagstruct%c2l_ord, bd)
+
+  ! Also covers the no_dycore early exit path.
+  if (allocated(cp_mlt_sg)) deallocate(cp_mlt_sg)
+  if (allocated(kappa_mlt_sg)) deallocate(kappa_mlt_sg)
+  if (allocated(dtdt_tc_accum)) deallocate(dtdt_tc_accum)
+  if (allocated(dtdt_molke_accum)) deallocate(dtdt_molke_accum)
+  if (allocated(dtdt_dcon_accum)) deallocate(dtdt_dcon_accum)
+  if (allocated(dudt_moldiff_accum)) deallocate(dudt_moldiff_accum)
+  if (allocated(dvdt_moldiff_accum)) deallocate(dvdt_moldiff_accum)
 
   deallocate(dp1)
   deallocate(cappa)
