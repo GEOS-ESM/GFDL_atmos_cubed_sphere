@@ -211,7 +211,7 @@ contains
 
     ! Mass density
     if (specflag(1)) then
-      dn(1) = dot_product(dn,masswgt)
+      dn(1) = dot_product(dn(2:10), masswgt(2:10))
     else
       dn(1) = dmissing
     endif
