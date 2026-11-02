@@ -523,7 +523,8 @@ module sw_core_mod
                    zvir, sphum, nq, q, k, km, inline_q,  &
                    dt, hord_tr, hord_mt, hord_vt, hord_tm, hord_dp, nord,   &
                    nord_v, nord_w, nord_t, dddmp, d2_bg, d4_bg, damp_v, damp_w, &
-                   damp_t, d_con, hydrostatic, gridstruct, flagstruct, bd)
+                   damp_t, d_con, hydrostatic, gridstruct, flagstruct, bd, &
+                   GEOS_MLT, Kappa_MLT, peln_dyn)
 
       integer, intent(IN):: hord_tr, hord_mt, hord_vt, hord_tm, hord_dp
       integer, intent(IN):: nord   !< nord=1 divergence damping; (del-4) or 3 (del-8)
@@ -532,11 +533,14 @@ module sw_core_mod
       integer, intent(IN):: nord_t !< pt
       integer, intent(IN):: sphum, nq, k, km
       real   , intent(IN):: dt, dddmp, d2_bg, d4_bg, d_con
+      logical, intent(IN):: GEOS_MLT
       real   , intent(IN):: zvir
       real,    intent(in):: damp_v, damp_w, damp_t, kgb
       type(fv_grid_bounds_type), intent(IN) :: bd
       real, intent(inout):: divg_d(bd%isd:bd%ied+1,bd%jsd:bd%jed+1) !< divergence
       real, intent(IN), dimension(bd%isd:bd%ied,  bd%jsd:bd%jed):: z_rat
+      real, intent(IN), dimension(bd%isd:bd%ied,  bd%jsd:bd%jed):: Kappa_MLT
+      real, intent(IN), dimension(bd%is:bd%ie, km+1, bd%js:bd%je):: peln_dyn
       real, intent(INOUT), dimension(bd%isd:bd%ied,  bd%jsd:bd%jed):: delp, pt, ua, va
       real, intent(INOUT), dimension(bd%isd:      ,  bd%jsd:      ):: w, q_con
       real, intent(INOUT), dimension(bd%isd:bd%ied  ,bd%jsd:bd%jed+1):: u, vc
@@ -577,11 +581,18 @@ module sw_core_mod
       real :: ra_y(bd%isd:bd%ied,bd%js:bd%je)
       real :: gx(bd%is:bd%ie+1,bd%js:bd%je  )
       real :: gy(bd%is:bd%ie  ,bd%js:bd%je+1)  !< work Y-dir flux array
+      real :: kx(bd%is:bd%ie+1,bd%js:bd%je  )
+      real :: ky(bd%is:bd%ie  ,bd%js:bd%je+1)
+      real :: kappa_work(bd%isd:bd%ied,bd%jsd:bd%jed)
       logical :: fill_c
 
       real :: dt2, dt4, dt5, dt6
       real :: damp, damp2, damp4, dd8, u2, v2, du2, dv2
       real :: u_lon
+      real :: dp_old, dp_new, mass_convergence, theta_convergence
+      real :: theta_mass_base, theta_base
+      real :: kappa_convergence, kappa_rhs_dt, logp_factor, p_layer
+      real, parameter :: MLT_PRESSURE_CUTOFF_PA = 1.0
       integer :: i,j, is2, ie1, js2, je1, n, nt, n2, iq
 
       real, pointer, dimension(:,:) :: area, area_c, rarea
@@ -1006,18 +1017,52 @@ module sw_core_mod
         call fv_tp_2d(pt, crx_adv,cry_adv, npx, npy, hord_tm, gx, gy,  &
                       xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
                       mfx=fx, mfy=fy, mass=delp, nord=nord_v, damp_c=damp_v)
+
+        if ( GEOS_MLT .and. hydrostatic ) then
+           ! Transport the diagnosed kappa field with the same mass fluxes used by pt.
+           ! The residual below is the finite-volume RHS correction in Eq. (1). Liu+ (2018)
+           do j=jsd,jed
+              do i=isd,ied
+                 kappa_work(i,j) = Kappa_MLT(i,j)
+              enddo
+           enddo
+
+           call fv_tp_2d(kappa_work, crx_adv, cry_adv, npx, npy, hord_tm, kx, ky, &
+                         xfx_adv, yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
+                         mfx=fx, mfy=fy, mass=delp, nord=nord_v, damp_c=damp_v)
+        endif
 #endif
 
      if ( inline_q ) then
         do j=js,je
            do i=is,ie
-                wk(i,j) = delp(i,j)
-              delp(i,j) = wk(i,j) + (fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j)
+              dp_old = delp(i,j)
+              mass_convergence = (fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j)
+              dp_new = dp_old + mass_convergence
+
+              wk(i,j) = dp_old
 #ifdef SW_DYNAMICS
               ptc(i,j) = pt(i,j)
 #else
-              pt(i,j) = (pt(i,j)*wk(i,j) +               &
-                        (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j))/delp(i,j)
+              theta_convergence = (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
+              theta_mass_base = pt(i,j)*dp_old + theta_convergence
+              theta_base = theta_mass_base / dp_new
+
+              if ( GEOS_MLT .and. hydrostatic ) then
+                 p_layer = exp(0.5*(peln_dyn(i,k,j) + peln_dyn(i,k+1,j)))
+                 if ( p_layer <= MLT_PRESSURE_CUTOFF_PA ) then
+                    kappa_convergence = (kx(i,j)-kx(i+1,j)+ky(i,j)-ky(i,j+1))*rarea(i,j)
+                    logp_factor = 0.5*(peln_dyn(i,k,j) + peln_dyn(i,k+1,j))
+
+                    ! Discrete residual for d(kappa*dp)/dt + div(V*kappa*dp).
+                    ! It is exactly zero for horizontally uniform kappa.
+                    kappa_rhs_dt = Kappa_MLT(i,j)*mass_convergence - kappa_convergence
+                    theta_mass_base = theta_mass_base + theta_base*logp_factor*kappa_rhs_dt
+                 endif
+              endif
+
+              pt(i,j) = theta_mass_base / dp_new
+              delp(i,j) = dp_new
 #endif
            enddo
         enddo
@@ -1043,16 +1088,30 @@ module sw_core_mod
      else
         do j=js,je
            do i=is,ie
+              dp_old = delp(i,j)
+              mass_convergence = (fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j)
+              dp_new = dp_old + mass_convergence
 #ifndef SW_DYNAMICS
-              pt(i,j) = pt(i,j)*delp(i,j) +               &
-                         (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
-#endif
-              delp(i,j) = delp(i,j) +                     &
-                         (fx(i,j)-fx(i+1,j)+fy(i,j)-fy(i,j+1))*rarea(i,j)
-#ifndef SW_DYNAMICS
-              pt(i,j) = pt(i,j) / delp(i,j)
+              theta_convergence = (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
+              theta_mass_base = pt(i,j)*dp_old + theta_convergence
+              theta_base = theta_mass_base / dp_new
 
+              if ( GEOS_MLT .and. hydrostatic ) then
+                 p_layer = exp(0.5*(peln_dyn(i,k,j) + peln_dyn(i,k+1,j)))
+                 if ( p_layer <= MLT_PRESSURE_CUTOFF_PA ) then
+                    kappa_convergence = (kx(i,j)-kx(i+1,j)+ky(i,j)-ky(i,j+1))*rarea(i,j)
+                    logp_factor = 0.5*(peln_dyn(i,k,j) + peln_dyn(i,k+1,j))
+
+                    ! Discrete residual for d(kappa*dp)/dt + div(V*kappa*dp).
+                    ! It is exactly zero for horizontally uniform kappa.
+                    kappa_rhs_dt = Kappa_MLT(i,j)*mass_convergence - kappa_convergence
+                    theta_mass_base = theta_mass_base + theta_base*logp_factor*kappa_rhs_dt
+                 endif
+              endif
+
+              pt(i,j) = theta_mass_base / dp_new
 #endif
+              delp(i,j) = dp_new
            enddo
         enddo
      endif
