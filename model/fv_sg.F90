@@ -192,7 +192,7 @@ contains
       real:: cv_air, xvir
       logical :: GEOS_MLT_use
       logical :: use_mlt_thermo
-      real :: mlt_temp_guard_pcut_pa
+      real :: mlt_pcut_pa, mlt_ri_pcut_pa, mlt_ri_crit
       integer :: sphum, liq_wat, rainwat, snowwat, graupel, ice_wat, cld_amt
 
       cv_air = cp_air - rdgas ! = rdgas * (7/2-1) = 2.5*rdgas=717.68
@@ -204,15 +204,18 @@ contains
       rdt = 1./ dt
       im = ie-is+1
 
-! GEOS_MLT option for L190/high-top runs.
-! If GEOS_MLT is enabled, the original lower-atmosphere temperature
-! guard is disabled above this pressure cutoff, but Ri/shear filtering
-! remains active.
+! GEOS-MLT option for high-top simulations.
       GEOS_MLT_use = .false.
       if ( present(GEOS_MLT) ) GEOS_MLT_use = GEOS_MLT
 
-! 1 Pa = 0.01 hPa. This is a first-test cutoff for the MLT/thermosphere.
-      mlt_temp_guard_pcut_pa = 1.0
+! GEOS-MLT 2-dz Filter Settings
+! Pressure is in Pa; 1 Pa = 0.01 hPa.
+! Use mlt_pcut_pa only for composition-dependent Cp and R.
+      mlt_pcut_pa = 1.0
+! Independently select where the GEOS-MLT Ri threshold is reduced.
+      mlt_ri_pcut_pa = 1.0
+! Critical Ri (Liu, 2007, GRL) 
+      mlt_ri_crit = 0.25
 
       use_mlt_thermo = .false.
 
@@ -311,8 +314,8 @@ contains
 !$OMP                                  hydrostatic,pe,delz,g2,w,liq_wat,rainwat,ice_wat,     &
 !$OMP                                  snowwat,cv_air,m,graupel,pkz,rk,rz,fra, t_max, t_min, &
 !$OMP                                  rdt,u_dt,v_dt,t_dt,w_dt,xvir,nwat,GEOS_MLT_use,       &
-!$OMP                                  mlt_temp_guard_pcut_pa,use_mlt_thermo,                 &
-!$OMP                                  sg_cp_mlt,sg_kappa_mlt)                               &
+!$OMP                                  mlt_pcut_pa,mlt_ri_pcut_pa,mlt_ri_crit,                 &
+!$OMP                                  use_mlt_thermo,sg_cp_mlt,sg_kappa_mlt)                               &
 !$OMP                          private(kk,lcp2,icp2,tcp3,dh,dq,den,qs,qsw,dqsdt,qcon,q0,     &
 !$OMP                                  t0,u0,v0,w0,h0,pm,gzh,tvm,tmp,cpm,cvm,q_liq,q_sol,    &
 !$OMP                                  tv,gz,hd,te,ratio,pt1,pt2,tv1,tv2,ri_ref,ri,mc,km1,   &
@@ -346,7 +349,7 @@ contains
           do i=is,ie
              p_layer = sqrt(pe(i,k,j)*pe(i,k+1,j))
 
-             if (use_mlt_thermo .and. p_layer <= mlt_temp_guard_pcut_pa) then
+             if (use_mlt_thermo .and. p_layer <= mlt_pcut_pa) then
                 cp_eff = sg_cp_mlt(i,j,k)
                 r_eff = cp_eff*sg_kappa_mlt(i,j,k)
 
@@ -500,20 +503,12 @@ contains
 !
             ri = (gz(i,km1)-gz(i,k))*(pt1-pt2)/( 0.5*(pt1+pt2)*        &
                  ((u0(i,km1)-u0(i,k))**2+(v0(i,km1)-v0(i,k))**2+ustar2) )
-! GEOS_MLT modification:
-! In the MLT/thermosphere, neutral temperature can physically exceed
-! the original lower-atmosphere temperature thresholds. Therefore,
-! when GEOS_MLT is enabled and the local pressure is below the cutoff,
-! do not force extra 2-dz mixing only because T is above t_max.
-!
-! The Richardson-number/shear-based filter is still active because
-! ri is already computed above this block.
-            if ( .not. (GEOS_MLT_use .and. &
-                 min(pm(i,km1), pm(i,k)) <= mlt_temp_guard_pcut_pa) ) then
-               if ( tv1 > t_max .and. tv1 > tv2 ) then
-! Original lower-atmosphere temperature guard.
+! Thermospheric and mesopause temperatures do not by themselves
+! imply instability; GEOS-MLT uses the diagnosed Richardson number.
+            if (.not. GEOS_MLT_use) then
+               if (tv1 > t_max .and. tv1 > tv2) then
                   ri = 0.
-               elseif ( tv2 < t_min ) then
+               elseif (tv2 < t_min) then
                   ri = min(ri, 0.1)
                endif
             endif
@@ -522,7 +517,15 @@ contains
 ! Add moist 2-dz instability consideration:
 !!!         ri_ref = min(ri_max, ri_min + (ri_max-ri_min)*dim(500.e2,pm(i,k))/250.e2 )
             ri_ref = min(ri_max, ri_min + (ri_max-ri_min)*dim(400.e2,pm(i,k))/200.e2 )
-! Enhancing mixing at the model top
+
+! Select a lower baseline critical Ri in the upper GEOS-MLT atmosphere.
+! This override occurs BEFORE the original model-top enhancement.
+            if (GEOS_MLT_use .and. &
+                 min(pm(i,km1), pm(i,k)) <= mlt_ri_pcut_pa) then
+               ri_ref = mlt_ri_crit
+            endif
+
+! Preserve the original enhanced mixing at the model top.
             if ( k==2 ) then
                  ri_ref = 4.*ri_ref
             elseif ( k==3 ) then
@@ -589,7 +592,7 @@ contains
          do i=is,ie
             p_layer = sqrt(pe(i,kk,j)*pe(i,kk+1,j))
 
-            if (use_mlt_thermo .and. p_layer <= mlt_temp_guard_pcut_pa) then
+            if (use_mlt_thermo .and. p_layer <= mlt_pcut_pa) then
                cp_eff = sg_cp_mlt(i,j,kk)
                r_eff = cp_eff*sg_kappa_mlt(i,j,kk)
 
@@ -619,7 +622,7 @@ contains
          do i=is,ie
             p_layer = sqrt(pe(i,kk,j)*pe(i,kk+1,j))
 
-            if (use_mlt_thermo .and. p_layer <= mlt_temp_guard_pcut_pa) then
+            if (use_mlt_thermo .and. p_layer <= mlt_pcut_pa) then
                cp_eff = sg_cp_mlt(i,j,kk)
                r_eff = cp_eff*sg_kappa_mlt(i,j,kk)
 
