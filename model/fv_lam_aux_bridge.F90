@@ -1,3 +1,5 @@
+!============ GEOS-LAM Update Start =============
+! Exchange dry-host auxiliary meteorology across tested MPI neighbors.
 ! Isolated host-to-FV3 tracer boundary probe; not a production input provider.
 module fv_lam_aux_bridge_mod
   use mpi, only: MPI_REAL, MPI_DOUBLE_PRECISION, MPI_INTEGER, &
@@ -237,3 +239,4 @@ contains
     aux_ready=.true.
   end subroutine
 end module
+!============ GEOS-LAM Update End =============

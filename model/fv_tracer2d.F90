@@ -62,7 +62,10 @@
 ! </table>
 
 module fv_tracer2d_mod
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
  use lam_probe_mod,only:probe_mark,probe_array,probe_context,probe_level
+!============ GEOS-LAM Update End =============
    use tp_core_mod,       only: fv_tp_2d, copy_corners
    use fv_mp_mod,         only: mp_reduce_max
    use fv_mp_mod,         only: ng, mp_gather, is_master
@@ -73,13 +76,18 @@ module fv_tracer2d_mod
    use fv_timing_mod,     only: timing_on, timing_off
    use boundary_mod,      only: nested_grid_BC_apply_intT
    use fv_arrays_mod,     only: fv_grid_type, fv_flags_type, fv_nest_type, fv_atmos_type, fv_grid_bounds_type, REAL8
+!============ GEOS-LAM Update Start =============
+! Support bounded tracer transport and dry-pilot diagnostic contracts.
    use mpp_mod,           only: mpp_error, FATAL, mpp_broadcast, mpp_send, mpp_recv, mpp_sum, mpp_max, mpp_pe
+!============ GEOS-LAM Update End =============
    use fv_grid_utils_mod, only: g_sum_r8
 
 implicit none
 private
 
 public :: tracer_2d, tracer_2d_nested, tracer_2d_1L, offline_tracer_advection
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
 public :: set_buffer_probe
 
 real, allocatable, dimension(:,:,:) :: nest_fx_west_accum, nest_fx_east_accum, nest_fx_south_accum, nest_fx_north_accum
@@ -100,6 +108,7 @@ subroutine set_buffer_probe(low, high, t0, t1, tcap)
    gbuf_t1=t1
    gbuf_tcap=tcap
 end subroutine set_buffer_probe
+!============ GEOS-LAM Update End =============
 
 !>@brief The subroutine 'tracer_2d_1L' performs 2-D horizontal-to-lagrangian transport.
 !>@details This subroutine is called if 'z_tracer = .true.'
@@ -144,12 +153,17 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
       real :: c2d(bd%is:bd%ie,bd%js:bd%je)
       real :: cmax(npz), cmin(npz)
+!============ GEOS-LAM Update Start =============
+! Support bounded tracer transport and dry-pilot diagnostic contracts.
       real(kind=8) :: lam_face_budget(nq)
+!============ GEOS-LAM Update End =============
       real :: qmax(npz*(nq+1)), qmin(npz*(nq+1))
       integer :: icount(npz,nq)
       real :: frac
       integer :: nsplt
       integer :: i,j,k,n,it,iq
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
       real :: gbuf_halo_factor
       character(len=32) :: gbuf_halo_string
       integer :: gbuf_halo_status
@@ -161,6 +175,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       logical :: refresh_buffer
       real(kind=8) :: gbuf_time, gbuf_alpha, gbuf_value, gbuf_mass(nq), innerq
       integer :: is0, ie0, js0, je0
+!============ GEOS-LAM Update End =============
 
       real, pointer, dimension(:,:) :: area, rarea
       real, pointer, dimension(:,:,:) :: sin_sg
@@ -177,10 +192,13 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
+!============ GEOS-LAM Update Start =============
+! Support bounded tracer transport and dry-pilot diagnostic contracts.
       is0=max(is,4)
       ie0=min(ie,npx-4)
       js0=max(js,4)
       je0=min(je,npy-4)
+!============ GEOS-LAM Update End =============
 
        area => gridstruct%area
       rarea => gridstruct%rarea
@@ -190,6 +208,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       dya    => gridstruct%dya 
       dx     => gridstruct%dx  
       dy     => gridstruct%dy  
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
       lam_face_budget=0.d0
       print *, 'LAM_TRACER_1L_ENTER',is,ie,js,je,isd,ied,jsd,jed
       print *, 'LAM_TRACER_1L_BOUNDS_DXA',lbound(dxa),ubound(dxa)
@@ -198,6 +218,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       print *, 'LAM_TRACER_1L_BOUNDS_DY',lbound(dy),ubound(dy)
       print *, 'LAM_TRACER_1L_BOUNDS_SIN',lbound(sin_sg),ubound(sin_sg)
       flush(6)
+!============ GEOS-LAM Update End =============
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &
 !$OMP                                  sin_sg,cy,yfx,dya,dx) private(i,j,k)
@@ -221,12 +242,17 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
         enddo
      enddo
   enddo  ! k-loop
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
   print *, 'LAM_TRACER_1L_FLUX_GEOMETRY_DONE'
   flush(6)
+!============ GEOS-LAM Update End =============
 
                                call timing_on('COMM_TOTAL')
                          call timing_on('COMM_TRACER')
   call complete_group_halo_update(q_pack, domain)
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
   gbuf_halo_factor=1.0
   call get_environment_variable('GBUF_HALO_FACTOR',gbuf_halo_string,status=gbuf_halo_status)
   if (gbuf_halo_status==0) read(gbuf_halo_string,*,iostat=gbuf_halo_status) gbuf_halo_factor
@@ -240,6 +266,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
   print *, 'LAM_TRACER_1L_SEAM',mpp_pe(),q(is-1,js+7,1,1),q(is,js+7,1,1), &
        q(ie,js+7,1,1),q(ie+1,js+7,1,1)
   flush(6)
+!============ GEOS-LAM Update End =============
                         call timing_off('COMM_TRACER')
                               call timing_off('COMM_TOTAL')
 
@@ -282,8 +309,11 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                         call timing_on('COMM_TOTAL')
                             call timing_on('COMM_TRACER_MAX')
   call mp_reduce_max(qmax,(nq+1)*npz)
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
   print *, 'LAM_TRACER_1L_REDUCE_DONE', maxval(qmax)
   flush(6)
+!============ GEOS-LAM Update End =============
                            call timing_off('COMM_TRACER_MAX')
                        call timing_off('COMM_TOTAL')
 
@@ -292,6 +322,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      n=nq*npz + k
      cmax(k) = qmax(n)
   enddo  ! k-loop
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
   gbuf_force_string=''
   call get_environment_variable('GBUF_FORCE_SPLIT',gbuf_force_string,status=gbuf_force_status)
   if (gbuf_force_status==0.and.trim(gbuf_force_string)=='1') then
@@ -312,6 +344,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      if (any(shape(gbuf_low)/=[ie-is+1,je-js+1,npz,nq])) &
           error stop 'GBUF 1L snapshot extent mismatch'
   endif
+!============ GEOS-LAM Update End =============
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
 !$OMP                                  cy,yfx,mfx,mfy,cmax,mfx2,mfy2,cx2,cy2)   &
@@ -367,6 +400,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      enddo
 
      nsplt = int(1. + cmax(k))
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
      if (mpp_pe()==0) write(*,'(A,1X,I0,1X,I0,1X,ES24.16)') &
           'GBUF_1L_LEVEL',k,nsplt,cmax(k)
      if (refresh_buffer) qn2(:,:,:)=q(:,:,k,:)
@@ -422,6 +457,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                   'GBUF_1L_REFRESH_MASS',k,it,gbuf_mass
           endif
        endif
+!============ GEOS-LAM Update End =============
 
 !$OMP parallel do default(none) shared(k,is,ie,js,je,rarea,mfx2,mfy2,dp1,dp2)
         do j=js,je
@@ -430,6 +466,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
            enddo
         enddo
 
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
 !$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx2,xfx,hord,trdm, &
 !$OMP                                  nord_tr,nq,gridstruct,bd,cy2,yfx,mfx2,mfy2,qn2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac,lam_face_budget, &
 !$OMP                                  refresh_buffer,is0,ie0,js0,je0,domain) &
@@ -441,6 +479,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
         endif
         if ( nsplt /= 1 .or. refresh_buffer ) then
            if ( it==1 .and. .not.refresh_buffer ) then
+!============ GEOS-LAM Update End =============
               do j=jsd,jed
                  do i=isd,ied
                     qn2(i,j,iq) = q(i,j,k,iq)
@@ -473,6 +512,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
               enddo
            enddo
         endif
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
         innerq=0.
         if(js0<=je0) then
            if(is<=4.and.ie+1>=4) innerq=innerq+sum(dble(fx(4,js0:je0)))
@@ -498,6 +539,7 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
               call probe_array(trim(gbuf_stage_label),q(is:ie,js:je,k,2),is,js)
            endif
         endif
+!============ GEOS-LAM Update End =============
 
         if ( it < nsplt ) then   ! not last call
              do j=js,je
@@ -518,9 +560,12 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      endif
 
   enddo    ! k-loop
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
   do iq=1,nq
      print *, 'LAM_TRACER_FACE_FLUX',iq,lam_face_budget(iq)/9.80665d0
   enddo
+!============ GEOS-LAM Update End =============
 
 end subroutine tracer_2d_1L
 
@@ -564,10 +609,13 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
       real :: cmax(npz)
       real :: frac, rdt
       integer :: maxsplt, ksplt(npz)
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
       integer :: i,j,k,n,it,iq,halo_status,refresh_status,is0,ie0,js0,je0
       character(32) :: halo_string, probe_label, refresh_string
       real :: halo_factor, faceq, innerq, gbuf_time, gbuf_alpha, gbuf_value, gbuf_mass(nq)
       logical :: halo_probe, refresh_buffer
+!============ GEOS-LAM Update End =============
 
       real, pointer, dimension(:,:) :: area, rarea
       real, pointer, dimension(:,:,:) :: sin_sg
@@ -584,8 +632,11 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
+!============ GEOS-LAM Update Start =============
+! Support bounded tracer transport and dry-pilot diagnostic contracts.
       is0=max(is,4); ie0=min(ie,13)
       js0=max(js,4); je0=min(je,13)
+!============ GEOS-LAM Update End =============
 
        area => gridstruct%area
       rarea => gridstruct%rarea
@@ -634,8 +685,11 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
          endif
        endif
     enddo
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
     print *, 'LAM_TRACER_2D_GEOMETRY_DONE',minval(xfx),maxval(xfx),minval(yfx),maxval(yfx)
     flush(6)
+!============ GEOS-LAM Update End =============
 
 !--------------------------------------------------------------------------------
 
@@ -653,6 +707,8 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
        ksplt(k) = int(1. + cmax(k))
        maxsplt = max(maxsplt,ksplt(k))
     enddo
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
     call get_environment_variable('GBUF_HALO_FACTOR',halo_string,status=halo_status)
     halo_probe = halo_status == 0
     halo_factor = 1.
@@ -667,6 +723,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
     endif
     if (mpp_pe()==0) write(*,'(A,1X,I0,1X,ES16.8,1X,I0,1X,ES16.8)') &
          'GBUF_SPLIT',q_split,max(maxval(abs(cx)),maxval(abs(cy))),maxsplt,halo_factor
+!============ GEOS-LAM Update End =============
 
 !--------------------------------------------------------------------------------
 
@@ -708,6 +765,8 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
                         call timing_on('COMM_TOTAL')
                             call timing_on('COMM_TRACER')
       call complete_group_halo_update(q_pack, domain)
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
       if (refresh_buffer) then
          ! The first active substep starts at the AdvCore cap clock T.
          ! Level k's prescribed sample is the left edge of its own
@@ -770,13 +829,17 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
            'GBUF_DIRECTION',it,minval(cx2),maxval(cx2),minval(cy2),maxval(cy2)
       print *, 'LAM_TRACER_2D_HALO_DONE',minval(q),maxval(q),minval(dp1),maxval(dp1)
       flush(6)
+!============ GEOS-LAM Update End =============
                            call timing_off('COMM_TRACER')
                        call timing_off('COMM_TOTAL')
 
+!============ GEOS-LAM Update Start =============
+! Handle regional mass-flux values used at dynamics and tracer stages.
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfx2,mfy2,rarea,nq,&
 !$OMP                                  area,xfx,yfx,q,cx2,cy2,npx,npy,hord,gridstruct,bd,it,ksplt,nord_tr,trdm,lim_fac,dpA, &
 !$OMP                                  is0,ie0,js0,je0) &
 !$OMP                          private(dp2, ra_x, ra_y, fx, fy, i, j, k, n, iq, faceq, innerq)
+!============ GEOS-LAM Update End =============
      do k=1,npz
 
        if ( it <= ksplt(k) ) then
@@ -811,6 +874,8 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
                           npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                           gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx2(is,js,k), mfy=mfy2(is,js,k))
            endif
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
            if (iq>1) then
               faceq=0.
               if(is==1) faceq=faceq+sum(fx(is,js:je))
@@ -829,6 +894,7 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
               if (js<=14.and.je+1>=14) innerq=innerq-sum(fy(is0:ie0,14))
            endif
            write(*,'(A,4(1X,I0),1X,ES24.16)')'GBUF_Q_INNER',mpp_pe(),it,k,iq,innerq/9.80665d0
+!============ GEOS-LAM Update End =============
            do j=js,je
               do i=is,ie
                  q(i,j,k,iq) = ( q(i,j,k,iq)*dp1(i,j,k) + &
@@ -852,11 +918,14 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
        endif   ! ksplt(k)
 
      enddo ! npz
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
 
      if (nq>1) then
         write(probe_label,'("adv",I2.2)')it
         call probe_array(trim(probe_label),q(is:ie,js:je,:,2),is,js)
      endif
+!============ GEOS-LAM Update End =============
 
      if ( it /= maxsplt ) then
                       call timing_on('COMM_TOTAL')
@@ -889,6 +958,8 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       type(group_halo_update_type), intent(inout) :: q_pack
       real   , intent(INOUT) :: q(bd%isd:bd%ied,bd%jsd:bd%jed,npz,nq)   !< Tracers
       real   , intent(INOUT) :: dp1(bd%isd:bd%ied,bd%jsd:bd%jed,npz)    !< DELP before dyn_core
+!============ GEOS-LAM Update Start =============
+! Handle regional mass-flux values used at dynamics and tracer stages.
       real   , intent(IN) :: mfx(bd%is:bd%ie+1,bd%js:bd%je,  npz)    !< Full-step mass flux X
       real   , intent(IN) :: mfy(bd%is:bd%ie  ,bd%js:bd%je+1,npz)    !< Full-step mass flux Y
       real   , intent(IN) ::  cx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)  !< Full-step Courant X
@@ -896,6 +967,7 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       type(fv_grid_type), intent(IN), target :: gridstruct
       type(fv_nest_type), intent(INOUT) :: neststruct
       type(fv_atmos_type), pointer, intent(INOUT) :: parent_grid
+!============ GEOS-LAM Update End =============
       type(domain2d), intent(INOUT) :: domain
 
 ! Local Arrays
@@ -906,10 +978,13 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       real :: ra_y(bd%isd:bd%ied,bd%js:bd%je)
       real :: xfx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)
       real :: yfx(bd%isd:bd%ied,bd%js: bd%je+1, npz)
+!============ GEOS-LAM Update Start =============
+! Keep internal tracer substep flux and Courant copies private to preserve full-step DYN values.
       real :: mfx_sub(bd%is:bd%ie+1,bd%js:bd%je,npz)
       real :: mfy_sub(bd%is:bd%ie,bd%js:bd%je+1,npz)
       real ::  cx_sub(bd%is:bd%ie+1,bd%jsd:bd%jed,npz)
       real ::  cy_sub(bd%isd:bd%ied,bd%js:bd%je+1,npz)
+!============ GEOS-LAM Update End =============
       real :: cmax(npz)
       real :: cmax_t
       real :: c_global
@@ -992,7 +1067,10 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       enddo
       call mp_reduce_max(cmax,npz)
 
+!============ GEOS-LAM Update Start =============
+! Support bounded tracer transport and dry-pilot diagnostic contracts.
 ! Find the global maximum Courant number for private substep copies.
+!============ GEOS-LAM Update End =============
       c_global = cmax(1)
       if ( npz /= 1 ) then                ! if NOT shallow water test case
          do k=2,npz
@@ -1010,6 +1088,8 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 
    frac  = 1. / real(nsplt)
 
+!============ GEOS-LAM Update Start =============
+! Keep internal tracer substep flux and Courant copies private to preserve full-step DYN values.
 ! Keep the full-step capacitor arguments unchanged for fv_dynamics export.
 ! Only these private arrays carry one tracer substep's flux and Courant.
    mfx_sub = mfx
@@ -1023,25 +1103,35 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
              do j=jsd,jed
                 do i=is,ie+1
                    cx_sub(i,j,k) = cx_sub(i,j,k) * frac
+!============ GEOS-LAM Update End =============
                    xfx(i,j,k) = xfx(i,j,k) * frac
                 enddo
              enddo
              do j=js,je
                 do i=is,ie+1
+!============ GEOS-LAM Update Start =============
+! Keep internal tracer substep flux and Courant copies private to preserve full-step DYN values.
                    mfx_sub(i,j,k) = mfx_sub(i,j,k) * frac
+!============ GEOS-LAM Update End =============
                 enddo
              enddo
 
              do j=js,je+1
                 do i=isd,ied
+!============ GEOS-LAM Update Start =============
+! Support bounded tracer transport and dry-pilot diagnostic contracts.
                    cy_sub(i,j,k) = cy_sub(i,j,k) * frac
+!============ GEOS-LAM Update End =============
                   yfx(i,j,k) = yfx(i,j,k) * frac
                 enddo
              enddo
 
              do j=js,je+1
                 do i=is,ie
+!============ GEOS-LAM Update Start =============
+! Keep internal tracer substep flux and Courant copies private to preserve full-step DYN values.
                   mfy_sub(i,j,k) = mfy_sub(i,j,k) * frac
+!============ GEOS-LAM Update End =============
                 enddo
              enddo
           enddo
@@ -1060,23 +1150,32 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 	    
       if (gridstruct%nested) then
             do iq=1,nq
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
                  call probe_mark('BC_REQUEST_q')
                  call nested_grid_BC_apply_intT(q(isd:ied,jsd:jed,:,iq), &
                       0, 0, npx, npy, npz, bd, &
                       real(neststruct%tracer_nest_timestep)+real(merge(-1,nsplt*k_split,neststruct%regional)), real(nsplt*k_split), &
                  neststruct%q_BC(iq), bctype=neststruct%nestbctype  )
+!============ GEOS-LAM Update End =============
            enddo
       endif
 
 
+!============ GEOS-LAM Update Start =============
+! Keep internal tracer substep flux and Courant copies private to preserve full-step DYN values.
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfx_sub,mfy_sub,rarea,nq, &
 !$OMP                                  area,xfx,yfx,q,cx_sub,cy_sub,npx,npy,hord,gridstruct,bd,it,nsplt,nord_tr,trdm,lim_fac) &
 !$OMP                          private(dp2, ra_x, ra_y, fx, fy)
+!============ GEOS-LAM Update End =============
       do k=1,npz
 
          do j=js,je
             do i=is,ie
+!============ GEOS-LAM Update Start =============
+! Keep internal tracer substep flux and Courant copies private to preserve full-step DYN values.
                dp2(i,j) = dp1(i,j,k) + ((mfx_sub(i,j,k)-mfx_sub(i+1,j,k))+(mfy_sub(i,j,k)-mfy_sub(i,j+1,k)))*rarea(i,j)
+!============ GEOS-LAM Update End =============
             enddo
          enddo
 
@@ -1093,6 +1192,8 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 
          do iq=1,nq
          if ( it==1 .and. trdm>1.e-4 ) then
+!============ GEOS-LAM Update Start =============
+! Keep internal tracer substep flux and Courant copies private to preserve full-step DYN values.
             call fv_tp_2d(q(isd,jsd,k,iq), cx_sub(is,jsd,k), cy_sub(isd,js,k), &
                           npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                           gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx_sub(is,js,k), mfy=mfy_sub(is,js,k),   &
@@ -1101,6 +1202,7 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
             call fv_tp_2d(q(isd,jsd,k,iq), cx_sub(is,jsd,k), cy_sub(isd,js,k), &
                           npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                           gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx_sub(is,js,k), mfy=mfy_sub(is,js,k))
+!============ GEOS-LAM Update End =============
          endif
             do j=js,je
                do i=is,ie
@@ -1123,19 +1225,25 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
               do iq=1,nq
 
 
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
                  call probe_mark('BC_REQUEST_q')
 
 
+!============ GEOS-LAM Update End =============
                  call nested_grid_BC_apply_intT(q(isd:ied,jsd:jed,:,iq), &
                       0, 0, npx, npy, npz, bd, &
                       real(neststruct%tracer_nest_timestep), real(nsplt*k_split), &
                  neststruct%q_BC(iq), bctype=neststruct%nestbctype  )
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
                  if (iq>=2.and.iq<=3) print *, 'LAM_AUX_TRANSPORT',mpp_pe(),iq, &
                       neststruct%q_BC(iq)%stage_seconds + &
                       real(neststruct%tracer_nest_timestep)/real(nsplt*k_split)* &
                       neststruct%q_BC(iq)%stage_dt, &
                       q(isd,jsd,1,iq),q(ied,jsd,1,iq), &
                       q(isd,jed,1,iq),q(ied,jed,1,iq)
+!============ GEOS-LAM Update End =============
 
               end do
            end if
@@ -1158,10 +1266,13 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 
  end subroutine tracer_2d_nested
 
+!============ GEOS-LAM Update Start =============
+! Record the rejected offline exterior-face experiment for review, not production adoption.
 subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                                     gridstruct, flagstruct, bd, domain, &
                                     npx, npy, npz,   &
                                     nq, dt, q_split, bounded_lam, native_mfx, native_mfy)
+!============ GEOS-LAM Update End =============
 
       use fv_mapz_mod,        only: mapn_tracer
       use fv_fill_mod,        only: fillz
@@ -1171,10 +1282,13 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       integer, intent(IN) :: npz
       integer, intent(IN) :: nq    ! number of tracers to be advected
       integer, intent(IN) :: q_split
+!============ GEOS-LAM Update Start =============
+! Record the rejected offline exterior-face experiment for review, not production adoption.
       logical, intent(IN), optional :: bounded_lam
       type(fv_grid_bounds_type), intent(IN   ) :: bd
       real, intent(IN), optional :: native_mfx(bd%is:bd%ie+1,bd%js:bd%je,npz)
       real, intent(IN), optional :: native_mfy(bd%is:bd%ie,bd%js:bd%je+1,npz)
+!============ GEOS-LAM Update End =============
       type(fv_flags_type), intent(INOUT) :: flagstruct
       type(fv_grid_type), intent(IN), target :: gridstruct
       type(domain2D), intent(INOUT) :: domain
@@ -1194,6 +1308,8 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real ::  cyL(bd%isd:bd%ied  ,bd%js :bd%je +1,npz)  ! Courant Number Y-Dir
       real :: mfxL(bd%is :bd%ie +1,bd%js :bd%je   ,npz)  ! Mass Flux X-Dir
       real :: mfyL(bd%is :bd%ie   ,bd%js :bd%je +1,npz)  ! Mass Flux Y-Dir
+!============ GEOS-LAM Update Start =============
+! Handle regional mass-flux values used at dynamics and tracer stages.
       real :: cxa(bd%isd:bd%ied,bd%jsd:bd%jed,npz)
       real :: cya(bd%isd:bd%ied,bd%jsd:bd%jed,npz)
       real :: mfxa(bd%isd:bd%ied,bd%jsd:bd%jed,npz)
@@ -1201,6 +1317,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real ::  dpL(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  ! Pressure Thickness
       real ::  dpA(bd%is :bd%ie   ,bd%js :bd%je   ,npz)  ! Pressure Thickness
       real :: dp_inner_max
+!============ GEOS-LAM Update End =============
 ! Local Tracer Arrays
       real ::   q3(bd%isd:bd%ied,bd%jsd:bd%jed, npz,nq)! Ghosted 3D Tracers
       real ::   q2(bd%is :bd%ie ,               npz   )! 2D Tmp
@@ -1234,13 +1351,18 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
       print *, 'LAM_OFFLINE_TRACER_ENTER', nq, minval(q), maxval(q)
       flush(6)
+!============ GEOS-LAM Update End =============
 
 ! Time-step
 ! Fill CX/CY C-Grid boundaries and update ghost regions
     xL(is:ie,js:je,:) = cx(:,:,:)
     yL(is:ie,js:je,:) = cy(:,:,:)
+!============ GEOS-LAM Update Start =============
+! Support bounded tracer transport and dry-pilot diagnostic contracts.
     do j=jsd,jed
        do i=isd,ied
           cxa(i,j,:)=cx(max(is,min(ie,i)),max(js,min(je,j)),:)
@@ -1251,10 +1373,13 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     call mpp_update_domains(cya,domain)
     ebuffer = cx(ie,js:je,:)
     nbuffer = cy(is:ie,je,:)
+!============ GEOS-LAM Update End =============
     call mpp_get_boundary(xL, yL, domain, &
                           wbufferx=wbuffer, ebufferx=ebuffer, &
                           sbuffery=sbuffer, nbuffery=nbuffer, &
                           gridtype=CGRID_NE )
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
     print *, 'LAM_CGRID_EDGE',mpp_pe(),cx(ie,js+7,1),ebuffer(js+7,1), &
          cy(is+min(7,ie-is),je,1),nbuffer(is+min(7,ie-is),1)
     xL(ie+1,js:je,:) = ebuffer
@@ -1283,10 +1408,13 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     print *, 'LAM_CGRID_AFTER_MPP',minval(cxL),maxval(cxL),minval(cyL),maxval(cyL)
     print *, 'LAM_CGRID_AFTER_MPP_EDGE',mpp_pe(),cxL(is,js+7,1),cxL(ie,js+7,1),cxL(ie+1,js+7,1)
     flush(6)
+!============ GEOS-LAM Update End =============
 
 ! Fill MFX/MFY C-Grid boundaries
     xL(is:ie,js:je,:) = mfx(:,:,:)
     yL(is:ie,js:je,:) = mfy(:,:,:)
+!============ GEOS-LAM Update Start =============
+! Handle regional mass-flux values used at dynamics and tracer stages.
     do j=jsd,jed
        do i=isd,ied
           mfxa(i,j,:)=mfx(max(is,min(ie,i)),max(js,min(je,j)),:)
@@ -1297,6 +1425,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     call mpp_update_domains(mfya,domain)
     ebuffer = mfx(ie,js:je,:)
     nbuffer = mfy(is:ie,je,:)
+!============ GEOS-LAM Update End =============
     call mpp_get_boundary(xL, yL, domain, &
                           wbufferx=wbuffer, ebufferx=ebuffer, &
                           sbuffery=sbuffer, nbuffery=nbuffer, &
@@ -1305,6 +1434,8 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     yL(is:ie,je+1,:) = nbuffer
     mfxL(is:ie+1,js:je,:) = xL(is:ie+1,js:je,:)
     mfyL(is:ie,js:je+1,:) = yL(is:ie,js:je+1,:)
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
     mfxL(ie+1,js:je,:)=mfxa(ie+1,js:je,:)
     mfyL(is:ie,je+1,:)=mfya(is:ie,je+1,:)
     call probe_array('gchp_mfx',mfxL,is,js)
@@ -1327,10 +1458,13 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
           mfyL(is:ie,je+1,:)=native_mfy(is:ie,je+1,:)
        endif
     endif
+!============ GEOS-LAM Update End =============
 
 ! Fill local tracers and pressure thickness
     dpL(bd%is:bd%ie,bd%js:bd%je,:) = pleB(:,:,2:npz+1) - pleB(:,:,1:npz)
     q3(is:ie,js:je,:,:) = q(is:ie,js:je,:,:)
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
     if (nq>1) call probe_array('gchp_q0',q(is:ie,js:je,:,2),is,js)
     call probe_array('gchp_dp0',dpL(is:ie,js:je,:),is,js)
     ! Diagnostic only: give unfilled physical-boundary halos defined values.
@@ -1346,6 +1480,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     call start_group_halo_update(i_pack, q3, domain)
     print *, 'LAM_OFFLINE_TRACER_HALO_STARTED'
     flush(6)
+!============ GEOS-LAM Update End =============
 
     if ( flagstruct%z_tracer .and. q_split==0 ) then
          call tracer_2d_1L(q3, dpL, mfxL, mfyL, cxL, cyL, &
@@ -1357,6 +1492,8 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                         flagstruct%hord_tr, q_split, dt, 0, i_pack, &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
     endif
+!============ GEOS-LAM Update Start =============
+! Exercise the historical GCHP buffer probe; this is not the selected persistent-cell implementation.
     print *, 'LAM_OFFLINE_TRACER_HORIZONTAL_DONE', minval(q3), maxval(q3)
     flush(6)
     if (nq>1) call probe_array('gchp_qh',q3(is:ie,js:je,:,2),is,js)
@@ -1373,6 +1510,7 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     enddo
     if (mpp_pe()==0) write(*,'(A,2(1X,ES24.16))')'GBUF_PRESSURE', &
          dp_inner_max,maxval(abs(dpA-(pleA(:,:,2:npz+1)-pleA(:,:,1:npz))))
+!============ GEOS-LAM Update End =============
 
 !------------------------------------------------------------------
 ! Re-Map constituents
@@ -1398,9 +1536,12 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
           call mapn_tracer(nq, npz, pe1, pe2, q3, dp2, kord_tracers, j,     &
                            is, ie, isd, ied, jsd, jed, 0., flagstruct%fill)
        enddo
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
        print *, 'LAM_OFFLINE_TRACER_VERTICAL_DONE', minval(q3), maxval(q3)
        flush(6)
        if (nq>1) call probe_array('gchp_q1',q3(is:ie,js:je,:,2),is,js)
+!============ GEOS-LAM Update End =============
 
        ! Rescale tracers based on pleA at destination timestep
        !------------------------------------------------------
@@ -1409,10 +1550,13 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
             !---------------
             scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), pleB, pleA, &
                               npz, domain, gridstruct, flagstruct, bd)
+!============ GEOS-LAM Update Start =============
+! Record the rejected offline exterior-face experiment for review, not production adoption.
             print *, 'LAM_TRACER_GLOBAL_SCALE',iq,scalingFactor
             if(present(bounded_lam)) then
                if(bounded_lam) scalingFactor=1.0
             endif
+!============ GEOS-LAM Update End =============
             q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
        enddo
 
@@ -1458,7 +1602,10 @@ end subroutine offline_tracer_advection
          ! denominator
          globalSums(2) = g_sum_r8(domain, qsum2, bd%is,bd%ie, bd%js,bd%je, 0, &
                                   gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot tracer-stage diagnostics; remove or isolate before production use.
          print *, 'LAM_TRACER_SCALE_MASS',globalSums(1)/9.80665d0,globalSums(2)/9.80665d0
+!============ GEOS-LAM Update End =============
 
          if (globalSums(2) > TINY_DENOMINATOR) then
             scalingR8 =  globalSums(1) / globalSums(2)

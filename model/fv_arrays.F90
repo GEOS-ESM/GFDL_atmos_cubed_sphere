@@ -1055,8 +1055,11 @@ module fv_arrays_mod
   end type fv_flags_type
 
   type fv_nest_BC_type_3D
+!============ GEOS-LAM Update Start =============
+! Apply regional boundary data at the selected model time and dynamics stage.
      logical :: file_boundary = .false.
      real :: lower_seconds=0., upper_seconds=0., stage_seconds=0., stage_dt=0.
+!============ GEOS-LAM Update End =============
 
      !!! CLEANUP: could we have pointers to np[xyz], nest_domain, and the index/weight arrays?
 
@@ -1083,6 +1086,8 @@ module fv_arrays_mod
   end type fv_nest_BC_type_4D
 
   type fv_nest_type
+!============ GEOS-LAM Update Start =============
+! Apply regional boundary data at the selected model time and dynamics stage.
      ! Standalone file provider; no parent communicator or feedback.
      logical :: regional = .false.
      logical :: lam_met_file_split = .false.
@@ -1090,6 +1095,7 @@ module fv_arrays_mod
      real :: lam_elapsed=0., lam_lower=-1., lam_upper=-1.
      integer :: lam_origin(6)=0
      character(len=256) :: lam_directory="INPUT"
+!============ GEOS-LAM Update End =============
 
 !nested grid flags:
 
@@ -1783,7 +1789,10 @@ contains
     end if
 
     !--- Do the memory allocation only for nested model
+!============ GEOS-LAM Update Start =============
+! Hold bounded-grid state and explicit lateral-boundary clocks.
     if( ngrids_in > 1 .or. Atm%neststruct%regional ) then
+!============ GEOS-LAM Update End =============
        if (Atm%flagstruct%grid_type < 4) then
           if (Atm%neststruct%nested) then
              allocate(Atm%grid_global(1-ng_2d:npx_2d  +ng_2d,1-ng_2d:npy_2d  +ng_2d,2,1))

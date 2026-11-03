@@ -1,3 +1,5 @@
+!============ GEOS-LAM Update Start =============
+! Load timed regional file boundaries, pressure, tracer halos and face metrics.
 ! Isolated port. NASA SI v1 full halo snapshots, flat dry matched-eta scope.
 ! All clock/history belong to the grid's neststruct. No module SAVE buffers.
 module fv_lam_provider_mod
@@ -643,3 +645,4 @@ contains
  a%ps=a%ptop+sum(a%delp,dim=3)
  end subroutine
 end module
+!============ GEOS-LAM Update End =============

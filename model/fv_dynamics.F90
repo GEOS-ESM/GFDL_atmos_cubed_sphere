@@ -23,8 +23,11 @@
 !>@details It executes on the dt_atmos (or p_split) loop.
 
 module fv_dynamics_mod
+!============ GEOS-LAM Update Start =============
+! Trace dry-harness state for validation; not a production interface.
  use lam_probe_mod,only:probe_mark,probe_array,probe_context,probe_level
  use lam_science_mod,only:science_begin,science_state
+!============ GEOS-LAM Update End =============
 
 ! Modules Included:
 ! <table>
@@ -295,8 +298,11 @@ contains
       jsd = bd%jsd
       jed = bd%jed
 
+!============ GEOS-LAM Update Start =============
+! Apply regional boundary state at the required dynamics stages.
  call science_begin(npx,npy)
  call science_state('dynamics_entry',bd,gridstruct,npz,pt,delp,delz,u,v,w,.false.,.false.)
+!============ GEOS-LAM Update End =============
 ! Clear Rayleigh Friction Tendencies
       dudt_rf = 0.0
       dvdt_rf = 0.0
@@ -326,7 +332,10 @@ contains
 #endif
       !We call this BEFORE converting pt to virtual potential temperature, 
       !since we interpolate on (regular) temperature rather than theta.
+!============ GEOS-LAM Update Start =============
+! Apply regional boundary state at the required dynamics stages.
       if ((gridstruct%nested .or. ANY(neststruct%child_grids)) .and. .not. neststruct%regional) then
+!============ GEOS-LAM Update End =============
                                            call timing_on('NEST_BCs')
          call setup_nested_grid_BCs(npx, npy, npz, zvir, ncnst, &
               u, v, w, pt, delp, delz, q, uc, vc, pkz, &
@@ -338,17 +347,26 @@ contains
 #ifndef SW_DYNAMICS
          if (gridstruct%nested) then
           !Correct halo values have now been set up for BCs; we can go ahead and apply them too...
+!============ GEOS-LAM Update Start =============
+! Trace dry-harness state for validation; not a production interface.
             call probe_mark('BC_REQUEST_pt')
+!============ GEOS-LAM Update End =============
             call nested_grid_BC_apply_intT(pt, &
                  0, 0, npx, npy, npz, bd, 1., 1., &
                  neststruct%pt_BC, bctype=neststruct%nestbctype  )
 #ifdef USE_COND
+!============ GEOS-LAM Update Start =============
+! Trace dry-harness state for validation; not a production interface.
             call probe_mark('BC_REQUEST_q_con')
+!============ GEOS-LAM Update End =============
             call nested_grid_BC_apply_intT(q_con, &
                  0, 0, npx, npy, npz, bd, 1., 1., &
                  neststruct%q_con_BC, bctype=neststruct%nestbctype  )            
 #ifdef MOIST_CAPPA
+!============ GEOS-LAM Update Start =============
+! Trace dry-harness state for validation; not a production interface.
             call probe_mark('BC_REQUEST_cappa')
+!============ GEOS-LAM Update End =============
             call nested_grid_BC_apply_intT(cappa, &
                  0, 0, npx, npy, npz, bd, 1., 1., &
                  neststruct%cappa_BC, bctype=neststruct%nestbctype  )            
@@ -619,6 +637,8 @@ contains
         dpx(i,j,:) = 0.0
      enddo
   enddo
+!============ GEOS-LAM Update Start =============
+! Trace dry-harness state for validation; not a production interface.
       if(neststruct%regional) then
       call probe_mark('BC_REQUEST_pt')
       call nested_grid_BC_apply_intT(pt,0,0,npx,npy,npz,bd,0.,1.,neststruct%pt_BC,1)
@@ -629,6 +649,7 @@ contains
       call probe_mark('BC_REQUEST_cappa')
       call nested_grid_BC_apply_intT(cappa,0,0,npx,npy,npz,bd,0.,1.,neststruct%cappa_BC,1)
       endif
+!============ GEOS-LAM Update End =============
                                                   call timing_on('FV_DYN_LOOP')
   do n_map=1, k_split   ! first level of time-split
                                            call timing_on('COMM_TOTAL')
@@ -799,8 +820,11 @@ contains
                                                   call avec_timer_start(6)
 #endif
 
+!============ GEOS-LAM Update Start =============
+! Apply regional boundary state at the required dynamics stages.
 
  call science_state('before_remap',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.false.)
+!============ GEOS-LAM Update End =============
          call Lagrangian_to_Eulerian(last_step, consv_te, ps, pe, delp,          &
                      pkz, pk, mdt, bdt, npz, is,ie,js,je, isd,ied,jsd,jed,       &
                      nq, nwat, sphum, q_con, u,  v, w, delz, pt, q, phis,    &
@@ -818,11 +842,14 @@ contains
                                                   call avec_timer_stop(6)
 #endif
                                                   call timing_off('Remapping')
+!============ GEOS-LAM Update Start =============
+! Trace dry-harness state for validation; not a production interface.
  call science_state('after_remap',bd,gridstruct,npz,pt,delp,delz,u,v,w,.false.,.false.)
 
 #ifdef MOIST_CAPPA
          if ( neststruct%nested .and. .not. last_step) then
             call probe_mark('BC_REQUEST_cappa')
+!============ GEOS-LAM Update End =============
             call nested_grid_BC_apply_intT(cappa, &
                  0, 0, npx, npy, npz, bd, real(n_map+1), real(k_split), &
                  neststruct%cappa_BC, bctype=neststruct%nestbctype  )
@@ -1029,8 +1056,11 @@ contains
                         1.e-6, 1.e6, bad_range)
   endif
 
+!============ GEOS-LAM Update Start =============
+! Apply regional boundary state at the required dynamics stages.
 
  call science_state('dynamics_exit',bd,gridstruct,npz,pt,delp,delz,u,v,w,.false.,.false.)
+!============ GEOS-LAM Update End =============
   end subroutine fv_dynamics
 
 #ifdef USE_RF_FAST

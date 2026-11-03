@@ -115,7 +115,10 @@ module fv_grid_tools_mod
 ! </table>
 
 
+!============ GEOS-LAM Update Start =============
+! Construct bounded spherical grid metrics from supplied coordinates.
   use fv_lam_geometry_mod, only: lam_read_geometry
+!============ GEOS-LAM Update End =============
   use constants_mod, only: grav, omega, pi=>pi_8, cnst_radius=>radius
   use fv_arrays_mod, only: fv_atmos_type, fv_grid_type, fv_grid_bounds_type, R_GRID
   use fv_grid_utils_mod, only: gnomonic_grids, gnomonic_grids_local, great_circle_dist,  &
@@ -676,9 +679,12 @@ contains
 
           cubed_sphere = .true.
           
+!============ GEOS-LAM Update Start =============
+! Construct bounded spherical grid metrics from supplied coordinates.
           if (Atm%neststruct%regional) then
              call setup_file_lam(Atm)
           else if (Atm%neststruct%nested) then
+!============ GEOS-LAM Update End =============
              call setup_aligned_nest(Atm)
           else
           if(trim(grid_file) == 'INPUT/grid_spec.nc') then  
@@ -1281,6 +1287,8 @@ contains
        e2(3,:,:) = 0.
 
     end subroutine setup_cartesian
+!============ GEOS-LAM Update Start =============
+! Construct bounded spherical grid metrics from supplied coordinates.
 
     subroutine setup_file_lam(Atm)
       type(fv_atmos_type), intent(inout) :: Atm
@@ -1309,6 +1317,7 @@ contains
          enddo
       enddo
     end subroutine setup_file_lam
+!============ GEOS-LAM Update End =============
 
     subroutine setup_aligned_nest(Atm)
 

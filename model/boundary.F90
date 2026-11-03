@@ -24,7 +24,10 @@
 
 module boundary_mod
 
+!============ GEOS-LAM Update Start =============
+! Trace dry-harness state for validation; not a production interface.
  use lam_probe_mod,only:probe_mark,probe_array,probe_context,probe_level
+!============ GEOS-LAM Update End =============
 ! Modules Included:
 ! <table>
 ! <tr>
@@ -1693,7 +1696,10 @@ contains
    real, pointer, dimension(:,:,:) :: var_t0, var_t1
 
    integer :: i,j, istart, iend, k
+!============ GEOS-LAM Update Start =============
+! Select file boundary brackets and apply stage-specific lateral values.
    real :: denom, bc_step
+!============ GEOS-LAM Update End =============
 
    logical, save :: printdiag = .true.
 
@@ -1710,6 +1716,8 @@ contains
    jed = bd%jed
 
    denom = 1./split
+!============ GEOS-LAM Update Start =============
+! Apply regional boundary data at the selected model time and dynamics stage.
    bc_step=step
    if (BC%file_boundary) then
       if (BC%upper_seconds<=BC%lower_seconds) call mpp_error(FATAL,"LAM invalid boundary bracket")
@@ -1718,17 +1726,21 @@ contains
       bc_step=max(0.,min(1.,bc_step)); denom=1.
  call probe_mark('BC_WEIGHT',[BC%lower_seconds,BC%upper_seconds,BC%stage_seconds,BC%stage_dt,step,split,bc_step,real(istag),real(jstag)])
    endif
+!============ GEOS-LAM Update End =============
    if (is == 1  ) then
       var_t0 => BC%west_t0
       var_t1 => BC%west_t1
       do k=1,npz
       do j=jsd,jed+jstag
+!============ GEOS-LAM Update Start =============
+! Select file boundary brackets and apply stage-specific lateral values.
       do i=isd,merge(1,0,BC%file_boundary .and. istag==1)
             if (BC%file_boundary) then
                var_nest(i,j,k)=(1.-bc_step)*var_t0(i,j,k)+bc_step*var_t1(i,j,k)
             else
             var_nest(i,j,k) = (var_t0(i,j,k)*(split-step) + step*var_t1(i,j,k))*denom
             endif
+!============ GEOS-LAM Update End =============
       end do
 
          end do
@@ -1752,6 +1764,8 @@ contains
       var_t0 => BC%south_t0
       var_t1 => BC%south_t1
       do k=1,npz
+!============ GEOS-LAM Update Start =============
+! Select file boundary brackets and apply stage-specific lateral values.
       do j=jsd,merge(1,0,BC%file_boundary .and. jstag==1)
          do i=istart,iend+istag
 
@@ -1760,6 +1774,7 @@ contains
             else
             var_nest(i,j,k) = (var_t0(i,j,k)*(split-step) + step*var_t1(i,j,k))*denom
             endif
+!============ GEOS-LAM Update End =============
       end do
       end do
       end do
@@ -1771,12 +1786,15 @@ contains
       var_t1 => BC%east_t1
       do k=1,npz
       do j=jsd,jed+jstag
+!============ GEOS-LAM Update Start =============
+! Select file boundary brackets and apply stage-specific lateral values.
          do i=npx+merge(0,istag,BC%file_boundary),ied+istag
             if (BC%file_boundary) then
                var_nest(i,j,k)=(1.-bc_step)*var_t0(i,j,k)+bc_step*var_t1(i,j,k)
             else
             var_nest(i,j,k) = (var_t0(i,j,k)*(split-step) + step*var_t1(i,j,k))*denom
             endif
+!============ GEOS-LAM Update End =============
 
          end do
       end do
@@ -1801,6 +1819,8 @@ contains
       var_t0 => BC%north_t0
       var_t1 => BC%north_t1
       do k=1,npz
+!============ GEOS-LAM Update Start =============
+! Select file boundary brackets and apply stage-specific lateral values.
       do j=npy+merge(0,jstag,BC%file_boundary),jed+jstag
          do i=istart,iend+istag
 
@@ -1809,6 +1829,7 @@ contains
             else
             var_nest(i,j,k) = (var_t0(i,j,k)*(split-step) + step*var_t1(i,j,k))*denom
             endif
+!============ GEOS-LAM Update End =============
 
          end do
          end do
@@ -1817,6 +1838,8 @@ contains
    end if
 
 
+!============ GEOS-LAM Update Start =============
+! Trace dry-harness state for validation; not a production interface.
  if(BC%file_boundary.and.is==1)then
  call probe_array('BC_APPLIED_WEST',var_nest(isd:merge(1,0,istag==1),js:je,:),isd,js)
  endif
@@ -1831,6 +1854,7 @@ contains
  if(je==npy-1) call probe_array('BC_ALL_NORTH',var_nest(isd:ied+istag,npy+merge(0,jstag,BC%file_boundary):jed+jstag,:), &
                               isd,npy+merge(0,jstag,BC%file_boundary))
  endif
+!============ GEOS-LAM Update End =============
  end subroutine nested_grid_BC_apply_intT
 
  subroutine update_coarse_grid_mpp_2d(var_coarse, var_nest, nest_domain, ind_update, dx, dy, area, &

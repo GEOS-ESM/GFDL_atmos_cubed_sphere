@@ -25,7 +25,10 @@
 
 module nh_core_mod
 
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot solver diagnostics; test instrumentation only.
  use lam_probe_mod,only:probe_mark,probe_array,probe_context,probe_level
+!============ GEOS-LAM Update End =============
 ! Modules Included:
 ! <table>
 ! <tr>
@@ -158,7 +161,10 @@ CONTAINS
          enddo
       enddo
 
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot solver diagnostics; test instrumentation only.
  call probe_mark('SIM_D_ROW',[real(j)])
+!============ GEOS-LAM Update End =============
       if ( a_imp < -0.999 ) then
            call SIM3p0_solver(dt, is, ie, km, rdgas, gama, akap, pe2, dm,  &
                               pem, w2, dz2, pt(is:ie,j,1:km), ws(is,j), p_fac, scale_m )

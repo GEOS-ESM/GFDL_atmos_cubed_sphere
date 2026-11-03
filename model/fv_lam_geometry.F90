@@ -1,3 +1,5 @@
+!============ GEOS-LAM Update Start =============
+! Read and validate bounded NASA FV3 grid geometry.
 ! Isolated NASA port: full halo geometry, one bounded spherical tile.
 module fv_lam_geometry_mod
  use fv_arrays_mod, only: fv_atmos_type, R_GRID
@@ -40,3 +42,4 @@ contains
  a%gridstruct%grid_64=a%grid_global(a%bd%isd:a%bd%ied+1,a%bd%jsd:a%bd%jed+1,:,1)
  end subroutine
 end module
+!============ GEOS-LAM Update End =============
