@@ -42,7 +42,10 @@ set (srcs
   tools/external_sst.F90
   tools/fv_nudge.F90
   model/fv_nesting.F90
-  )
+  
+  model/fv_lam_geometry.F90
+  model/fv_lam_provider.F90
+)
 
 esma_add_library (${this}
   SRCS ${srcs}

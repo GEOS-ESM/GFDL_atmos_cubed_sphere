@@ -62,6 +62,7 @@
 ! </table>
 
 module fv_tracer2d_mod
+ use lam_probe_mod,only:probe_mark,probe_array,probe_context,probe_level
    use tp_core_mod,       only: fv_tp_2d, copy_corners
    use fv_mp_mod,         only: mp_reduce_max
    use fv_mp_mod,         only: ng, mp_gather, is_master
@@ -72,17 +73,33 @@ module fv_tracer2d_mod
    use fv_timing_mod,     only: timing_on, timing_off
    use boundary_mod,      only: nested_grid_BC_apply_intT
    use fv_arrays_mod,     only: fv_grid_type, fv_flags_type, fv_nest_type, fv_atmos_type, fv_grid_bounds_type, REAL8
-   use mpp_mod,           only: mpp_error, FATAL, mpp_broadcast, mpp_send, mpp_recv, mpp_sum, mpp_max
+   use mpp_mod,           only: mpp_error, FATAL, mpp_broadcast, mpp_send, mpp_recv, mpp_sum, mpp_max, mpp_pe
    use fv_grid_utils_mod, only: g_sum_r8
 
 implicit none
 private
 
 public :: tracer_2d, tracer_2d_nested, tracer_2d_1L, offline_tracer_advection
+public :: set_buffer_probe
 
 real, allocatable, dimension(:,:,:) :: nest_fx_west_accum, nest_fx_east_accum, nest_fx_south_accum, nest_fx_north_accum
+! Isolated harness snapshots. Never used unless GBUF_REFRESH=1 is set.
+real, allocatable :: gbuf_low(:,:,:,:), gbuf_high(:,:,:,:)
+real :: gbuf_t0, gbuf_t1, gbuf_tcap
 
 contains
+
+subroutine set_buffer_probe(low, high, t0, t1, tcap)
+   real, intent(in) :: low(:,:,:,:), high(:,:,:,:), t0, t1, tcap
+   if (any(shape(low)/=shape(high))) error stop 'GBUF snapshot shapes differ'
+   if (t1<=t0.or.tcap<t0.or.tcap>t1) error stop 'GBUF invalid time bracket'
+   if (allocated(gbuf_low)) deallocate(gbuf_low,gbuf_high)
+   allocate(gbuf_low,source=low)
+   allocate(gbuf_high,source=high)
+   gbuf_t0=t0
+   gbuf_t1=t1
+   gbuf_tcap=tcap
+end subroutine set_buffer_probe
 
 !>@brief The subroutine 'tracer_2d_1L' performs 2-D horizontal-to-lagrangian transport.
 !>@details This subroutine is called if 'z_tracer = .true.'
@@ -127,11 +144,23 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       real ::  cy2(bd%isd:bd%ied,bd%js :bd%je +1, npz)
       real :: c2d(bd%is:bd%ie,bd%js:bd%je)
       real :: cmax(npz), cmin(npz)
+      real(kind=8) :: lam_face_budget(nq)
       real :: qmax(npz*(nq+1)), qmin(npz*(nq+1))
       integer :: icount(npz,nq)
       real :: frac
       integer :: nsplt
       integer :: i,j,k,n,it,iq
+      real :: gbuf_halo_factor
+      character(len=32) :: gbuf_halo_string
+      integer :: gbuf_halo_status
+      character(len=32) :: gbuf_refresh_string
+      character(len=32) :: gbuf_stage_label
+      character(len=32) :: gbuf_force_string
+      integer :: gbuf_refresh_status
+      integer :: gbuf_force_status
+      logical :: refresh_buffer
+      real(kind=8) :: gbuf_time, gbuf_alpha, gbuf_value, gbuf_mass(nq), innerq
+      integer :: is0, ie0, js0, je0
 
       real, pointer, dimension(:,:) :: area, rarea
       real, pointer, dimension(:,:,:) :: sin_sg
@@ -148,6 +177,10 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
+      is0=max(is,4)
+      ie0=min(ie,npx-4)
+      js0=max(js,4)
+      je0=min(je,npy-4)
 
        area => gridstruct%area
       rarea => gridstruct%rarea
@@ -157,6 +190,14 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       dya    => gridstruct%dya 
       dx     => gridstruct%dx  
       dy     => gridstruct%dy  
+      lam_face_budget=0.d0
+      print *, 'LAM_TRACER_1L_ENTER',is,ie,js,je,isd,ied,jsd,jed
+      print *, 'LAM_TRACER_1L_BOUNDS_DXA',lbound(dxa),ubound(dxa)
+      print *, 'LAM_TRACER_1L_BOUNDS_DYA',lbound(dya),ubound(dya)
+      print *, 'LAM_TRACER_1L_BOUNDS_DX',lbound(dx),ubound(dx)
+      print *, 'LAM_TRACER_1L_BOUNDS_DY',lbound(dy),ubound(dy)
+      print *, 'LAM_TRACER_1L_BOUNDS_SIN',lbound(sin_sg),ubound(sin_sg)
+      flush(6)
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &
 !$OMP                                  sin_sg,cy,yfx,dya,dx) private(i,j,k)
@@ -180,10 +221,25 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
         enddo
      enddo
   enddo  ! k-loop
+  print *, 'LAM_TRACER_1L_FLUX_GEOMETRY_DONE'
+  flush(6)
 
                                call timing_on('COMM_TOTAL')
                          call timing_on('COMM_TRACER')
   call complete_group_halo_update(q_pack, domain)
+  gbuf_halo_factor=1.0
+  call get_environment_variable('GBUF_HALO_FACTOR',gbuf_halo_string,status=gbuf_halo_status)
+  if (gbuf_halo_status==0) read(gbuf_halo_string,*,iostat=gbuf_halo_status) gbuf_halo_factor
+  if (gbuf_halo_factor/=1.0) then
+     q(isd:is-1,:,:,:)=q(isd:is-1,:,:,:)*gbuf_halo_factor
+     q(ie+1:ied,:,:,:)=q(ie+1:ied,:,:,:)*gbuf_halo_factor
+     q(:,jsd:js-1,:,:)=q(:,jsd:js-1,:,:)*gbuf_halo_factor
+     q(:,je+1:jed,:,:)=q(:,je+1:jed,:,:)*gbuf_halo_factor
+  endif
+  print *, 'LAM_TRACER_1L_HALO_DONE'
+  print *, 'LAM_TRACER_1L_SEAM',mpp_pe(),q(is-1,js+7,1,1),q(is,js+7,1,1), &
+       q(ie,js+7,1,1),q(ie+1,js+7,1,1)
+  flush(6)
                         call timing_off('COMM_TRACER')
                               call timing_off('COMM_TOTAL')
 
@@ -226,6 +282,8 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                         call timing_on('COMM_TOTAL')
                             call timing_on('COMM_TRACER_MAX')
   call mp_reduce_max(qmax,(nq+1)*npz)
+  print *, 'LAM_TRACER_1L_REDUCE_DONE', maxval(qmax)
+  flush(6)
                            call timing_off('COMM_TRACER_MAX')
                        call timing_off('COMM_TOTAL')
 
@@ -234,6 +292,26 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      n=nq*npz + k
      cmax(k) = qmax(n)
   enddo  ! k-loop
+  gbuf_force_string=''
+  call get_environment_variable('GBUF_FORCE_SPLIT',gbuf_force_string,status=gbuf_force_status)
+  if (gbuf_force_status==0.and.trim(gbuf_force_string)=='1') then
+     ! Diagnostic schedule test only: retain the actual transport fluxes and
+     ! Courant arrays, but force selected levels through nsplt=2 and 3.
+     if(npz<3) error stop 'GBUF forced split requires three levels'
+     if(mpp_pe()==0) write(*,'(A,2(1X,ES24.16))') 'GBUF_FORCE_ACTUAL',cmax(1),cmax(2)
+     cmax(1)=max(cmax(1),1.25)
+     cmax(2)=max(cmax(2),2.25)
+  endif
+  if (mpp_pe()==0) write(*,'(A,1X,ES24.16,1X,I0,1X,ES24.16)') &
+       'GBUF_1L_COURANT',maxval(cmax),maxval(int(1.+cmax)),gbuf_halo_factor
+  gbuf_refresh_string=''
+  call get_environment_variable('GBUF_REFRESH',gbuf_refresh_string,status=gbuf_refresh_status)
+  refresh_buffer=gbuf_refresh_status==0.and.trim(gbuf_refresh_string)=='1'
+  if (refresh_buffer) then
+     if (.not.allocated(gbuf_low)) error stop 'GBUF 1L refresh snapshots missing'
+     if (any(shape(gbuf_low)/=[ie-is+1,je-js+1,npz,nq])) &
+          error stop 'GBUF 1L snapshot extent mismatch'
+  endif
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
 !$OMP                                  cy,yfx,mfx,mfy,cmax,mfx2,mfy2,cx2,cy2)   &
@@ -289,8 +367,61 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      enddo
 
      nsplt = int(1. + cmax(k))
+     if (mpp_pe()==0) write(*,'(A,1X,I0,1X,I0,1X,ES24.16)') &
+          'GBUF_1L_LEVEL',k,nsplt,cmax(k)
+     if (refresh_buffer) qn2(:,:,:)=q(:,:,k,:)
 
      do it=1,nsplt
+       if(k==1)then
+         print *, 'LAM_TRACER_1L_SPLIT',k,it,nsplt
+         flush(6)
+       endif
+
+       if (refresh_buffer) then
+          gbuf_time=gbuf_tcap+real(it-1,kind=8)*dt/real(nsplt,kind=8)
+          if (gbuf_time<gbuf_t0.or.gbuf_time>gbuf_t1) &
+               error stop 'GBUF 1L substep crosses snapshot bracket'
+          gbuf_alpha=(gbuf_time-gbuf_t0)/(gbuf_t1-gbuf_t0)
+          gbuf_mass=0.
+          do iq=1,nq
+             do j=js,je
+                do i=is,ie
+                   if (i<=3.or.i>=npx-3.or.j<=3.or.j>=npy-3) then
+                      gbuf_value=real(real((1.-gbuf_alpha)*gbuf_low(i-is+1,j-js+1,k,iq) &
+                           +gbuf_alpha*gbuf_high(i-is+1,j-js+1,k,iq),kind=4),kind=8)
+                      gbuf_mass(iq)=gbuf_mass(iq)+(gbuf_value-qn2(i,j,iq))*dp1(i,j,k)*area(i,j)/9.80665d0
+                      qn2(i,j,iq)=gbuf_value
+                   endif
+                enddo
+             enddo
+          enddo
+          call mpp_update_domains(qn2,domain)
+          do iq=1,nq
+             do j=jsd,jed
+                do i=isd,ied
+                   if (i<1.or.i>=npx.or.j<1.or.j>=npy) &
+                        qn2(i,j,iq)=qn2(max(1,min(npx-1,i)),max(1,min(npy-1,j)),iq)
+                enddo
+             enddo
+          enddo
+          if (gbuf_halo_factor/=1..and.nq>1) then
+             do iq=2,nq
+                do j=jsd,jed
+                   do i=isd,ied
+                      if (i<1.or.i>=npx.or.j<1.or.j>=npy) &
+                           qn2(i,j,iq)=gbuf_halo_factor*qn2(max(1,min(npx-1,i)), &
+                                                               max(1,min(npy-1,j)),iq)
+                   enddo
+                enddo
+             enddo
+          endif
+          if (mpp_pe()==0) then
+             write(*,'(A,2(1X,I0),2(1X,ES24.16))') &
+                  'GBUF_1L_REFRESH_TIME',k,it,gbuf_time,gbuf_alpha
+             write(*,'(A,2(1X,I0),*(1X,ES24.16))') &
+                  'GBUF_1L_REFRESH_MASS',k,it,gbuf_mass
+          endif
+       endif
 
 !$OMP parallel do default(none) shared(k,is,ie,js,je,rarea,mfx2,mfy2,dp1,dp2)
         do j=js,je
@@ -300,11 +431,16 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
         enddo
 
 !$OMP parallel do default(none) shared(k,nsplt,it,is,ie,js,je,isd,ied,jsd,jed,npx,npy,cx2,xfx,hord,trdm, &
-!$OMP                                  nord_tr,nq,gridstruct,bd,cy2,yfx,mfx2,mfy2,qn2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac) & 
-!$OMP                          private(fx,fy)
+!$OMP                                  nord_tr,nq,gridstruct,bd,cy2,yfx,mfx2,mfy2,qn2,q,ra_x,ra_y,dp1,dp2,rarea,lim_fac,lam_face_budget, &
+!$OMP                                  refresh_buffer,is0,ie0,js0,je0,domain) &
+!$OMP                          private(fx,fy,innerq)
         do iq=1,nq
-        if ( nsplt /= 1 ) then
-           if ( it==1 ) then
+        if(k==1)then
+          print *, 'LAM_TRACER_1L_FVTP_BEGIN',iq
+          flush(6)
+        endif
+        if ( nsplt /= 1 .or. refresh_buffer ) then
+           if ( it==1 .and. .not.refresh_buffer ) then
               do j=jsd,jed
                  do i=isd,ied
                     qn2(i,j,iq) = q(i,j,k,iq)
@@ -337,7 +473,31 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
               enddo
            enddo
         endif
+        innerq=0.
+        if(js0<=je0) then
+           if(is<=4.and.ie+1>=4) innerq=innerq+sum(dble(fx(4,js0:je0)))
+           if(is<=14.and.ie+1>=14) innerq=innerq-sum(dble(fx(14,js0:je0)))
+        endif
+        if(is0<=ie0) then
+           if(js<=4.and.je+1>=4) innerq=innerq+sum(dble(fy(is0:ie0,4)))
+           if(js<=14.and.je+1>=14) innerq=innerq-sum(dble(fy(is0:ie0,14)))
+        endif
+        write(*,'(A,4(1X,I0),1X,ES24.16)')'GBUF_1L_Q_INNER',mpp_pe(),k,it,iq,innerq/9.80665d0
+        lam_face_budget(iq)=lam_face_budget(iq)+sum(dble(fx(is,js:je)-fx(ie+1,js:je))) &
+             +sum(dble(fy(is:ie,js)-fy(is:ie,je+1)))
         enddo   !  tracer-loop
+        if(k==1)then
+          print *, 'LAM_TRACER_1L_FVTP_DONE'
+          flush(6)
+        endif
+        if (refresh_buffer .and. nq>1) then
+           write(gbuf_stage_label,'("g1lk",I2.2,"s",I2.2)') k,it
+           if (it<nsplt) then
+              call probe_array(trim(gbuf_stage_label),qn2(is:ie,js:je,2),is,js)
+           else
+              call probe_array(trim(gbuf_stage_label),q(is:ie,js:je,k,2),is,js)
+           endif
+        endif
 
         if ( it < nsplt ) then   ! not last call
              do j=js,je
@@ -358,6 +518,9 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      endif
 
   enddo    ! k-loop
+  do iq=1,nq
+     print *, 'LAM_TRACER_FACE_FLUX',iq,lam_face_budget(iq)/9.80665d0
+  enddo
 
 end subroutine tracer_2d_1L
 
@@ -401,7 +564,10 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
       real :: cmax(npz)
       real :: frac, rdt
       integer :: maxsplt, ksplt(npz)
-      integer :: i,j,k,n,it,iq
+      integer :: i,j,k,n,it,iq,halo_status,refresh_status,is0,ie0,js0,je0
+      character(32) :: halo_string, probe_label, refresh_string
+      real :: halo_factor, faceq, innerq, gbuf_time, gbuf_alpha, gbuf_value, gbuf_mass(nq)
+      logical :: halo_probe, refresh_buffer
 
       real, pointer, dimension(:,:) :: area, rarea
       real, pointer, dimension(:,:,:) :: sin_sg
@@ -418,6 +584,8 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
+      is0=max(is,4); ie0=min(ie,13)
+      js0=max(js,4); je0=min(je,13)
 
        area => gridstruct%area
       rarea => gridstruct%rarea
@@ -466,6 +634,8 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
          endif
        endif
     enddo
+    print *, 'LAM_TRACER_2D_GEOMETRY_DONE',minval(xfx),maxval(xfx),minval(yfx),maxval(yfx)
+    flush(6)
 
 !--------------------------------------------------------------------------------
 
@@ -483,6 +653,20 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
        ksplt(k) = int(1. + cmax(k))
        maxsplt = max(maxsplt,ksplt(k))
     enddo
+    call get_environment_variable('GBUF_HALO_FACTOR',halo_string,status=halo_status)
+    halo_probe = halo_status == 0
+    halo_factor = 1.
+    if (halo_probe) read(halo_string,*) halo_factor
+    refresh_string=''
+    call get_environment_variable('GBUF_REFRESH',refresh_string,status=refresh_status)
+    refresh_buffer = refresh_status==0.and.trim(refresh_string)=='1'
+    if (refresh_buffer) then
+       if (.not.allocated(gbuf_low)) error stop 'GBUF refresh snapshots missing'
+       if (any(shape(gbuf_low)/=[ie-is+1,je-js+1,npz,nq])) &
+            error stop 'GBUF refresh snapshot extent mismatch'
+    endif
+    if (mpp_pe()==0) write(*,'(A,1X,I0,1X,ES16.8,1X,I0,1X,ES16.8)') &
+         'GBUF_SPLIT',q_split,max(maxval(abs(cx)),maxval(abs(cy))),maxsplt,halo_factor
 
 !--------------------------------------------------------------------------------
 
@@ -524,12 +708,75 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
                         call timing_on('COMM_TOTAL')
                             call timing_on('COMM_TRACER')
       call complete_group_halo_update(q_pack, domain)
+      if (refresh_buffer) then
+         ! The first active substep starts at the AdvCore cap clock T.
+         ! Level k's prescribed sample is the left edge of its own
+         ! dt/ksplt(k) flux partition, not it/maxsplt for all levels.
+         gbuf_mass=0.
+         do k=1,npz
+            if (it>ksplt(k)) cycle
+            gbuf_time=gbuf_tcap+real(it-1)*dt/real(ksplt(k))
+            if (gbuf_time<gbuf_t0.or.gbuf_time>gbuf_t1) &
+                 error stop 'GBUF substep crosses snapshot bracket'
+            gbuf_alpha=(gbuf_time-gbuf_t0)/(gbuf_t1-gbuf_t0)
+            do iq=1,nq
+            do j=js,je
+            do i=is,ie
+               if (i<=3.or.i>=npx-3.or.j<=3.or.j>=npy-3) then
+                  gbuf_value=real(real((1.-gbuf_alpha)*gbuf_low(i-is+1,j-js+1,k,iq) &
+                       +gbuf_alpha*gbuf_high(i-is+1,j-js+1,k,iq),kind=4))
+                  gbuf_mass(iq)=gbuf_mass(iq)+(gbuf_value-q(i,j,k,iq))*dp1(i,j,k)*area(i,j)/9.80665d0
+                  q(i,j,k,iq)=gbuf_value
+               endif
+            enddo
+            enddo
+            enddo
+         enddo
+         ! Refreshing after the previous asynchronous halo completion
+         ! requires a new exchange before the next PPM stencil reads q.
+         do iq=1,nq
+            call mpp_update_domains(q(:,:,:,iq),domain)
+         enddo
+         do iq=1,nq
+         do j=jsd,jed
+         do i=isd,ied
+            if (i<1.or.i>=npx.or.j<1.or.j>=npy) &
+                 q(i,j,:,iq)=q(max(1,min(npx-1,i)),max(1,min(npy-1,j)),:,iq)
+         enddo
+         enddo
+         enddo
+         if (mpp_pe()==0) then
+            write(*,'(A,1X,I0,1X,ES24.16,1X,ES24.16)') &
+                 'GBUF_REFRESH_TIME',it,gbuf_tcap+real(it-1)*dt/real(ksplt(1)), &
+                 (gbuf_tcap+real(it-1)*dt/real(ksplt(1))-gbuf_t0)/(gbuf_t1-gbuf_t0)
+            write(*,'(A,1X,I0,*(1X,ES24.16))') 'GBUF_REFRESH_MASS',it,gbuf_mass
+         endif
+      endif
+      if (halo_probe .and. nq>1) then
+         do j=jsd,jed
+         do i=isd,ied
+            if(i<1.or.i>=npx.or.j<1.or.j>=npy) &
+               q(i,j,:,2:nq)=halo_factor*q(max(1,min(npx-1,i)),max(1,min(npy-1,j)),:,2:nq)
+         enddo
+         enddo
+      endif
+      if (nq>1) then
+         write(probe_label,'("halo",I2.2)')it
+         call probe_array(trim(probe_label),q(:,:,:,2),isd,jsd)
+      endif
+      if (mpp_pe()==0) write(*,'(A,1X,I0,1X,I0,1X,ES16.8)') &
+           'GBUF_SUBSTEP',it,maxsplt,maxval(abs(cx))/real(maxsplt)
+      if (mpp_pe()==0) write(*,'(A,1X,I0,4(1X,ES16.8))') &
+           'GBUF_DIRECTION',it,minval(cx2),maxval(cx2),minval(cy2),maxval(cy2)
+      print *, 'LAM_TRACER_2D_HALO_DONE',minval(q),maxval(q),minval(dp1),maxval(dp1)
+      flush(6)
                            call timing_off('COMM_TRACER')
                        call timing_off('COMM_TOTAL')
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfx2,mfy2,rarea,nq,&
-!$OMP                                  area,xfx,yfx,q,cx2,cy2,npx,npy,hord,gridstruct,bd,it,ksplt,nord_tr,trdm,lim_fac,dpA) &
-!$OMP                          private(dp2, ra_x, ra_y, fx, fy, i, j, k, n, iq)
+!$OMP                                  area,xfx,yfx,q,cx2,cy2,npx,npy,hord,gridstruct,bd,it,ksplt,nord_tr,trdm,lim_fac,dpA, &
+!$OMP                                  is0,ie0,js0,je0) &
+!$OMP                          private(dp2, ra_x, ra_y, fx, fy, i, j, k, n, iq, faceq, innerq)
      do k=1,npz
 
        if ( it <= ksplt(k) ) then
@@ -564,6 +811,24 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
                           npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
                           gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx2(is,js,k), mfy=mfy2(is,js,k))
            endif
+           if (iq>1) then
+              faceq=0.
+              if(is==1) faceq=faceq+sum(fx(is,js:je))
+              if(ie==npx-1) faceq=faceq-sum(fx(ie+1,js:je))
+              if(js==1) faceq=faceq+sum(fy(is:ie,js))
+              if(je==npy-1) faceq=faceq-sum(fy(is:ie,je+1))
+              write(*,'(A,4(1X,I0),1X,ES24.16)')'GBUF_Q_FACE',mpp_pe(),it,k,iq,faceq/9.80665d0
+           endif
+           innerq=0.
+           if (js0<=je0) then
+              if (is<=4.and.ie+1>=4) innerq=innerq+sum(fx(4,js0:je0))
+              if (is<=14.and.ie+1>=14) innerq=innerq-sum(fx(14,js0:je0))
+           endif
+           if (is0<=ie0) then
+              if (js<=4.and.je+1>=4) innerq=innerq+sum(fy(is0:ie0,4))
+              if (js<=14.and.je+1>=14) innerq=innerq-sum(fy(is0:ie0,14))
+           endif
+           write(*,'(A,4(1X,I0),1X,ES24.16)')'GBUF_Q_INNER',mpp_pe(),it,k,iq,innerq/9.80665d0
            do j=js,je
               do i=is,ie
                  q(i,j,k,iq) = ( q(i,j,k,iq)*dp1(i,j,k) + &
@@ -587,6 +852,11 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
        endif   ! ksplt(k)
 
      enddo ! npz
+
+     if (nq>1) then
+        write(probe_label,'("adv",I2.2)')it
+        call probe_array(trim(probe_label),q(is:ie,js:je,:,2),is,js)
+     endif
 
      if ( it /= maxsplt ) then
                       call timing_on('COMM_TOTAL')
@@ -619,13 +889,13 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       type(group_halo_update_type), intent(inout) :: q_pack
       real   , intent(INOUT) :: q(bd%isd:bd%ied,bd%jsd:bd%jed,npz,nq)   !< Tracers
       real   , intent(INOUT) :: dp1(bd%isd:bd%ied,bd%jsd:bd%jed,npz)    !< DELP before dyn_core
-      real   , intent(INOUT) :: mfx(bd%is:bd%ie+1,bd%js:bd%je,  npz)    !< Mass Flux X-Dir
-      real   , intent(INOUT) :: mfy(bd%is:bd%ie  ,bd%js:bd%je+1,npz)    !< Mass Flux Y-Dir
-      real   , intent(INOUT) ::  cx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)  !< Courant Number X-Dir
-      real   , intent(INOUT) ::  cy(bd%isd:bd%ied,bd%js :bd%je +1,npz)  !< Courant Number Y-Dir
+      real   , intent(IN) :: mfx(bd%is:bd%ie+1,bd%js:bd%je,  npz)    !< Full-step mass flux X
+      real   , intent(IN) :: mfy(bd%is:bd%ie  ,bd%js:bd%je+1,npz)    !< Full-step mass flux Y
+      real   , intent(IN) ::  cx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)  !< Full-step Courant X
+      real   , intent(IN) ::  cy(bd%isd:bd%ied,bd%js :bd%je +1,npz)  !< Full-step Courant Y
       type(fv_grid_type), intent(IN), target :: gridstruct
       type(fv_nest_type), intent(INOUT) :: neststruct
-      type(fv_atmos_type), intent(INOUT) :: parent_grid
+      type(fv_atmos_type), pointer, intent(INOUT) :: parent_grid
       type(domain2d), intent(INOUT) :: domain
 
 ! Local Arrays
@@ -636,6 +906,10 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       real :: ra_y(bd%isd:bd%ied,bd%js:bd%je)
       real :: xfx(bd%is:bd%ie+1,bd%jsd:bd%jed  ,npz)
       real :: yfx(bd%isd:bd%ied,bd%js: bd%je+1, npz)
+      real :: mfx_sub(bd%is:bd%ie+1,bd%js:bd%je,npz)
+      real :: mfy_sub(bd%is:bd%ie,bd%js:bd%je+1,npz)
+      real ::  cx_sub(bd%is:bd%ie+1,bd%jsd:bd%jed,npz)
+      real ::  cy_sub(bd%isd:bd%ied,bd%js:bd%je+1,npz)
       real :: cmax(npz)
       real :: cmax_t
       real :: c_global
@@ -718,7 +992,7 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       enddo
       call mp_reduce_max(cmax,npz)
 
-! find global max courant number and define nsplt to scale cx,cy,mfx,mfy
+! Find the global maximum Courant number for private substep copies.
       c_global = cmax(1)
       if ( npz /= 1 ) then                ! if NOT shallow water test case
          do k=2,npz
@@ -736,31 +1010,38 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 
    frac  = 1. / real(nsplt)
 
+! Keep the full-step capacitor arguments unchanged for fv_dynamics export.
+! Only these private arrays carry one tracer substep's flux and Courant.
+   mfx_sub = mfx
+   mfy_sub = mfy
+    cx_sub = cx
+    cy_sub = cy
+
       if( nsplt /= 1 ) then
-!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,frac,xfx,mfx,cy,yfx,mfy)
+!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx_sub,frac,xfx,mfx_sub,cy_sub,yfx,mfy_sub)
           do k=1,npz
              do j=jsd,jed
                 do i=is,ie+1
-                   cx(i,j,k) =  cx(i,j,k) * frac
+                   cx_sub(i,j,k) = cx_sub(i,j,k) * frac
                    xfx(i,j,k) = xfx(i,j,k) * frac
                 enddo
              enddo
              do j=js,je
                 do i=is,ie+1
-                   mfx(i,j,k) = mfx(i,j,k) * frac
+                   mfx_sub(i,j,k) = mfx_sub(i,j,k) * frac
                 enddo
              enddo
 
              do j=js,je+1
                 do i=isd,ied
-                   cy(i,j,k) =  cy(i,j,k) * frac
+                   cy_sub(i,j,k) = cy_sub(i,j,k) * frac
                   yfx(i,j,k) = yfx(i,j,k) * frac
                 enddo
              enddo
 
              do j=js,je+1
                 do i=is,ie
-                  mfy(i,j,k) = mfy(i,j,k) * frac
+                  mfy_sub(i,j,k) = mfy_sub(i,j,k) * frac
                 enddo
              enddo
           enddo
@@ -779,22 +1060,23 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 	    
       if (gridstruct%nested) then
             do iq=1,nq
+                 call probe_mark('BC_REQUEST_q')
                  call nested_grid_BC_apply_intT(q(isd:ied,jsd:jed,:,iq), &
                       0, 0, npx, npy, npz, bd, &
-                      real(neststruct%tracer_nest_timestep)+real(nsplt*k_split), real(nsplt*k_split), &
+                      real(neststruct%tracer_nest_timestep)+real(merge(-1,nsplt*k_split,neststruct%regional)), real(nsplt*k_split), &
                  neststruct%q_BC(iq), bctype=neststruct%nestbctype  )
            enddo
       endif
 
 
-!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfx,mfy,rarea,nq, &
-!$OMP                                  area,xfx,yfx,q,cx,cy,npx,npy,hord,gridstruct,bd,it,nsplt,nord_tr,trdm,lim_fac) &
+!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfx_sub,mfy_sub,rarea,nq, &
+!$OMP                                  area,xfx,yfx,q,cx_sub,cy_sub,npx,npy,hord,gridstruct,bd,it,nsplt,nord_tr,trdm,lim_fac) &
 !$OMP                          private(dp2, ra_x, ra_y, fx, fy)
       do k=1,npz
 
          do j=js,je
             do i=is,ie
-               dp2(i,j) = dp1(i,j,k) + ((mfx(i,j,k)-mfx(i+1,j,k))+(mfy(i,j,k)-mfy(i,j+1,k)))*rarea(i,j)
+               dp2(i,j) = dp1(i,j,k) + ((mfx_sub(i,j,k)-mfx_sub(i+1,j,k))+(mfy_sub(i,j,k)-mfy_sub(i,j+1,k)))*rarea(i,j)
             enddo
          enddo
 
@@ -811,14 +1093,14 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 
          do iq=1,nq
          if ( it==1 .and. trdm>1.e-4 ) then
-            call fv_tp_2d(q(isd,jsd,k,iq), cx(is,jsd,k), cy(isd,js,k), &
+            call fv_tp_2d(q(isd,jsd,k,iq), cx_sub(is,jsd,k), cy_sub(isd,js,k), &
                           npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
-                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx(is,js,k), mfy=mfy(is,js,k),   &
+                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx_sub(is,js,k), mfy=mfy_sub(is,js,k),   &
                           mass=dp1(isd,jsd,k), nord=nord_tr, damp_c=trdm)
          else
-            call fv_tp_2d(q(isd,jsd,k,iq), cx(is,jsd,k), cy(isd,js,k), &
+            call fv_tp_2d(q(isd,jsd,k,iq), cx_sub(is,jsd,k), cy_sub(isd,js,k), &
                           npx, npy, hord, fx, fy, xfx(is,jsd,k), yfx(isd,js,k), &
-                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx(is,js,k), mfy=mfy(is,js,k))
+                          gridstruct, bd, ra_x, ra_y, lim_fac, mfx=mfx_sub(is,js,k), mfy=mfy_sub(is,js,k))
          endif
             do j=js,je
                do i=is,ie
@@ -841,10 +1123,19 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
               do iq=1,nq
 
 
+                 call probe_mark('BC_REQUEST_q')
+
+
                  call nested_grid_BC_apply_intT(q(isd:ied,jsd:jed,:,iq), &
                       0, 0, npx, npy, npz, bd, &
                       real(neststruct%tracer_nest_timestep), real(nsplt*k_split), &
                  neststruct%q_BC(iq), bctype=neststruct%nestbctype  )
+                 if (iq>=2.and.iq<=3) print *, 'LAM_AUX_TRANSPORT',mpp_pe(),iq, &
+                      neststruct%q_BC(iq)%stage_seconds + &
+                      real(neststruct%tracer_nest_timestep)/real(nsplt*k_split)* &
+                      neststruct%q_BC(iq)%stage_dt, &
+                      q(isd,jsd,1,iq),q(ied,jsd,1,iq), &
+                      q(isd,jed,1,iq),q(ied,jed,1,iq)
 
               end do
            end if
@@ -870,7 +1161,7 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
 subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                                     gridstruct, flagstruct, bd, domain, &
                                     npx, npy, npz,   &
-                                    nq, dt, q_split)
+                                    nq, dt, q_split, bounded_lam, native_mfx, native_mfy)
 
       use fv_mapz_mod,        only: mapn_tracer
       use fv_fill_mod,        only: fillz
@@ -880,7 +1171,10 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       integer, intent(IN) :: npz
       integer, intent(IN) :: nq    ! number of tracers to be advected
       integer, intent(IN) :: q_split
+      logical, intent(IN), optional :: bounded_lam
       type(fv_grid_bounds_type), intent(IN   ) :: bd
+      real, intent(IN), optional :: native_mfx(bd%is:bd%ie+1,bd%js:bd%je,npz)
+      real, intent(IN), optional :: native_mfy(bd%is:bd%ie,bd%js:bd%je+1,npz)
       type(fv_flags_type), intent(INOUT) :: flagstruct
       type(fv_grid_type), intent(IN), target :: gridstruct
       type(domain2D), intent(INOUT) :: domain
@@ -900,8 +1194,13 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       real ::  cyL(bd%isd:bd%ied  ,bd%js :bd%je +1,npz)  ! Courant Number Y-Dir
       real :: mfxL(bd%is :bd%ie +1,bd%js :bd%je   ,npz)  ! Mass Flux X-Dir
       real :: mfyL(bd%is :bd%ie   ,bd%js :bd%je +1,npz)  ! Mass Flux Y-Dir
+      real :: cxa(bd%isd:bd%ied,bd%jsd:bd%jed,npz)
+      real :: cya(bd%isd:bd%ied,bd%jsd:bd%jed,npz)
+      real :: mfxa(bd%isd:bd%ied,bd%jsd:bd%jed,npz)
+      real :: mfya(bd%isd:bd%ied,bd%jsd:bd%jed,npz)
       real ::  dpL(bd%isd:bd%ied  ,bd%jsd:bd%jed  ,npz)  ! Pressure Thickness
       real ::  dpA(bd%is :bd%ie   ,bd%js :bd%je   ,npz)  ! Pressure Thickness
+      real :: dp_inner_max
 ! Local Tracer Arrays
       real ::   q3(bd%isd:bd%ied,bd%jsd:bd%jed, npz,nq)! Ghosted 3D Tracers
       real ::   q2(bd%is :bd%ie ,               npz   )! 2D Tmp
@@ -935,24 +1234,69 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
       ied = bd%ied
       jsd = bd%jsd
       jed = bd%jed
+      print *, 'LAM_OFFLINE_TRACER_ENTER', nq, minval(q), maxval(q)
+      flush(6)
 
 ! Time-step
 ! Fill CX/CY C-Grid boundaries and update ghost regions
     xL(is:ie,js:je,:) = cx(:,:,:)
     yL(is:ie,js:je,:) = cy(:,:,:)
+    do j=jsd,jed
+       do i=isd,ied
+          cxa(i,j,:)=cx(max(is,min(ie,i)),max(js,min(je,j)),:)
+          cya(i,j,:)=cy(max(is,min(ie,i)),max(js,min(je,j)),:)
+       enddo
+    enddo
+    call mpp_update_domains(cxa,domain)
+    call mpp_update_domains(cya,domain)
+    ebuffer = cx(ie,js:je,:)
+    nbuffer = cy(is:ie,je,:)
     call mpp_get_boundary(xL, yL, domain, &
                           wbufferx=wbuffer, ebufferx=ebuffer, &
                           sbuffery=sbuffer, nbuffery=nbuffer, &
                           gridtype=CGRID_NE )
+    print *, 'LAM_CGRID_EDGE',mpp_pe(),cx(ie,js+7,1),ebuffer(js+7,1), &
+         cy(is+min(7,ie-is),je,1),nbuffer(is+min(7,ie-is),1)
     xL(ie+1,js:je,:) = ebuffer
     yL(is:ie,je+1,:) = nbuffer
+    ! Diagnostic bounded-grid repair: define physical exterior C-grid halos
+    ! before the MPI update overwrites halos on inter-rank boundaries.
+    do j=jsd,jed
+       do i=isd,ied+1
+          if (i < is .or. i > ie+1 .or. j < js .or. j > je) &
+             xL(i,j,:) = xL(max(is,min(ie+1,i)),max(js,min(je,j)),:)
+       enddo
+    enddo
+    do j=jsd,jed+1
+       do i=isd,ied
+          if (i < is .or. i > ie .or. j < js .or. j > je+1) &
+             yL(i,j,:) = yL(max(is,min(ie,i)),max(js,min(je+1,j)),:)
+       enddo
+    enddo
+    print *, 'LAM_CGRID_BEFORE_MPP',minval(xL),maxval(xL),minval(yL),maxval(yL)
+    flush(6)
     call mpp_update_domains( xL, yL, domain, gridtype=CGRID_NE, complete=.true.)
+    xL(ie+1,jsd:jed,:)=cxa(ie+1,jsd:jed,:)
+    yL(isd:ied,je+1,:)=cya(isd:ied,je+1,:)
     cxL(is:ie+1,jsd:jed,:) = xL(is:ie+1,jsd:jed,:)
     cyL(isd:ied,js:je+1,:) = yL(isd:ied,js:je+1,:)
+    print *, 'LAM_CGRID_AFTER_MPP',minval(cxL),maxval(cxL),minval(cyL),maxval(cyL)
+    print *, 'LAM_CGRID_AFTER_MPP_EDGE',mpp_pe(),cxL(is,js+7,1),cxL(ie,js+7,1),cxL(ie+1,js+7,1)
+    flush(6)
 
 ! Fill MFX/MFY C-Grid boundaries
     xL(is:ie,js:je,:) = mfx(:,:,:)
     yL(is:ie,js:je,:) = mfy(:,:,:)
+    do j=jsd,jed
+       do i=isd,ied
+          mfxa(i,j,:)=mfx(max(is,min(ie,i)),max(js,min(je,j)),:)
+          mfya(i,j,:)=mfy(max(is,min(ie,i)),max(js,min(je,j)),:)
+       enddo
+    enddo
+    call mpp_update_domains(mfxa,domain)
+    call mpp_update_domains(mfya,domain)
+    ebuffer = mfx(ie,js:je,:)
+    nbuffer = mfy(is:ie,je,:)
     call mpp_get_boundary(xL, yL, domain, &
                           wbufferx=wbuffer, ebufferx=ebuffer, &
                           sbuffery=sbuffer, nbuffery=nbuffer, &
@@ -961,11 +1305,47 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
     yL(is:ie,je+1,:) = nbuffer
     mfxL(is:ie+1,js:je,:) = xL(is:ie+1,js:je,:)
     mfyL(is:ie,js:je+1,:) = yL(is:ie,js:je+1,:)
+    mfxL(ie+1,js:je,:)=mfxa(ie+1,js:je,:)
+    mfyL(is:ie,je+1,:)=mfya(is:ie,je+1,:)
+    call probe_array('gchp_mfx',mfxL,is,js)
+    call probe_array('gchp_mfy',mfyL,is,js)
+    call probe_array('gchp_cx',cxL,is,jsd)
+    call probe_array('gchp_cy',cyL,isd,js)
+    if (mpp_pe()==0) write(*,'(A,1X,ES24.16)')'GBUF_DRY_FACE', &
+         (sum(mfxL(is,js:je,:))-sum(mfxL(ie+1,js:je,:)) + &
+          sum(mfyL(is:ie,js,:))-sum(mfyL(is:ie,je+1,:)))/9.80665d0
+    if (present(native_mfx) .neqv. present(native_mfy)) &
+         error stop 'LAM exterior mass-flux pair is incomplete'
+    if (present(native_mfx) .and. present(native_mfy)) then
+       ! The MAPL imports carry one value per active A-grid cell. On the
+       ! physical east/north edges, their last value is an interior face;
+       ! retain the FV native exterior C-grid face instead.
+       if (ie==npx-1) then
+          mfxL(ie+1,js:je,:)=native_mfx(ie+1,js:je,:)
+       endif
+       if (je==npy-1) then
+          mfyL(is:ie,je+1,:)=native_mfy(is:ie,je+1,:)
+       endif
+    endif
 
 ! Fill local tracers and pressure thickness
     dpL(bd%is:bd%ie,bd%js:bd%je,:) = pleB(:,:,2:npz+1) - pleB(:,:,1:npz)
     q3(is:ie,js:je,:,:) = q(is:ie,js:je,:,:)
+    if (nq>1) call probe_array('gchp_q0',q(is:ie,js:je,:,2),is,js)
+    call probe_array('gchp_dp0',dpL(is:ie,js:je,:),is,js)
+    ! Diagnostic only: give unfilled physical-boundary halos defined values.
+    do j=jsd,jed
+       do i=isd,ied
+          if (i < is .or. i > ie .or. j < js .or. j > je) then
+             q3(i,j,:,:) = q3(max(is,min(ie,i)),max(js,min(je,j)),:,:)
+             dpL(i,j,:) = dpL(max(is,min(ie,i)),max(js,min(je,j)),:)
+          endif
+       enddo
+    enddo
+    call mpp_update_domains(dpL,domain)
     call start_group_halo_update(i_pack, q3, domain)
+    print *, 'LAM_OFFLINE_TRACER_HALO_STARTED'
+    flush(6)
 
     if ( flagstruct%z_tracer .and. q_split==0 ) then
          call tracer_2d_1L(q3, dpL, mfxL, mfyL, cxL, cyL, &
@@ -977,6 +1357,22 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
                         flagstruct%hord_tr, q_split, dt, 0, i_pack, &
                         flagstruct%nord_tr, flagstruct%trdm2, flagstruct%lim_fac, dpA=dpA)
     endif
+    print *, 'LAM_OFFLINE_TRACER_HORIZONTAL_DONE', minval(q3), maxval(q3)
+    flush(6)
+    if (nq>1) call probe_array('gchp_qh',q3(is:ie,js:je,:,2),is,js)
+    call probe_array('gchp_dpa',dpA,is,js)
+    call probe_array('gchp_dpd',pleA(:,:,2:npz+1)-pleA(:,:,1:npz),is,js)
+    dp_inner_max=0.
+    do k=1,npz
+    do j=js,je
+    do i=is,ie
+       if (i>3.and.i<npx-3.and.j>3.and.j<npy-3) &
+            dp_inner_max=max(dp_inner_max,abs(dpA(i,j,k)-(pleA(i,j,k+1)-pleA(i,j,k))))
+    enddo
+    enddo
+    enddo
+    if (mpp_pe()==0) write(*,'(A,2(1X,ES24.16))')'GBUF_PRESSURE', &
+         dp_inner_max,maxval(abs(dpA-(pleA(:,:,2:npz+1)-pleA(:,:,1:npz))))
 
 !------------------------------------------------------------------
 ! Re-Map constituents
@@ -1002,6 +1398,9 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
           call mapn_tracer(nq, npz, pe1, pe2, q3, dp2, kord_tracers, j,     &
                            is, ie, isd, ied, jsd, jed, 0., flagstruct%fill)
        enddo
+       print *, 'LAM_OFFLINE_TRACER_VERTICAL_DONE', minval(q3), maxval(q3)
+       flush(6)
+       if (nq>1) call probe_array('gchp_q1',q3(is:ie,js:je,:,2),is,js)
 
        ! Rescale tracers based on pleA at destination timestep
        !------------------------------------------------------
@@ -1010,6 +1409,10 @@ subroutine offline_tracer_advection(q, pleB, pleA, mfx, mfy, cx, cy, &
             !---------------
             scalingFactor = calcScalingFactor(q(is:ie,js:je,1:npz,iq), q3(is:ie,js:je,1:npz,iq), pleB, pleA, &
                               npz, domain, gridstruct, flagstruct, bd)
+            print *, 'LAM_TRACER_GLOBAL_SCALE',iq,scalingFactor
+            if(present(bounded_lam)) then
+               if(bounded_lam) scalingFactor=1.0
+            endif
             q(is:ie,js:je,1:npz,iq) = q3(is:ie,js:je,1:npz,iq) * scalingFactor
        enddo
 
@@ -1055,6 +1458,7 @@ end subroutine offline_tracer_advection
          ! denominator
          globalSums(2) = g_sum_r8(domain, qsum2, bd%is,bd%ie, bd%js,bd%je, 0, &
                                   gridstruct%area_64(bd%is:bd%ie,bd%js:bd%je), 1)
+         print *, 'LAM_TRACER_SCALE_MASS',globalSums(1)/9.80665d0,globalSums(2)/9.80665d0
 
          if (globalSums(2) > TINY_DENOMINATOR) then
             scalingR8 =  globalSums(1) / globalSums(2)

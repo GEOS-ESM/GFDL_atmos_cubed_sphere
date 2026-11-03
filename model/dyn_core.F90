@@ -26,6 +26,8 @@
 
 module dyn_core_mod
 
+ use lam_probe_mod,only:probe_mark,probe_array,probe_context,probe_level
+ use lam_science_mod,only:science_state,science_predictor
 ! <table>
 ! <tr>
 !     <th>Module Name</th>
@@ -397,6 +399,7 @@ contains
 
 !-----------------------------------------------------
   do it=1,n_split
+ call probe_context(it,neststruct%delz_BC%stage_seconds+real(it-1)*dt,dt)
 !-----------------------------------------------------
 #ifdef ROT3
      call start_group_halo_update(i_pack(8), u, v, domain, gridtype=DGRID_NE)
@@ -411,6 +414,7 @@ contains
         !First split timestep has split_timestep_BC = n_split*k_split
         !   to do time-extrapolation on BCs.
         split_timestep_bc = real(n_split*k_split+neststruct%nest_timestep)
+        if (neststruct%regional) split_timestep_bc=real(neststruct%nest_timestep)
      endif
 
      if ( (nq > 0) .and. (flagstruct%inline_q) ) then
@@ -509,6 +513,8 @@ contains
                                                      call timing_off('COMM_TOTAL')
 
                                                      call timing_on('c_sw')
+
+ call science_state('before_c',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.false.)
 !$OMP parallel do default(none) shared(npz,isd,jsd,delpc,delp,ptc,pt,u,v,w,uc,vc,ua,va, &
 !$OMP                                  omga,ut,vt,divgd,flagstruct,dt2,hydrostatic,bd,  &
 !$OMP                                  gridstruct)
@@ -522,6 +528,9 @@ contains
                       gridstruct, flagstruct)
       enddo
                                                      call timing_off('c_sw')
+ call science_state('after_c',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.false.,uc)
+ call science_predictor(bd,gridstruct,npz,ptc,delpc,delz,u,v,omga,vc,.false.)
+
       if ( flagstruct%nord > 0 ) then
                                                    call timing_on('COMM_TOTAL')
                                         call timing_on('COMM_DIVGD')
@@ -531,10 +540,12 @@ contains
       endif
 
       if (gridstruct%nested) then
+         call probe_mark('BC_REQUEST_delpc')
          call nested_grid_BC_apply_intT(delpc, &
               0, 0, npx, npy, npz, bd, split_timestep_BC+0.5, real(n_split*k_split), &
               neststruct%delp_BC, bctype=neststruct%nestbctype)
 #ifndef SW_DYNAMICS
+         call probe_mark('BC_REQUEST_ptc')
          call nested_grid_BC_apply_intT(ptc, &
               0, 0, npx, npy, npz, bd, split_timestep_BC+0.5, real(n_split*k_split), &
               neststruct%pt_BC, bctype=neststruct%nestbctype )
@@ -563,7 +574,27 @@ contains
                  enddo
               enddo
 
-         else 
+         else
+            if (neststruct%regional) then
+               ! The next acoustic step advects old-time heights.  Its file
+               ! boundary must be sampled at this step's start, not at the
+               ! midpoint used later for the C pressure-gradient boundary.
+               call nested_grid_BC_apply_intT(delz, &
+                    0, 0, npx, npy, npz, bd, split_timestep_BC, real(n_split*k_split), &
+                    neststruct%delz_BC, bctype=neststruct%nestbctype)
+!$OMP parallel do default(none) shared(isd,ied,jsd,jed,npz,npx,npy,zh,zs,delz) private(i,k)
+               do j=jsd,jed
+                  do i=isd,ied
+                     ! Preserve prognostic cells and halos supplied by MPI.
+                     if (i>=1 .and. i<npx .and. j>=1 .and. j<npy) cycle
+                     zh(i,j,npz+1) = zs(i,j)
+                     do k=npz,1,-1
+                        zh(i,j,k) = zh(i,j,k+1) - delz(i,j,k)
+                     enddo
+                  enddo
+               enddo
+!$OMP end parallel do
+            endif
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,npz,zh,gz)
               do k=1, npz+1
                  do j=jsd,jed
@@ -573,11 +604,15 @@ contains
                  enddo
               enddo
          endif
+ call probe_array('HEIGHT_C_INPUT',gz,isd,jsd)
+ call probe_array('DZ_AT_C_INPUT',delz,isd,jsd)
+ call probe_mark('CONSUME_HEIGHT_C')
                                             call timing_on('UPDATE_DZ_C')
          call update_dz_c(is, ie, js, je, npz, ng, dt2, flagstruct%dz_min, dp_ref, zs, gridstruct%area, ut, vt, gz, ws3, &
              npx, npy, gridstruct%sw_corner, gridstruct%se_corner, &
              gridstruct%ne_corner, gridstruct%nw_corner, bd, gridstruct%grid_type)
                                             call timing_off('UPDATE_DZ_C')
+ call probe_array('HEIGHT_C_ADVECTED',gz(is-1:ie+1,js-1:je+1,:),is-1,js-1)
 
                                                call timing_on('Riem_Solver')
          call Riem_Solver_C( ms, dt2,   is,  ie,   js,   je,   npz,   ng,   &
@@ -587,6 +622,7 @@ contains
                                                call timing_off('Riem_Solver')
 
          if (gridstruct%nested) then
+                 call probe_mark('BC_REQUEST_delz')
                  call nested_grid_BC_apply_intT(delz, &
                       0, 0, npx, npy, npz, bd, split_timestep_BC+0.5, real(n_split*k_split), &
                 neststruct%delz_BC, bctype=neststruct%nestbctype )
@@ -611,7 +647,11 @@ contains
 
       endif   ! end hydro check
 
+
+ call science_state('before_pg_c',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.false.,gz)
       call p_grad_c(dt2, npz, delpc, pkc, gz, uc, vc, bd, gridstruct%rdxc, gridstruct%rdyc, hydrostatic)
+ call science_state('after_pg_c',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.false.,uc)
+
 
                                                                    call timing_on('COMM_TOTAL')
                                         call timing_on('COMM_UCVC')
@@ -653,12 +693,25 @@ contains
          !difference for interpolated BCs from the coarse grid.
 
 
+            call probe_mark('BC_REQUEST_vc')
+
+
             call nested_grid_BC_apply_intT(vc, &
                  0, 1, npx, npy, npz, bd, split_timestep_bc+0.5, real(n_split*k_split), & 
             neststruct%vc_BC, bctype=neststruct%nestbctype )
+            call probe_mark('BC_REQUEST_uc')
             call nested_grid_BC_apply_intT(uc, &
                  1, 0, npx, npy, npz, bd, split_timestep_bc+0.5, real(n_split*k_split), &
             neststruct%uc_BC, bctype=neststruct%nestbctype )
+
+            if (neststruct%regional .and. neststruct%uc_BC%file_boundary) then
+               ! File BCs cover the south/north strips through neighboring
+               ! MPI x halos. Reconcile those overlaps after the overwrite.
+               call start_group_halo_update(i_pack(9), uc, vc, domain, gridtype=CGRID_NE)
+               call complete_group_halo_update(i_pack(9), domain)
+            endif
+
+            call probe_mark('BC_REQUEST_divgd')
 
             call nested_grid_BC_apply_intT(divgd, &
                  1, 1, npx, npy, npz, bd, split_timestep_bc, real(n_split*k_split), &
@@ -668,6 +721,7 @@ contains
 
       if ( gridstruct%nested .and. flagstruct%inline_q ) then
             do iq=1,nq
+                  call probe_mark('BC_REQUEST_q')
                   call nested_grid_BC_apply_intT(q(isd:ied,jsd:jed,:,iq), &
                        0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
                neststruct%q_BC(iq), bctype=neststruct%nestbctype )
@@ -690,6 +744,8 @@ contains
      endif
 
                                                      call timing_on('d_sw')
+ call science_state('before_d',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.false.,domain=domain)
+
 !$OMP parallel do default(none) shared(npz,flagstruct,nord_v,pfull,damp_vt,hydrostatic,last_step, &
 !$OMP                                  is,ie,js,je,isd,ied,jsd,jed,omga,delp,gridstruct,npx,npy,  &
 !$OMP                                  ng,zh,vt,ptc,pt,u,v,w,uc,vc,ua,va,divgd,mfx,mfy,cx,cy,     &
@@ -831,6 +887,8 @@ contains
     call prt_mxm('W_dsw ', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
 
                                                      call timing_off('d_sw')
+ call science_state('after_d',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.true.)
+
 
     if( flagstruct%fill_dp ) call mix_dp(hydrostatic, w, delp, pt, npz, ak, bk, .false., flagstruct%fv_debug, bd)
 
@@ -881,14 +939,17 @@ contains
 
      !Want to move this block into the hydro/nonhydro branch above and merge the two if structures
      if (gridstruct%nested) then
+       call probe_mark('BC_REQUEST_delp')
        call nested_grid_BC_apply_intT(delp, &
             0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
             neststruct%delp_BC, bctype=neststruct%nestbctype )
 #ifndef SW_DYNAMICS
+       call probe_mark('BC_REQUEST_pt')
        call nested_grid_BC_apply_intT(pt, &
             0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
             neststruct%pt_BC, bctype=neststruct%nestbctype  )
 #ifdef USE_COND
+       call probe_mark('BC_REQUEST_q_con')
        call nested_grid_BC_apply_intT(q_con, &
             0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
             neststruct%q_con_BC, bctype=neststruct%nestbctype  )       
@@ -901,10 +962,15 @@ contains
                    gridstruct%nested, .true., npx, npy, flagstruct%a2b_ord, bd)
      else
 #ifndef SW_DYNAMICS
+ call probe_array('HEIGHT_D_INPUT',zh,isd,jsd)
+ call probe_array('DZ_AT_D_INPUT',delz,isd,jsd)
+ call probe_mark('CONSUME_HEIGHT_D')
                                             call timing_on('UPDATE_DZ')
         call update_dz_d(nord_v, damp_vt, flagstruct%hord_tm, is, ie, js, je, npz, ng, npx, npy, gridstruct%area,  &
                          gridstruct%rarea, dp_ref, zs, zh, crx, cry, xfx, yfx, delz, ws, rdt, flagstruct%dz_min, gridstruct, bd, flagstruct%lim_fac)
                                             call timing_off('UPDATE_DZ')
+ call probe_array('HEIGHT_D_ADVECTED',zh,isd,jsd)
+ call probe_mark('CONSUME_NH_SOLVER_D')
 
         if ( flagstruct%fv_debug ) &
         call prt_mxm('WS_dzd', ws, is, ie  , js, je  , 0, 1, 1., gridstruct%area_64, domain)
@@ -922,6 +988,8 @@ contains
                          flagstruct%scale_z, flagstruct%p_fac, flagstruct%a_imp, &
                          flagstruct%use_logp, remap_step, beta<-0.1)
                                                          call timing_off('Riem_Solver')
+ call probe_array('HEIGHT_D_NH',zh,isd,jsd)
+ call science_state('after_nh_d',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.true.)
         if ( flagstruct%fv_debug ) &
         call prt_mxm('W_riem', w, is, ie  , js, je  , ng, npz, 1., gridstruct%area_64, domain)
 
@@ -947,6 +1015,7 @@ contains
         endif
 
         if (gridstruct%nested) then
+          call probe_mark('BC_REQUEST_delz')
           call nested_grid_BC_apply_intT(delz, &
                0, 0, npx, npy, npz, bd, split_timestep_BC+1., real(n_split*k_split), &
                neststruct%delz_BC, bctype=neststruct%nestbctype  )
@@ -967,10 +1036,17 @@ contains
         call complete_group_halo_update(i_pack(4), domain)
                                                              call timing_off('COMM_RIEM')
         call timing_off('COMM_TOTAL')
-!$OMP parallel do default(none) shared(is,ie,js,je,npz,gz,zh,grav)
+
+ call science_state('nh_ghost_ready',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.true.,gz)
+!$OMP parallel do default(none) shared(is,ie,js,je,npz,gz,zh,grav,neststruct,npx,npy)
         do k=1,npz+1
            do j=js-2,je+2
               do i=is-2,ie+2
+                 ! Standalone file BC supplied current halo geopotential.
+                 ! Keep MPI interior halos from zh, preserve physical exterior.
+                 if(neststruct%regional)then
+                    if(i<1.or.i>npx-1.or.j<1.or.j>npy-1)cycle
+                 endif
                  gz(i,j,k) = zh(i,j,k)*grav
               enddo
            enddo
@@ -1000,6 +1076,8 @@ contains
       endif
 #endif
 
+
+ call science_state('before_pg_d',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.true.,gz)
 !----------------------------
 ! Compute pressure gradient:
 !----------------------------
@@ -1039,6 +1117,8 @@ contains
 #endif
    endif
                                        call timing_off('PG_D')
+ call science_state('after_pg_d',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.false.)
+
 
 ! *** Inline Rayleigh friction here
    if( flagstruct%RF_fast .and. flagstruct%tau > 0. )  then
@@ -1105,7 +1185,7 @@ contains
     endif        
 
 #ifndef ROT3
-    if ( it/=n_split)   &
+    if ( it/=n_split .and. .not.neststruct%regional)   &
          call start_group_halo_update(i_pack(8), u, v, domain, gridtype=DGRID_NE)
 #endif
                                                      call timing_off('COMM_TOTAL')
@@ -1167,19 +1247,29 @@ contains
     if (gridstruct%nested) then
 #ifndef SW_DYNAMICS
          if (.not. hydrostatic) then
+               call probe_mark('BC_REQUEST_w')
                call nested_grid_BC_apply_intT(w, &
                0, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
                neststruct%w_BC, bctype=neststruct%nestbctype  )
        end if
 #endif SW_DYNAMICS
+            call probe_mark('BC_REQUEST_u')
             call nested_grid_BC_apply_intT(u, &
             0, 1, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
             neststruct%u_BC, bctype=neststruct%nestbctype  )
+            call probe_mark('BC_REQUEST_v')
             call nested_grid_BC_apply_intT(v, &
             1, 0, npx, npy, npz, bd, split_timestep_BC+1, real(n_split*k_split), &
             neststruct%v_BC, bctype=neststruct%nestbctype )
 
     end if
+
+#ifndef ROT3
+    ! Pack the prescribed physical D-grid edges, including intersections
+    ! with MPI subdomain boundaries, after the file boundary update.
+    if(neststruct%regional.and.it/=n_split) &
+      call start_group_halo_update(i_pack(8),u,v,domain,gridtype=DGRID_NE)
+#endif
 
     if ( flagstruct%fv_debug ) then
           if(is_master()) write(*,*) 'n_split loop, it=', it
@@ -1193,6 +1283,8 @@ contains
     endif
 
 !-----------------------------------------------------
+
+ call science_state('after_d_bc',bd,gridstruct,npz,pt,delp,delz,u,v,w,.true.,.false.)
   enddo   ! time split loop
 !-----------------------------------------------------
   if ( nq > 0 .and. .not. flagstruct%inline_q ) then
@@ -1640,11 +1732,16 @@ do k=1,npz+1
    call a2b_ord4( gz(isd,jsd,k), wk1, gridstruct, npx, npy, is, ie, js, je, ng, .true.)
 enddo
 
+ call probe_array('PG_CORNER_GZ',gz(is:ie+1,js:je+1,:),is,js)
+ call probe_array('PG_CORNER_PK',pk(is:ie+1,js:je+1,:),is,js)
+ call probe_array('PG_CORNER_PP',pp(is:ie+1,js:je+1,:),is,js)
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,delp,gridstruct,npx,npy,ng,isd,jsd, &
 !$OMP                                  pk,dt,gz,u,pp,v) &
 !$OMP                          private(wk1, wk, du1, dv1)
 do k=1,npz
    call a2b_ord4(delp(isd,jsd,k), wk1, gridstruct, npx, npy, is, ie, js, je, ng)
+ call probe_level(k)
+ call probe_array('PG_CORNER_DP',wk1(is:ie+1,js:je+1),is,js)
    do j=js,je+1
       do i=is,ie+1
          wk(i,j) = pk(i,j,k+1) - pk(i,j,k)

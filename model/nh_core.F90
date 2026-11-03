@@ -25,6 +25,7 @@
 
 module nh_core_mod
 
+ use lam_probe_mod,only:probe_mark,probe_array,probe_context,probe_level
 ! Modules Included:
 ! <table>
 ! <tr>
@@ -157,6 +158,7 @@ CONTAINS
          enddo
       enddo
 
+ call probe_mark('SIM_D_ROW',[real(j)])
       if ( a_imp < -0.999 ) then
            call SIM3p0_solver(dt, is, ie, km, rdgas, gama, akap, pe2, dm,  &
                               pem, w2, dz2, pt(is:ie,j,1:km), ws(is,j), p_fac, scale_m )

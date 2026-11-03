@@ -1055,6 +1055,8 @@ module fv_arrays_mod
   end type fv_flags_type
 
   type fv_nest_BC_type_3D
+     logical :: file_boundary = .false.
+     real :: lower_seconds=0., upper_seconds=0., stage_seconds=0., stage_dt=0.
 
      !!! CLEANUP: could we have pointers to np[xyz], nest_domain, and the index/weight arrays?
 
@@ -1081,6 +1083,13 @@ module fv_arrays_mod
   end type fv_nest_BC_type_4D
 
   type fv_nest_type
+     ! Standalone file provider; no parent communicator or feedback.
+     logical :: regional = .false.
+     logical :: lam_met_file_split = .false.
+     integer :: lam_interval=3, lam_p_split=1
+     real :: lam_elapsed=0., lam_lower=-1., lam_upper=-1.
+     integer :: lam_origin(6)=0
+     character(len=256) :: lam_directory="INPUT"
 
 !nested grid flags:
 
@@ -1774,7 +1783,7 @@ contains
     end if
 
     !--- Do the memory allocation only for nested model
-    if( ngrids_in > 1 ) then
+    if( ngrids_in > 1 .or. Atm%neststruct%regional ) then
        if (Atm%flagstruct%grid_type < 4) then
           if (Atm%neststruct%nested) then
              allocate(Atm%grid_global(1-ng_2d:npx_2d  +ng_2d,1-ng_2d:npy_2d  +ng_2d,2,1))

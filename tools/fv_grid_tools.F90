@@ -115,6 +115,7 @@ module fv_grid_tools_mod
 ! </table>
 
 
+  use fv_lam_geometry_mod, only: lam_read_geometry
   use constants_mod, only: grav, omega, pi=>pi_8, cnst_radius=>radius
   use fv_arrays_mod, only: fv_atmos_type, fv_grid_type, fv_grid_bounds_type, R_GRID
   use fv_grid_utils_mod, only: gnomonic_grids, gnomonic_grids_local, great_circle_dist,  &
@@ -675,7 +676,9 @@ contains
 
           cubed_sphere = .true.
           
-          if (Atm%neststruct%nested) then
+          if (Atm%neststruct%regional) then
+             call setup_file_lam(Atm)
+          else if (Atm%neststruct%nested) then
              call setup_aligned_nest(Atm)
           else
           if(trim(grid_file) == 'INPUT/grid_spec.nc') then  
@@ -1278,6 +1281,34 @@ contains
        e2(3,:,:) = 0.
 
     end subroutine setup_cartesian
+
+    subroutine setup_file_lam(Atm)
+      type(fv_atmos_type), intent(inout) :: Atm
+      integer :: i,j
+      real(kind=R_GRID) :: p1(2),p2(2)
+      call lam_read_geometry(Atm)
+      do j=jsd,jed
+         do i=isd,ied
+            call cell_center2(grid(i,j,:),grid(i+1,j,:),grid(i,j+1,:),grid(i+1,j+1,:),agrid(i,j,:))
+            call mid_pt_sphere(grid(i,j,:),grid(i,j+1,:),p1)
+            call mid_pt_sphere(grid(i+1,j,:),grid(i+1,j+1,:),p2)
+            dxa(i,j)=great_circle_dist(p1,p2,radius)
+            call mid_pt_sphere(grid(i,j,:),grid(i+1,j,:),p1)
+            call mid_pt_sphere(grid(i,j+1,:),grid(i+1,j+1,:),p2)
+            dya(i,j)=great_circle_dist(p1,p2,radius)
+         enddo
+      enddo
+      do j=jsd,jed+1
+         do i=isd,ied
+            dx(i,j)=great_circle_dist(grid(i,j,:),grid(i+1,j,:),radius)
+         enddo
+      enddo
+      do j=jsd,jed
+         do i=isd,ied+1
+            dy(i,j)=great_circle_dist(grid(i,j,:),grid(i,j+1,:),radius)
+         enddo
+      enddo
+    end subroutine setup_file_lam
 
     subroutine setup_aligned_nest(Atm)
 

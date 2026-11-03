@@ -24,6 +24,8 @@
 !>@details The step is applied to the cubed sphere.
 
 module sw_core_mod
+ use lam_probe_mod,only:probe_mark,probe_array,probe_context,probe_level
+ use lam_science_mod,only:science_flux,science_damp
 
 ! Modules Included:
 ! <table>
@@ -599,6 +601,8 @@ module sw_core_mod
       integer :: npx, npy
       logical :: nested
 
+ real::science_pot(bd%isd:bd%ied,bd%jsd:bd%jed)
+ science_pot=0.
       is  = bd%is
       ie  = bd%ie
       js  = bd%js
@@ -936,9 +940,17 @@ module sw_core_mod
       enddo
 
 
+ call probe_level(k)
+ call probe_array('DSW_INITIAL_DP',delp(is:ie,js:je),is,js)
+ call probe_array('DSW_INITIAL_THETA',pt(is:ie,js:je),is,js)
+ call probe_array('DSW_INITIAL_W',w(is:ie,js:je),is,js)
       call fv_tp_2d(delp, crx_adv, cry_adv, npx, npy, hord_dp, fx, fy,  &
                     xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, nord=nord_v, damp_c=damp_v)
 
+ call probe_array('MASS_FX',fx,is,js)
+ call probe_array('MASS_FY',fy,is,js)
+call science_flux(bd,gridstruct,k,npx,npy,hord_tm,flagstruct%lim_fac,crx_adv,cry_adv, &
+ xfx_adv,yfx_adv,ra_x,ra_y,fx,fy)
 ! <<< Save the mass fluxes to the "Flux Capacitor" for tracer transport >>>
         do j=jsd,jed
             do i=is,ie+1
@@ -985,6 +997,8 @@ module sw_core_mod
             endif
             call fv_tp_2d(w, crx_adv,cry_adv, npx, npy, hord_vt, gx, gy, xfx_adv, yfx_adv, &
                           gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy)
+ call probe_array('W_FX',gx,is,js)
+ call probe_array('W_FY',gy,is,js)
             do j=js,je
                do i=is,ie
                   w(i,j) = delp(i,j)*w(i,j) + (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
@@ -1006,6 +1020,8 @@ module sw_core_mod
                       mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
 #endif
 
+ call probe_array('THETA_FX',gx,is,js)
+ call probe_array('THETA_FY',gy,is,js)
      if ( inline_q ) then
         do j=js,je
            do i=is,ie
@@ -1354,6 +1370,7 @@ module sw_core_mod
                 damp = gridstruct%da_min_c*max(d2_bg, min(0.20, dddmp*abs(delpc(i,j)*dt)))
                 vort(i,j) = damp*delpc(i,j)
                 ke(i,j) = ke(i,j) + vort(i,j)
+                science_pot(i,j)=vort(i,j)
          enddo
       enddo
    else
@@ -1417,6 +1434,7 @@ module sw_core_mod
                      ! Smagorinsky      + high-order divergence 
            vort(i,j) = damp2*delpc(i,j) + dd8*divg_d(i,j)
              ke(i,j) = ke(i,j) + vort(i,j)
+                science_pot(i,j)=vort(i,j)
         enddo
      enddo
 
@@ -1471,6 +1489,13 @@ module sw_core_mod
        enddo
     enddo
 
+ call probe_array('D_BERNOULLI_PLUS_DAMP',ke(is:ie+1,js:je+1),is,js)
+ call probe_array('D_DAMP_POTENTIAL',science_pot(is:ie+1,js:je+1),is,js)
+ call probe_array('D_VORT_FX',fx,is,js)
+ call probe_array('D_VORT_FY',fy,is,js)
+ call probe_array('D_U_BASE_CIRC',vt(is:ie,js:je+1),is,js)
+ call probe_array('D_V_BASE_CIRC',ut(is:ie+1,js:je),is,js)
+call science_damp(bd,gridstruct,k,delp,u,v,science_pot)
 !--------------------------------------------------------
 ! damping applied to relative vorticity (wk):
    if ( damp_v>1.E-5 ) then
