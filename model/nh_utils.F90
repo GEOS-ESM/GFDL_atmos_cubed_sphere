@@ -25,6 +25,10 @@
 
 module nh_utils_mod
 
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ use lam_probe_mod,only:probe_mark,probe_array,probe_context,probe_level
+!============ GEOS-LAM Update End =============
 ! Modules Included:
 ! <table>
 ! <tr>
@@ -183,6 +187,14 @@ CONTAINS
         enddo
      enddo
 
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ call probe_level(k)
+ call probe_array('HEIGHT_C_FX',fx,is1,js1)
+ call probe_array('HEIGHT_C_FY',fy,is1,js1)
+ call probe_array('HEIGHT_C_XFX',xfx,is1,js1)
+ call probe_array('HEIGHT_C_YFX',yfx,is1,js1)
+!============ GEOS-LAM Update End =============
      do j=js1, je1
         do i=is1,ie1
            gz(i,j,k) = (gz2(i,j)*area(i,j) + ( fx(i,j)- fx(i+1,j))+( fy(i,j)- fy(i,j+1))) &
@@ -196,6 +208,10 @@ CONTAINS
   do j=js1, je1
      do k=2, km+1
         do i=is1, ie1
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ if(gz(i,j,k)>gz(i,j,k-1)-dz_min)call probe_mark('DZ_FLOOR_C',[real(i),real(j),real(k),gz(i,j,k-1)-gz(i,j,k),dz_min])
+!============ GEOS-LAM Update End =============
            gz(i,j,k) = min( gz(i,j,k), gz(i,j,k-1) - dz_min )
         enddo
      enddo
@@ -295,6 +311,14 @@ CONTAINS
    else
      call fv_tp_2d(zh(isd,jsd,k), crx_adv(is,jsd,k), cry_adv(isd,js,k), npx,  npy, hord, &
                    fx, fy, xfx_adv(is,jsd,k), yfx_adv(isd,js,k), gridstruct, bd, ra_x, ra_y, lim_fac)
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ call probe_level(k)
+ call probe_array('HEIGHT_D_FX',fx,is,js)
+ call probe_array('HEIGHT_D_FY',fy,is,js)
+ call probe_array('HEIGHT_D_XFX',xfx_adv(:,:,k),is,jsd)
+ call probe_array('HEIGHT_D_YFX',yfx_adv(:,:,k),isd,js)
+!============ GEOS-LAM Update End =============
      do j=js,je
         do i=is,ie
            zh(i,j,k) = (zh(i,j,k)*area(i,j)+(fx(i,j)-fx(i+1,j))+(fy(i,j)-fy(i,j+1)))   &
@@ -315,6 +339,10 @@ CONTAINS
      do k=km, 1, -1
         do i=is, ie
 ! Enforce monotonicity of height to prevent blowup
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ if(zh(i,j,k)<zh(i,j,k+1)+dz_min)call probe_mark('DZ_FLOOR_D',[real(i),real(j),real(k),zh(i,j,k)-zh(i,j,k+1),dz_min])
+!============ GEOS-LAM Update End =============
            zh(i,j,k) = max( zh(i,j,k), zh(i,j,k+1) + dz_min )
         enddo
      enddo
@@ -1225,6 +1253,10 @@ CONTAINS
 #endif
       rdt = 1. / dt
     capa1 = kappa - 1.
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ call probe_mark('SIM1_C_ENTER',[dt,p_fac,real(is),real(ie),real(km)])
+!============ GEOS-LAM Update End =============
 
     do k=1,km
        do i=is, ie
@@ -1316,8 +1348,13 @@ CONTAINS
     do i=is, ie
            p1(i) = ( pe(i,km) + 2.*pe(i,km+1) )*r3
 #ifdef MOIST_CAPPA
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ if(p1(i)+pm2(i,km)<p_fac*pm2(i,km))call probe_mark('PRESSURE_FLOOR_C',[real(i),real(km),p1(i)+pm2(i,km),p_fac*pm2(i,km)])
        dz2(i,km) = -dm2(i,km)*rgas*pt2(i,km)*exp((cp2(i,km)-1.)*log(max(p_fac*pm2(i,km),p1(i)+pm2(i,km))))
 #else
+ if(p1(i)+pm2(i,km)<p_fac*pm2(i,km))call probe_mark('PRESSURE_FLOOR_C',[real(i),real(km),p1(i)+pm2(i,km),p_fac*pm2(i,km)])
+!============ GEOS-LAM Update End =============
        dz2(i,km) = -dm2(i,km)*rgas*pt2(i,km)*exp(capa1*log(max(p_fac*pm2(i,km),p1(i)+pm2(i,km))))
 #endif
     enddo
@@ -1326,13 +1363,23 @@ CONTAINS
        do i=is, ie
           p1(i) = (pe(i,k) + bb(i,k)*pe(i,k+1) + g_rat(i,k)*pe(i,k+2))*r3 - g_rat(i,k)*p1(i)
 #ifdef MOIST_CAPPA
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ if(p1(i)+pm2(i,k)<p_fac*pm2(i,k))call probe_mark('PRESSURE_FLOOR_C',[real(i),real(k),p1(i)+pm2(i,k),p_fac*pm2(i,k)])
           dz2(i,k) = -dm2(i,k)*rgas*pt2(i,k)*exp((cp2(i,k)-1.)*log(max(p_fac*pm2(i,k),p1(i)+pm2(i,k))))
 #else
+ if(p1(i)+pm2(i,k)<p_fac*pm2(i,k))call probe_mark('PRESSURE_FLOOR_C',[real(i),real(k),p1(i)+pm2(i,k),p_fac*pm2(i,k)])
+!============ GEOS-LAM Update End =============
           dz2(i,k) = -dm2(i,k)*rgas*pt2(i,k)*exp(capa1*log(max(p_fac*pm2(i,k),p1(i)+pm2(i,k))))
 #endif
        enddo
     enddo
 
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+
+ call probe_mark('SIM1_C_EXIT')
+!============ GEOS-LAM Update End =============
  end subroutine SIM1_solver
 
  subroutine SIM_solver(dt,  is,  ie, km, rgas, gama, gm2, cp2, kappa, pe2, dm2,   &
@@ -1351,6 +1398,16 @@ CONTAINS
    real  beta, t2, t1g, rdt, ra, capa1
    integer i, k
 
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ call probe_mark('SIM_ENTER',[dt,alpha,p_fac,scale_m,real(is),real(ie),real(km)])
+ call probe_array('SIM_OLD_W',w2,is,1)
+ call probe_array('SIM_OLD_DZ',dz2,is,1)
+ call probe_array('SIM_THETA',pt2,is,1)
+ call probe_array('SIM_MASS',dm2,is,1)
+ call probe_array('SIM_PEM',pem,is,1)
+ call probe_array('SIM_PM',pm2,is,1)
+!============ GEOS-LAM Update End =============
     beta = 1. - alpha
       ra = 1. / alpha
       t2 = beta / alpha
@@ -1404,6 +1461,10 @@ CONTAINS
        enddo
     enddo
 
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ call probe_array('SIM_INITIAL_PP',pp,is,1)
+!============ GEOS-LAM Update End =============
     do k=1, km+1
        do i=is, ie
 ! pe2 is Full p
@@ -1467,8 +1528,13 @@ CONTAINS
     do i=is, ie
            p1(i) = (pe2(i,km)+ 2.*pe2(i,km+1))*r3
 #ifdef MOIST_CAPPA
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ if(p1(i)+pm2(i,km)<p_fac*pm2(i,km))call probe_mark('PRESSURE_FLOOR',[real(i),real(km),p1(i)+pm2(i,km),p_fac*pm2(i,km)])
        dz2(i,km) = -dm2(i,km)*rgas*pt2(i,km)*exp((cp2(i,km)-1.)*log(max(p_fac*pm2(i,km),p1(i)+pm2(i,km))))
 #else
+ if(p1(i)+pm2(i,km)<p_fac*pm2(i,km))call probe_mark('PRESSURE_FLOOR',[real(i),real(km),p1(i)+pm2(i,km),p_fac*pm2(i,km)])
+!============ GEOS-LAM Update End =============
        dz2(i,km) = -dm2(i,km)*rgas*pt2(i,km)*exp(capa1*log(max(p_fac*pm2(i,km),p1(i)+pm2(i,km))))
 #endif
     enddo
@@ -1478,19 +1544,36 @@ CONTAINS
              p1(i) = (pe2(i,k)+bb(i,k)*pe2(i,k+1)+g_rat(i,k)*pe2(i,k+2))*r3 - g_rat(i,k)*p1(i)
 ! delz = -dm*R*T_m / p_gas
 #ifdef MOIST_CAPPA
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ if(p1(i)+pm2(i,k)<p_fac*pm2(i,k))call probe_mark('PRESSURE_FLOOR',[real(i),real(k),p1(i)+pm2(i,k),p_fac*pm2(i,k)])
           dz2(i,k) = -dm2(i,k)*rgas*pt2(i,k)*exp((cp2(i,k)-1.)*log(max(p_fac*pm2(i,k),p1(i)+pm2(i,k))))
 #else
+ if(p1(i)+pm2(i,k)<p_fac*pm2(i,k))call probe_mark('PRESSURE_FLOOR',[real(i),real(k),p1(i)+pm2(i,k),p_fac*pm2(i,k)])
+!============ GEOS-LAM Update End =============
           dz2(i,k) = -dm2(i,k)*rgas*pt2(i,k)*exp(capa1*log(max(p_fac*pm2(i,k),p1(i)+pm2(i,k))))
 #endif
        enddo
     enddo
 
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+ call probe_array('SIM_UNBLENDED_PP',pe2,is,1)
+!============ GEOS-LAM Update End =============
     do k=1, km+1
        do i=is, ie
           pe2(i,k) = pe2(i,k) + beta*(pp(i,k)-pe2(i,k))
        enddo
     enddo
 
+!============ GEOS-LAM Update Start =============
+! Record dry-pilot height diagnostics; test instrumentation only.
+
+ call probe_array('SIM_FINAL_PP',pe2,is,1)
+ call probe_array('SIM_NEW_W',w2,is,1)
+ call probe_array('SIM_NEW_DZ',dz2,is,1)
+ call probe_mark('SIM_EXIT')
+!============ GEOS-LAM Update End =============
  end subroutine SIM_solver
 
 

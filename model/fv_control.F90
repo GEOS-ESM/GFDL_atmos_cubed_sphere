@@ -939,6 +939,18 @@ module fv_control_mod
       allocate(Atm(n)%neststruct%child_grids(size(Atm)))
       Atm(N)%neststruct%child_grids = .false.
 
+!============ GEOS-LAM Update Start =============
+! Configure a standalone bounded tile without a live parent.
+      if (Atm(n)%neststruct%regional) then
+         if (size(Atm)/=1 .or. nested .or. consv_te>0.) call mpp_error(FATAL,"LAM requires one standalone grid and no global energy fixer")
+         ntiles=1
+         nested=.true. ! bounded stencils/storage, not a live parent
+         Atm(n)%neststruct%npx_global=npx
+         Atm(n)%neststruct%refinement=1
+         Atm(n)%gridstruct%stretched_grid=.true. ! general spherical metrics
+      endif
+
+!============ GEOS-LAM Update End =============
       !Broadcast data
 
       !Check layout
@@ -953,7 +965,10 @@ module fv_control_mod
             call mp_start(commID,halo_update_type)
       endif
 
-      if (Atm(n)%neststruct%nested) then
+!============ GEOS-LAM Update Start =============
+! Configure a standalone bounded tile without a live parent.
+      if (Atm(n)%neststruct%nested .and. .not. Atm(n)%neststruct%regional) then
+!============ GEOS-LAM Update End =============
          Atm(n)%neststruct%parent_proc = ANY(Atm(n)%parent_grid%pelist == gid)
          Atm(n)%neststruct%child_proc = ANY(Atm(n)%pelist == gid)
       endif
@@ -976,7 +991,10 @@ module fv_control_mod
       call switch_current_Atm(Atm(n))
       call setup_pointers(Atm(n))
 
-      if (nested) then
+!============ GEOS-LAM Update Start =============
+! Configure a standalone bounded tile without a live parent.
+      if (nested .and. .not. Atm(n)%neststruct%regional) then
+!============ GEOS-LAM Update End =============
          if (mod(npx-1 , refinement) /= 0 .or. mod(npy-1, refinement) /= 0) &
               call mpp_error(FATAL, 'npx or npy not an even refinement of its coarse grid.')
          

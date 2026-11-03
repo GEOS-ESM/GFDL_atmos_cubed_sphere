@@ -1,5 +1,7 @@
 esma_set_this ()
 
+#============ GEOS-LAM Update Start =============
+# Build the bounded geometry and regional file-boundary modules.
 set (srcs
   tools/fv_treat_da_inc.F90
   model/fv_cmp.F90
@@ -42,7 +44,11 @@ set (srcs
   tools/external_sst.F90
   tools/fv_nudge.F90
   model/fv_nesting.F90
-  )
+  
+  model/fv_lam_geometry.F90
+  model/fv_lam_provider.F90
+)
+#============ GEOS-LAM Update End =============
 
 esma_add_library (${this}
   SRCS ${srcs}
