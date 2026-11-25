@@ -119,11 +119,276 @@ module fv_mapz_mod
   public compute_total_energy, Lagrangian_to_Eulerian, moist_cv, moist_cp,   &
          rst_remap, mappm, E_Flux, map_scalar, mapn_tracer
 
+!---- remap diagnostics (resource REMAP_DIAG; off by default, no effect on the solution) ----
+!  Accumulated over the vertical remap calls (k_split) of one dynamics step; FV_StateMod normalizes and exports them.
+!  Single-thread only (OMP_NUM_THREADS=1): the per-row work arrays below are shared.
+  public rmd_config, rmd_reset, rmd_on, rmd_nc, rmd_dT, rmd_err, rmd_sp0, rmd_sp1, rmd_lim, &
+         rmd_du, rmd_dv, rmd_eu, rmd_ev, rmd_cds, rmd_cdl, rmd_gapN, rmd_gapL, rmd_gthN, rmd_gthL, rmd_fix
+  logical :: rmd_on = .false.
+! REMAP_FIX (0 = original): 1 = double-precision ln p of the new edges (as geopk); 3 = layer-mean p**kappa for the T<->PT conversions
+! evaluated in double precision from the edge pressures at both ends of the remap
+  integer :: rmd_fix = 0
+  integer :: rmd_nc = 0                     ! remap calls in the current dynamics step
+  integer :: rmd_ncall = 0                  ! remap calls since the start of the run
+  integer :: rmd_dump_ncall = 0             ! >0: dump pre-remap columns of the first rmd_dump_ncall calls
+  integer :: rmd_dump_start = 0             ! first dumped call is rmd_dump_start+1
+  integer :: rmd_dump_pestride = 20, rmd_dump_ijstride = 4
+  character(len=256) :: rmd_dump_dir = '.'
+  integer :: rmd_unit = -1
+  logical :: rmd_open = .false.
+  real, allocatable :: rmd_dT(:,:,:), rmd_err(:,:,:), rmd_sp0(:,:,:), rmd_sp1(:,:,:), rmd_lim(:,:,:)
+  real, allocatable :: rmd_du(:,:,:), rmd_dv(:,:,:), rmd_eu(:,:,:), rmd_ev(:,:,:)
+  real, allocatable :: rmd_cds(:,:), rmd_cdl(:,:)
+  real, allocatable :: rmd_gapN(:,:,:), rmd_gapL(:,:,:), rmd_Tprev(:,:,:)
+  real, allocatable :: rmd_gthN(:,:,:), rmd_gthL(:,:,:), rmd_Thprev(:,:,:), rmd_pkzprev(:,:,:)
+  logical :: rmd_have_prev = .false., rmd_prev_last = .false.
+  real, allocatable :: rmd_Tb(:,:,:), rmd_pn1(:,:,:), rmd_dp1(:,:,:), rmd_lat(:,:), rmd_lon(:,:)
+  real, allocatable :: rmd_limcol(:,:)
+
 !---- version number -----
   character(len=128) :: version = '$Id$'
   character(len=128) :: tagname = '$Name$'
 
 contains
+
+!=====================================================================================
+! Remap diagnostics
+!=====================================================================================
+ subroutine rmd_config(on, dump_ncall, pestride, ijstride, dir, dump_start)
+   logical,          intent(in) :: on
+   integer,          intent(in) :: dump_ncall, pestride, ijstride, dump_start
+   character(len=*), intent(in) :: dir
+   rmd_on = on
+   rmd_dump_ncall = dump_ncall
+   rmd_dump_start = dump_start
+   rmd_dump_pestride = max(pestride,1)
+   rmd_dump_ijstride = max(ijstride,1)
+   rmd_dump_dir = dir
+ end subroutine rmd_config
+
+ subroutine rmd_init(is,ie,js,je,km)
+   integer, intent(in) :: is,ie,js,je,km
+   if (allocated(rmd_dT)) return
+   allocate( rmd_dT(is:ie,js:je,km), rmd_err(is:ie,js:je,km), rmd_sp0(is:ie,js:je,km), rmd_sp1(is:ie,js:je,km) )
+   allocate( rmd_lim(is:ie,js:je,km), rmd_du(is:ie,js:je,km), rmd_dv(is:ie,js:je,km) )
+   allocate( rmd_eu(is:ie,js:je,km), rmd_ev(is:ie,js:je,km), rmd_cds(is:ie,js:je), rmd_cdl(is:ie,js:je) )
+   allocate( rmd_Tb(is:ie,js:je,km), rmd_pn1(is:ie,km+1,js:je), rmd_dp1(is:ie,js:je,km) )
+   allocate( rmd_lat(is:ie,js:je), rmd_lon(is:ie,js:je), rmd_limcol(is:ie+1,km) )
+   allocate( rmd_gapN(is:ie,js:je,km), rmd_gapL(is:ie,js:je,km), rmd_Tprev(is:ie,js:je,km) )
+   rmd_gapN = 0.; rmd_gapL = 0.; rmd_Tprev = 0.
+   allocate( rmd_gthN(is:ie,js:je,km), rmd_gthL(is:ie,js:je,km), rmd_Thprev(is:ie,js:je,km), rmd_pkzprev(is:ie,js:je,km) )
+   rmd_gthN = 0.; rmd_gthL = 0.; rmd_Thprev = 0.; rmd_pkzprev = 1.
+   rmd_dT = 0.; rmd_err = 0.; rmd_sp0 = 0.; rmd_sp1 = 0.; rmd_lim = 0.; rmd_du = 0.; rmd_dv = 0.
+   rmd_eu = 0.; rmd_ev = 0.; rmd_cds = 0.; rmd_cdl = 0.; rmd_Tb = 0.; rmd_pn1 = 0.; rmd_dp1 = 0.
+   rmd_lat = 0.; rmd_lon = 0.; rmd_limcol = 0.
+ end subroutine rmd_init
+
+ subroutine rmd_reset()
+   rmd_nc = 0
+   if (.not. allocated(rmd_dT)) return
+   rmd_dT = 0.; rmd_err = 0.; rmd_sp0 = 0.; rmd_sp1 = 0.; rmd_lim = 0.; rmd_du = 0.; rmd_dv = 0.
+   rmd_eu = 0.; rmd_ev = 0.; rmd_cds = 0.; rmd_cdl = 0.; rmd_gapN = 0.; rmd_gapL = 0.; rmd_gthN = 0.; rmd_gthL = 0.
+ end subroutine rmd_reset
+
+! conservative first-order (overlap-weighted layer mean) remap of one column: x = layer edges (increasing)
+ subroutine rmd_fo(km, x1, q1, x2, q2)
+   integer, intent(in)  :: km
+   real,    intent(in)  :: x1(km+1), q1(km), x2(km+1)
+   real,    intent(out) :: q2(km)
+   integer :: k, l, ll
+   real    :: a, b, s, ws
+   l = 1
+   do k=1,km
+      do while (l < km .and. x1(l+1) <= x2(k))
+         l = l + 1
+      enddo
+      a = x2(k); s = 0.; ws = 0.; ll = l
+      do while (ll <= km)
+         b = min(x2(k+1), x1(ll+1))
+         if (b > a) then
+            s  = s  + (b-a)*q1(ll)
+            ws = ws + (b-a)
+            a = b
+         endif
+         if (x1(ll+1) >= x2(k+1)) exit
+         ll = ll + 1
+      enddo
+      if (ws > 0.) then
+         q2(k) = s/ws
+      else
+         q2(k) = q1(min(max(l,1),km))
+      endif
+   enddo
+ end subroutine rmd_fo
+
+! departure of each layer value from the interpolation of its two neighbours (ln p spaced): the 2dz measure
+ subroutine rmd_dep(km, lp, t, dep)
+   integer, intent(in)  :: km
+   real,    intent(in)  :: lp(km), t(km)
+   real,    intent(out) :: dep(km)
+   integer :: k
+   real    :: h0, h1
+   dep = 0.
+   do k=2,km-1
+      h0 = lp(k)   - lp(k-1)
+      h1 = lp(k+1) - lp(k)
+      dep(k) = t(k) - (h1*t(k-1) + h0*t(k+1))/(h0+h1)
+   enddo
+ end subroutine rmd_dep
+
+! before the T remap: virtual temperature (as the remap sees it) and Lagrangian edges
+ subroutine rmd_pre(is,ie,js,je,isd,ied,jsd,jed,km, pt, pk, peln, delp, akap, hydrostatic, gridstruct, pe)
+   integer, intent(in) :: is,ie,js,je,isd,ied,jsd,jed,km
+   real,    intent(in) :: pt(isd:ied,jsd:jed,km), delp(isd:ied,jsd:jed,km)
+   real,    intent(in) :: pk(is:ie,js:je,km+1), peln(is:ie,km+1,js:je), akap
+   real,    intent(in) :: pe(is-1:ie+1,km+1,js-1:je+1)
+   real(kind=8) :: a8
+   logical, intent(in) :: hydrostatic
+   type(fv_grid_type), intent(IN) :: gridstruct
+   integer :: i,j,k
+   if (.not. rmd_on .or. .not. hydrostatic) return
+   call rmd_init(is,ie,js,je,km)
+   a8 = real(akap,8)
+   do k=1,km
+      do j=js,je
+         do i=is,ie
+            if (rmd_fix >= 3) then
+               rmd_Tb(i,j,k) = pt(i,j,k)*real((real(pe(i,k+1,j),8)**a8 - real(pe(i,k,j),8)**a8) / &
+                               (a8*(log(real(pe(i,k+1,j),8)) - log(real(pe(i,k,j),8)))))
+            else
+               rmd_Tb(i,j,k)  = pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
+            endif
+            rmd_dp1(i,j,k) = delp(i,j,k)
+         enddo
+      enddo
+   enddo
+   if (rmd_have_prev) then
+      ! change of the virtual temperature between the previous remap and this one (Lagrangian phase, plus the
+      ! conversions and, after a last step, the physics); split by the kind of the previous remap
+      do k=1,km
+         do j=js,je
+            do i=is,ie
+               if (rmd_prev_last) then
+                  rmd_gapL(i,j,k) = rmd_gapL(i,j,k) + (rmd_Tb(i,j,k) - rmd_Tprev(i,j,k))
+                  rmd_gthL(i,j,k) = rmd_gthL(i,j,k) + (pt(i,j,k) - rmd_Thprev(i,j,k))*rmd_pkzprev(i,j,k)
+               else
+                  rmd_gapN(i,j,k) = rmd_gapN(i,j,k) + (rmd_Tb(i,j,k) - rmd_Tprev(i,j,k))
+                  rmd_gthN(i,j,k) = rmd_gthN(i,j,k) + (pt(i,j,k) - rmd_Thprev(i,j,k))*rmd_pkzprev(i,j,k)
+               endif
+            enddo
+         enddo
+      enddo
+   endif
+   do j=js,je
+      do k=1,km+1
+         do i=is,ie
+            rmd_pn1(i,k,j) = peln(i,k,j)
+         enddo
+      enddo
+      do i=is,ie
+         rmd_lon(i,j) = real(gridstruct%agrid(i,j,1)*180.d0/pi)
+         rmd_lat(i,j) = real(gridstruct%agrid(i,j,2)*180.d0/pi)
+      enddo
+   enddo
+ end subroutine rmd_pre
+
+! after the remap (pt = virtual temperature on the Eulerian layers, peln updated): accumulate the diagnostics
+ subroutine rmd_post(is,ie,js,je,isd,ied,jsd,jed,km, pt, peln, delp, hydrostatic, last_step, pkz)
+   integer, intent(in) :: is,ie,js,je,isd,ied,jsd,jed,km
+   real,    intent(in) :: pt(isd:ied,jsd:jed,km), delp(isd:ied,jsd:jed,km), peln(is:ie,km+1,js:je)
+   logical, intent(in) :: hydrostatic, last_step
+   real,    intent(in) :: pkz(is:ie,js:je,km)
+   integer :: i,j
+   real    :: pn1(km+1), pn2(km+1), tb(km), ta(km), tfo(km), lp(km), dep(km), s1, s2, c1, c2
+   if (.not. rmd_on .or. .not. hydrostatic) return
+   if (.not. allocated(rmd_Tb)) return
+   rmd_nc = rmd_nc + 1
+   rmd_ncall = rmd_ncall + 1
+   do j=js,je
+      do i=is,ie
+         pn1 = rmd_pn1(i,:,j); pn2 = peln(i,:,j); tb = rmd_Tb(i,j,:); ta = pt(i,j,1:km)
+         rmd_dT(i,j,:) = rmd_dT(i,j,:) + (ta - tb)
+         call rmd_fo(km, pn1, tb, pn2, tfo)
+         rmd_err(i,j,:) = rmd_err(i,j,:) + (ta - tfo)
+         lp = 0.5*(pn1(1:km)+pn1(2:km+1)); call rmd_dep(km, lp, tb, dep); rmd_sp0(i,j,:) = rmd_sp0(i,j,:) + dep
+         lp = 0.5*(pn2(1:km)+pn2(2:km+1)); call rmd_dep(km, lp, ta, dep); rmd_sp1(i,j,:) = rmd_sp1(i,j,:) + dep
+         s1 = sum(rmd_dp1(i,j,:)*tb);                   s2 = sum(delp(i,j,1:km)*ta)
+         c1 = sum((pn1(2:km+1)-pn1(1:km))*tb);          c2 = sum((pn2(2:km+1)-pn2(1:km))*ta)
+         rmd_cds(i,j) = rmd_cds(i,j) + (s2-s1)/s1
+         rmd_cdl(i,j) = rmd_cdl(i,j) + (c2-c1)/c1
+         rmd_Tprev(i,j,:) = ta
+         rmd_Thprev(i,j,:) = ta/pkz(i,j,:)
+         rmd_pkzprev(i,j,:) = pkz(i,j,:)
+      enddo
+   enddo
+   rmd_have_prev = .true.
+   rmd_prev_last = last_step
+ end subroutine rmd_post
+
+! limiter activity of the T remap of row j (flags were set by scalar_profile)
+ subroutine rmd_store_lim(is,ie,js,je,j,km)
+   integer, intent(in) :: is,ie,js,je,j,km
+   if (.not. rmd_on .or. .not. allocated(rmd_lim)) return
+   if (j < js .or. j > je) return
+   rmd_lim(is:ie,j,1:km) = rmd_lim(is:ie,j,1:km) + rmd_limcol(is:ie,1:km)
+ end subroutine rmd_store_lim
+
+! u (kind=1) or v (kind=2) remap of row j: increment and difference from the first-order remap
+ subroutine rmd_wind(kind, j, is, ie, js, je, km, pe1, pe2, qpre, qpost)
+   integer, intent(in) :: kind, j, is, ie, js, je, km
+   real,    intent(in) :: pe1(:,:), pe2(:,:), qpre(:,:), qpost(:,:)
+   integer :: ii, i, n
+   real    :: qfo(km)
+   if (.not. rmd_on .or. .not. allocated(rmd_dT)) return
+   call rmd_dump_cols(kind, j, is, ie, km, pe1, pe2, qpre, qpost)
+   if (j < js .or. j > je) return
+   n = ie - is + 1
+   do ii=1,n
+      i = is + ii - 1
+      call rmd_fo(km, pe1(ii,1:km+1), qpre(ii,1:km), pe2(ii,1:km+1), qfo)
+      if (kind == 1) then
+         rmd_du(i,j,:) = rmd_du(i,j,:) + (qpost(ii,1:km) - qpre(ii,1:km))
+         rmd_eu(i,j,:) = rmd_eu(i,j,:) + (qpost(ii,1:km) - qfo)
+      else
+         rmd_dv(i,j,:) = rmd_dv(i,j,:) + (qpost(ii,1:km) - qpre(ii,1:km))
+         rmd_ev(i,j,:) = rmd_ev(i,j,:) + (qpost(ii,1:km) - qfo)
+      endif
+   enddo
+ end subroutine rmd_wind
+
+! column dump for the offline remap tests: stream records, one per column
+!   int32 kind(0=T in ln p,1=u,2=v in Pa), call, pe, i, j, km;  real32 lon, lat, x1(km+1), x2(km+1), q_before(km), q_after(km)
+ subroutine rmd_dump_cols(kind, j, is, ie, km, x1, x2, q1, q2)
+   integer, intent(in) :: kind, j, is, ie, km
+   real,    intent(in) :: x1(:,:), x2(:,:), q1(:,:), q2(:,:)
+   integer :: ii, i, pe_
+   real    :: lonv, latv
+   character(len=512) :: fn
+   if (.not. rmd_on) return
+   if (rmd_dump_ncall <= 0 .or. rmd_ncall+1 <= rmd_dump_start .or. rmd_ncall+1 > rmd_dump_start+rmd_dump_ncall) return
+   pe_ = mpp_pe()
+   if (mod(pe_, rmd_dump_pestride) /= 0) return
+   if (mod(j, rmd_dump_ijstride) /= 0) return
+   if (.not. rmd_open) then
+      write(fn,'(a,"/rmd_dump.",i6.6,".bin")') trim(rmd_dump_dir), pe_
+      open(newunit=rmd_unit, file=trim(fn), access='stream', form='unformatted', status='replace')
+      rmd_open = .true.
+   endif
+   do ii=1,ie-is+1
+      i = is + ii - 1
+      if (mod(i, rmd_dump_ijstride) /= 0) cycle
+      lonv = -999.; latv = -999.
+      if (allocated(rmd_lat)) then
+         if (i>=lbound(rmd_lat,1) .and. i<=ubound(rmd_lat,1) .and. j>=lbound(rmd_lat,2) .and. j<=ubound(rmd_lat,2)) then
+            lonv = rmd_lon(i,j); latv = rmd_lat(i,j)
+         endif
+      endif
+      write(rmd_unit) int(kind,4), int(rmd_ncall+1,4), int(pe_,4), int(i,4), int(j,4), int(km,4),   &
+                      real(lonv,4), real(latv,4), real(x1(ii,1:km+1),4), real(x2(ii,1:km+1),4),      &
+                      real(q1(ii,1:km),4), real(q2(ii,1:km),4)
+   enddo
+   flush(rmd_unit)
+ end subroutine rmd_dump_cols
 
 !>@brief The subroutine 'Lagrangian_to_Eulerian' remaps deformed Lagrangian layers back to the reference Eulerian coordinate.
 !>@details It also includes the entry point for calling fast microphysical processes. This is typically calle on the k_split loop.
@@ -231,6 +496,8 @@ contains
   integer:: i,j,k
   integer:: nt, liq_wat, ice_wat, rainwat, snowwat, cld_amt, graupel, iq, n, kmp, kp, k_next
   logical:: remap_t, remap_pt, remap_te
+  integer:: l_fix
+  real(kind=8):: a8
 
 ! local versions of full pe/dpe arrays
   real, dimension(is-1:ie+1,km+1,js-1:je+1) ::  peO
@@ -238,6 +505,8 @@ contains
   real, dimension(is:ie,km,js:je) :: dpeO
 
   kord(ikord_tm) = kord_tm
+  l_fix = rmd_fix
+  a8 = real(akap,8)
   kord(ikord_wz) = kord_wz
   kord(ikord_mt) = kord_mt
 
@@ -352,6 +621,8 @@ contains
             call qs_init(kmp)
        endif
 
+      call rmd_pre(is,ie,js,je,isd,ied,jsd,jed,km, pt, pk, peln, delp, akap, hydrostatic, gridstruct, pe)
+
       call timing_on('Remap_GetT')
 
       if (remap_t) then
@@ -359,12 +630,17 @@ contains
 ! Note: pt at this stage is Theta_v
              if ( hydrostatic ) then
 ! Transform virtual pt to virtual Temp
-!$OMP parallel do default(none) shared(is,ie,js,je,km,pk,akap,peln,pt) &
+!$OMP parallel do default(none) shared(is,ie,js,je,km,pk,akap,peln,pt,pe,l_fix,a8) &
 !$OMP                           private(i,j,k)
                do k=1,km
                  do j=js,je
                    do i=is,ie
-                      pt(i,j,k) = pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
+                      if (l_fix >= 3) then
+                         pt(i,j,k) = pt(i,j,k)*real((real(pe(i,k+1,j),8)**a8 - real(pe(i,k,j),8)**a8) / &
+                                     (a8*(log(real(pe(i,k+1,j),8)) - log(real(pe(i,k,j),8)))))
+                      else
+                         pt(i,j,k) = pt(i,j,k)*(pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
+                      endif
                    enddo
                  enddo
                enddo
@@ -524,6 +800,7 @@ contains
                            dpn1, dpn2,          &
                            is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), &
                            optional_top=gmao_top_bc, optional_bot=gmao_bot_bc)
+           call rmd_store_lim(is,ie,js,je,j,km)
            te(is:ie,j,:) = q2
          else
            call map_scalar(km,  pn1,  pt,       &
@@ -531,6 +808,8 @@ contains
                            dpn1, dpn2,          &
                            is, ie, j, isd, ied, jsd, jed, 1, kord(ikord_tm), q_min=t_min, &
                            optional_top=gmao_top_bc, optional_bot=gmao_bot_bc)
+           call rmd_store_lim(is,ie,js,je,j,km)
+           call rmd_dump_cols(0, j, is, ie, km, pn1(is:ie,1:km+1), pn2(is:ie,1:km+1), pt(is:ie,j,1:km), q2)
            pt(is:ie,j,:) = q2
          endif
       endif
@@ -705,6 +984,7 @@ contains
                       km, pe2,  u2,         &
                       dpe1, dpe2,           &
                       is, ie, j, isd, ied, jsd, jed+1, -1, kord(ikord_mt))
+      call rmd_wind(1, j, is, ie, js, je, km, pe1(is:ie,1:km+1), pe2(is:ie,1:km+1), u(is:ie,j,1:km), u2(is:ie,1:km))
       u(is:ie,j,:) = u2
       if (present(mfy)) then
          call map_scalar(km, pe1, mfy,      &
@@ -752,6 +1032,7 @@ contains
                       km, pe3, v2,               &
                       dpe0, dpe3, is, ie+1,      &
                       j, isd, ied+1, jsd, jed, -1, kord(ikord_mt))
+      call rmd_wind(2, j, is, ie, js, je, km, pe0(is:ie,1:km+1), pe3(is:ie,1:km+1), v(is:ie,j,1:km), v2(is:ie,1:km))
       v(is:ie+1,j,:) = v2
       if (present(mfx)) then
          call map_scalar(km, pe0, mfx,           &
@@ -783,7 +1064,7 @@ contains
 !$OMP                                  graupel,sphum,cappa,r_vir,rcp,cp,k1k,delp, &
 !$OMP                                  delz,akap,pkz,te,u,v,gridstruct, &
 !$OMP                                  ak,bk,nq,isd,ied,jsd,jed,fill, &
-!$OMP                                  hs,w,ws,do_omega,omga,rrg)    &
+!$OMP                                  hs,w,ws,do_omega,omga,rrg,l_fix,a8)    &
 !$OMP                          private(gz,cvm,kp,k_next,bkh,dpe2,   &
 !$OMP                                  pe2,pe3,pk2,pn2,phis,tpe,dlnp,tmp)
   do 2000 j=js,je
@@ -817,7 +1098,11 @@ contains
    enddo
    do k=2,km
       do i=is,ie
-         pn2(i,k) = log(pe2(i,k))
+         if (l_fix == 1 .or. l_fix == 2) then
+            pn2(i,k) = real(log(real(pe2(i,k),8)))
+         else
+            pn2(i,k) = log(pe2(i,k))
+         endif
          pk2(i,k) = exp(akap*pn2(i,k))
       enddo
    enddo
@@ -843,7 +1128,12 @@ contains
    if ( hydrostatic ) then
       do k=1,km
          do i=is,ie
-            pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
+            if (l_fix >= 3) then
+               pkz(i,j,k) = real((real(pe2(i,k+1),8)**a8 - real(pe2(i,k),8)**a8) / &
+                            (a8*(log(real(pe2(i,k+1),8)) - log(real(pe2(i,k),8)))))
+            else
+               pkz(i,j,k) = (pk(i,j,k+1)-pk(i,j,k))/(akap*(peln(i,k+1,j)-peln(i,k,j)))
+            endif
          enddo
       enddo
       if (.not.remap_t) then
@@ -978,6 +1268,8 @@ contains
 2000  continue
 
       call timing_off('Remap_PressureVars')
+
+      call rmd_post(is,ie,js,je,isd,ied,jsd,jed,km, pt, peln, delp, hydrostatic, last_step, pkz)
 
 ! Do total energy conservation and fast saturation adjustment as requested
 ! and fill new PT (Theta_V) for next k_split step or export dry T
@@ -1897,6 +2189,7 @@ endif        ! end last_step check
  real   bet, a_bot, grat
  real   pmp_1, lac_1, pmp_2, lac_2, x0, x1
  integer i, k, im
+ real   qu(i1:i2,km+1), rmd_tol
 
  if ( iv .eq. -2 ) then
       if (.not. present(qs)) call mpp_error (FATAL, 'fv_mapz::scalar_profile - qs is not present')
@@ -1952,6 +2245,9 @@ endif        ! end last_step check
      enddo
   enddo
  endif
+
+! remap diagnostics: unconstrained cubic edges (before any limiter)  [rmd_unconstrained]
+ if (rmd_on) qu(i1:i2,1:km+1) = q(i1:i2,1:km+1)
 
 !----- Perfectly linear scheme --------------------------------
  if ( abs(kord) > 16 ) then
@@ -2284,6 +2580,19 @@ endif        ! end last_step check
      if(k==(km-1)) call cs_limiters(im, extm(i1,k), a4(1,i1,k), 2)
      if(k== km   ) call cs_limiters(im, extm(i1,k), a4(1,i1,k), 1)
   enddo
+
+! remap diagnostics: where did the limiters change the unconstrained edges?
+ if (rmd_on .and. allocated(rmd_limcol)) then
+    if (i2 <= ubound(rmd_limcol,1) .and. km <= ubound(rmd_limcol,2)) then
+       do k=1,km
+          do i=i1,i2
+             rmd_tol = 1.e-5*max(abs(a4(1,i,k)), abs(a4(2,i,k)), abs(a4(3,i,k)), 1.e-3)
+             rmd_limcol(i,k) = 0.
+             if ( abs(a4(2,i,k)-qu(i,k)) > rmd_tol .or. abs(a4(3,i,k)-qu(i,k+1)) > rmd_tol ) rmd_limcol(i,k) = 1.
+          enddo
+       enddo
+    endif
+ endif
 
  end subroutine scalar_profile
 
